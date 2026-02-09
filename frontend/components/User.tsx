@@ -1,9 +1,11 @@
-import ScrollView from "@/components/ScrollView";
-import TopBar from "@/components/ui/TopBar";
-import { View, Text, StyleSheet, Animated } from "react-native";
+import { useState } from "react";
+import { Alert, Image, Modal, Pressable, StyleSheet, View } from "react-native";
+import * as Linking from "expo-linking";
 import { ThemedText } from "@/components/ThemedText";
+import { MarkdownText } from "@/components/MarkdownText";
 import { UserProps } from "@/constants/Types";
-import { ExternalPathString, Link } from "expo-router";
+import { useAppColors } from "@/hooks/useAppColors";
+import { usePreferences } from "@/contexts/PreferencesContext";
 
 export default function User({
   username,
@@ -12,67 +14,169 @@ export default function User({
   created_on,
   picture,
 }: UserProps) {
-  let CreationDate = new Date(created_on);
+  const colors = useAppColors();
+  const { preferences } = usePreferences();
+  const creationDate = new Date(created_on);
+  const safeLinks = Array.isArray(links) ? links : [];
+  const hasPicture = Boolean(picture && picture.trim().length);
+  const [isImageOpen, setIsImageOpen] = useState(false);
+  const openUrlSafe = async (url: string) => {
+    const trimmed = url.trim();
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      if (preferences.linkOpenMode === "promptScheme") {
+        Alert.alert("Open link", `"${trimmed}" is missing a scheme.`, [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Add http://",
+            onPress: () => void openUrlSafe(`http://${trimmed}`),
+          },
+          {
+            text: "Add https://",
+            onPress: () => void openUrlSafe(`https://${trimmed}`),
+          },
+        ]);
+        return;
+      }
+      const normalizedHost = trimmed.startsWith("www.")
+        ? trimmed
+        : `www.${trimmed}`;
+      await openUrlSafe(`https://${normalizedHost}`);
+      return;
+    }
+    const supported = await Linking.canOpenURL(trimmed);
+    if (!supported) {
+      Alert.alert("Unable to open link", trimmed);
+      return;
+    }
+    await Linking.openURL(trimmed);
+  };
+  const initials = username
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
-    <>
-      {/* <TopBar /> */}
-      <ScrollView>
-        <View style={styles.header}>
-          <ThemedText type="default" style={styles.username}>
-            {username}
+    <View style={styles.container}>
+      <View style={styles.header}>
+        {hasPicture ? (
+          <Pressable
+            onPress={() => setIsImageOpen(true)}
+            style={styles.avatarButton}
+          >
+            <Image source={{ uri: picture }} style={styles.avatar} />
+          </Pressable>
+        ) : (
+          <View
+            style={[
+              styles.avatar,
+              { backgroundColor: colors.surfaceAlt },
+              styles.avatarFallback,
+              { borderColor: colors.border },
+            ]}
+          >
+            <ThemedText type="caption">{initials}</ThemedText>
+          </View>
+        )}
+        <View style={styles.headerText}>
+          <ThemedText type="title">{username}</ThemedText>
+          <ThemedText type="caption" style={{ color: colors.muted }}>
+            Joined{" "}
+            {creationDate.toLocaleDateString("en-US", {
+              month: "long",
+              year: "numeric",
+            })}
           </ThemedText>
         </View>
-        <ThemedText type="default" style={styles.bio}>
-          {bio}
-        </ThemedText>
-        {links.map((link, index) => (
-          <Link key={index} href={link as ExternalPathString}>
-            <ThemedText type="default" style={styles.link}>
+      </View>
+      {bio?.trim() ? (
+        <View style={styles.bio}>
+          <MarkdownText>{bio}</MarkdownText>
+        </View>
+      ) : null}
+      <View style={styles.links}>
+        {safeLinks.map((link, index) => (
+          <Pressable key={index} onPress={() => void openUrlSafe(link)}>
+            <ThemedText type="link" style={styles.link}>
               {link}
             </ThemedText>
-          </Link>
+          </Pressable>
         ))}
-        <Text style={styles.date}>
-          {CreationDate.toLocaleString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "numeric",
-            hour12: true,
-          })}
-        </Text>
-      </ScrollView>
-    </>
+      </View>
+      <Modal
+        visible={isImageOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsImageOpen(false)}
+      >
+        <Pressable
+          style={styles.viewerBackdrop}
+          onPress={() => setIsImageOpen(false)}
+        >
+          <View style={styles.viewerCard}>
+            {hasPicture ? (
+              <Image
+                source={{ uri: picture }}
+                style={styles.viewerImage}
+                resizeMode="contain"
+              />
+            ) : null}
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    gap: 12,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    gap: 14,
   },
-  username: {
-    fontSize: 20,
-    fontWeight: "bold",
+  headerText: {
+    flex: 1,
+  },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarButton: {
+    borderRadius: 32,
+    overflow: "hidden",
+  },
+  avatarFallback: {
+    borderWidth: 1,
   },
   bio: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 10,
+    marginTop: 2,
   },
-  date: {
-    fontSize: 12,
-    color: "grey",
-    alignSelf: "flex-end",
-    marginTop: 5,
+  links: {
+    gap: 6,
   },
   link: {
-    fontSize: 14,
-    color: "#007AFF",
     lineHeight: 20,
-    marginBottom: 10,
+  },
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewerCard: {
+    width: "100%",
+    height: "100%",
+    padding: 24,
+  },
+  viewerImage: {
+    width: "100%",
+    height: "100%",
   },
 });

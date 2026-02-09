@@ -20,19 +20,23 @@ import (
 //   - *types.Project: The project details if found.
 //   - error: An error if the query fails. Returns nil for both if no project exists.
 func QueryProject(id int) (*types.Project, error) {
-	query := `SELECT id, name, description, status, likes, links, tags, owner, creation_date FROM Projects WHERE id = ?;`
+	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
+	          FROM Projects WHERE id = ?;`
 	row := DB.QueryRow(query, id)
 	var project types.Project
-	var linksJSON, tagsJSON string
+	var linksJSON, tagsJSON, mediaJSON string
 
 	err := row.Scan(
 		&project.ID,
 		&project.Name,
 		&project.Description,
+		&project.AboutMd,
 		&project.Status,
 		&project.Likes,
 		&linksJSON,
 		&tagsJSON,
+		&mediaJSON,
 		&project.Owner,
 		&project.CreationDate,
 	)
@@ -49,6 +53,9 @@ func QueryProject(id int) (*types.Project, error) {
 	if err := UnmarshalFromJSON(tagsJSON, &project.Tags); err != nil {
 		return nil, err
 	}
+	if err := UnmarshalFromJSON(mediaJSON, &project.Media); err != nil {
+		return nil, err
+	}
 
 	return &project, nil
 }
@@ -62,25 +69,29 @@ func QueryProject(id int) (*types.Project, error) {
 //   - *[]types.Project: A list of the projects' details if found.
 //   - error: An error if the query fails. Returns nil for both if no project exists.
 func QueryProjectsByUserId(userId int) ([]types.Project, int, error) {
-	query := `SELECT id, name, description, status, likes, links, tags, owner, creation_date FROM Projects WHERE owner = ?;`
+	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
+	          FROM Projects WHERE owner = ?;`
 	rows, err := DB.Query(query, userId)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
-	var projects []types.Project
+	projects := []types.Project{}
 	defer rows.Close()
 
 	for rows.Next() {
 		var project types.Project
-		var linksJSON, tagsJSON string
+		var linksJSON, tagsJSON, mediaJSON string
 		err := rows.Scan(
 			&project.ID,
 			&project.Name,
 			&project.Description,
+			&project.AboutMd,
 			&project.Status,
 			&project.Likes,
 			&linksJSON,
 			&tagsJSON,
+			&mediaJSON,
 			&project.Owner,
 			&project.CreationDate,
 		)
@@ -97,6 +108,11 @@ func QueryProjectsByUserId(userId int) ([]types.Project, int, error) {
 		if err := UnmarshalFromJSON(tagsJSON, &project.Tags); err != nil {
 			return nil, http.StatusBadRequest, err
 		}
+		if err := UnmarshalFromJSON(mediaJSON, &project.Media); err != nil {
+			return nil, http.StatusBadRequest, err
+		}
+
+		projects = append(projects, project)
 	}
 
 	return projects, http.StatusOK, nil
@@ -121,12 +137,17 @@ func QueryCreateProject(proj *types.Project) (int64, error) {
 		return -1, err
 	}
 
+	mediaJSON, err := MarshalToJSON(proj.Media)
+	if err != nil {
+		return -1, err
+	}
+
 	currentTime := time.Now().UTC()
 
-	query := `INSERT INTO Projects (name, description, status, links, tags, owner, creation_date)
-              VALUES (?, ?, ?, ?, ?, ?, ?);`
+	query := `INSERT INTO Projects (name, description, about_md, status, links, tags, media, owner, creation_date)
+	              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
-	res, err := DB.Exec(query, proj.Name, proj.Description, proj.Status, string(linksJSON), string(tagsJSON), proj.Owner, currentTime)
+	res, err := DB.Exec(query, proj.Name, proj.Description, proj.AboutMd, proj.Status, string(linksJSON), string(tagsJSON), string(mediaJSON), proj.Owner, currentTime)
 	if err != nil {
 		return -1, fmt.Errorf("Failed to create project '%v': %v", proj.Name, err)
 	}
@@ -148,17 +169,51 @@ func QueryCreateProject(proj *types.Project) (int64, error) {
 //   - int16: http status code indicating the result of the operation.
 //   - error: An error if the operation fails or no project is found.
 func QueryDeleteProject(id int) (int16, error) {
-	query := `DELETE from Projects WHERE id=?;`
-	res, err := DB.Exec(query, id)
+	tx, err := DB.Begin()
 	if err != nil {
-		return http.StatusBadRequest, fmt.Errorf("Failed to delete project `%v`: %v", id, err)
+		return http.StatusInternalServerError, fmt.Errorf("Failed to start delete transaction: %v", err)
+	}
+
+	rollback := func(original error) (int16, error) {
+		if err := tx.Rollback(); err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("Failed to rollback delete: %v", err)
+		}
+		return http.StatusBadRequest, original
+	}
+
+	_, err = tx.Exec(
+		`DELETE FROM Comments WHERE id IN (
+			SELECT pc.comment_id
+			FROM PostComments pc
+			JOIN Posts p ON pc.post_id = p.id
+			WHERE p.project_id = ?
+		);`,
+		id,
+	)
+	if err != nil {
+		return rollback(fmt.Errorf("Failed to delete project comments for `%v`: %v", id, err))
+	}
+
+	_, err = tx.Exec(`DELETE FROM Posts WHERE project_id = ?;`, id)
+	if err != nil {
+		return rollback(fmt.Errorf("Failed to delete project posts for `%v`: %v", id, err))
+	}
+
+	res, err := tx.Exec(`DELETE FROM Projects WHERE id=?;`, id)
+	if err != nil {
+		return rollback(fmt.Errorf("Failed to delete project `%v`: %v", id, err))
 	}
 
 	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return rollback(fmt.Errorf("Failed to fetch affected rows: %v", err))
+	}
 	if rowsAffected == 0 {
-		return http.StatusNotFound, fmt.Errorf("Deletion did not affect any records")
-	} else if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("Failed to fetch affected rows: %v", err)
+		return rollback(fmt.Errorf("Deletion did not affect any records"))
+	}
+
+	if err := tx.Commit(); err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Failed to commit delete: %v", err)
 	}
 
 	return http.StatusOK, nil
@@ -281,6 +336,128 @@ func QueryGetProjectFollowingNames(username string) ([]string, int, error) {
 	return getProjectFollowersOrFollowingUsernames(query, userID)
 }
 
+// QueryProjectsByBuilderId retrieves projects a user owns or can build.
+func QueryProjectsByBuilderId(userId int) ([]types.Project, int, error) {
+	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
+	          FROM Projects
+	          WHERE owner = ? OR id IN (
+	              SELECT project_id FROM ProjectBuilders WHERE user_id = ?
+	          );`
+	rows, err := DB.Query(query, userId, userId)
+	if err != nil {
+		return nil, http.StatusNotFound, err
+	}
+	defer rows.Close()
+	projects := []types.Project{}
+
+	for rows.Next() {
+		var project types.Project
+		var linksJSON, tagsJSON, mediaJSON string
+		err := rows.Scan(
+			&project.ID,
+			&project.Name,
+			&project.Description,
+			&project.AboutMd,
+			&project.Status,
+			&project.Likes,
+			&linksJSON,
+			&tagsJSON,
+			&mediaJSON,
+			&project.Owner,
+			&project.CreationDate,
+		)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return nil, http.StatusOK, nil
+			}
+			return nil, http.StatusInternalServerError, err
+		}
+
+		if err := UnmarshalFromJSON(linksJSON, &project.Links); err != nil {
+			return nil, http.StatusBadRequest, err
+		}
+		if err := UnmarshalFromJSON(tagsJSON, &project.Tags); err != nil {
+			return nil, http.StatusBadRequest, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &project.Media); err != nil {
+			return nil, http.StatusBadRequest, err
+		}
+
+		projects = append(projects, project)
+	}
+
+	return projects, http.StatusOK, nil
+}
+
+// QueryProjectBuilders retrieves usernames of project builders.
+func QueryProjectBuilders(projectId int) ([]string, int, error) {
+	query := `SELECT u.username
+	          FROM Users u
+	          JOIN ProjectBuilders pb ON pb.user_id = u.id
+	          WHERE pb.project_id = ?;`
+	rows, err := DB.Query(query, projectId)
+	if err != nil {
+		return nil, http.StatusNotFound, err
+	}
+	defer rows.Close()
+
+	builders := []string{}
+	for rows.Next() {
+		var username string
+		if err := rows.Scan(&username); err != nil {
+			return nil, http.StatusInternalServerError, err
+		}
+		builders = append(builders, username)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	return builders, http.StatusOK, nil
+}
+
+// QueryIsProjectBuilder checks if a user is a builder for the project.
+func QueryIsProjectBuilder(projectId int, userId int64) (bool, error) {
+	query := `SELECT 1 FROM ProjectBuilders WHERE project_id = ? AND user_id = ? LIMIT 1;`
+	row := DB.QueryRow(query, projectId, userId)
+	var exists int
+	if err := row.Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// QueryAddProjectBuilder adds a builder to a project.
+func QueryAddProjectBuilder(projectId int, userId int64) (int, error) {
+	query := `INSERT OR IGNORE INTO ProjectBuilders (project_id, user_id) VALUES (?, ?);`
+	_, err := DB.Exec(query, projectId, userId)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	return http.StatusOK, nil
+}
+
+// QueryRemoveProjectBuilder removes a builder from a project.
+func QueryRemoveProjectBuilder(projectId int, userId int64) (int, error) {
+	query := `DELETE FROM ProjectBuilders WHERE project_id = ? AND user_id = ?;`
+	res, err := DB.Exec(query, projectId, userId)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	if rowsAffected == 0 {
+		return http.StatusNotFound, fmt.Errorf("builder not found")
+	}
+	return http.StatusOK, nil
+}
+
 // getProjectFollowersOrFollowing is a helper function for retrieving follower or following IDs.
 //
 // Parameters:
@@ -371,14 +548,14 @@ func CreateNewProjectFollow(username string, projectID string) (int, error) {
 		return httpCode, fmt.Errorf("Cannot retrieve user's following list: %v", err)
 	}
 
-    existingProj, err := QueryProject(intProjectID)
-    if err != nil {
-        return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
-    }
+	existingProj, err := QueryProject(intProjectID)
+	if err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
+	}
 
-    if existingProj == nil {
-        return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", intProjectID)
-    }
+	if existingProj == nil {
+		return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", intProjectID)
+	}
 
 	if slices.Contains(currFollowing, intProjectID) {
 		return http.StatusConflict, fmt.Errorf("User is already following this project")
@@ -417,14 +594,14 @@ func RemoveProjectFollow(username string, projectID string) (int, error) {
 		return http.StatusInternalServerError, fmt.Errorf("An error occurred parsing project id: %v", projectID)
 	}
 
-    existingProj, err := QueryProject(intProjectID)
-    if err != nil {
-        return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
-    }
+	existingProj, err := QueryProject(intProjectID)
+	if err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
+	}
 
-    if existingProj == nil {
-        return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", intProjectID)
-    }
+	if existingProj == nil {
+		return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", intProjectID)
+	}
 
 	currFollowing, httpCode, err := QueryGetProjectFollowers(userID)
 	if err != nil {
@@ -471,14 +648,14 @@ func CreateProjectLike(username string, strProjId string) (int, error) {
 	}
 
 	// verify project exists
-    existingProj, err := QueryProject(projId)
-    if err != nil {
-        return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
-    }
+	existingProj, err := QueryProject(projId)
+	if err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
+	}
 
-    if existingProj == nil {
-        return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", projId)
-    }
+	if existingProj == nil {
+		return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", projId)
+	}
 
 	// check if the like already exists
 	var exists bool
@@ -547,14 +724,14 @@ func RemoveProjectLike(username string, strProjId string) (int, error) {
 	}
 
 	// verify project exists
-    existingProj, err := QueryProject(projId)
-    if err != nil {
-        return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
-    }
+	existingProj, err := QueryProject(projId)
+	if err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
+	}
 
-    if existingProj == nil {
-        return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", projId)
-    }
+	if existingProj == nil {
+		return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", projId)
+	}
 
 	tx, err := DB.Begin()
 	if err != nil {
@@ -620,14 +797,14 @@ func QueryProjectLike(username string, strProjId string) (int, bool, error) {
 	}
 
 	// verify project exists
-    existingProj, err := QueryProject(projId)
+	existingProj, err := QueryProject(projId)
 
 	if err != nil {
 		return http.StatusInternalServerError, false, fmt.Errorf("An error occurred verifying the project exists: %v", err)
 	}
-    if existingProj == nil {
-        return http.StatusNotFound, false, fmt.Errorf("Project with id %v does not exist", projId)
-    }
+	if existingProj == nil {
+		return http.StatusNotFound, false, fmt.Errorf("Project with id %v does not exist", projId)
+	}
 
 	// check if the like already exists
 	var exists bool

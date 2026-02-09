@@ -58,12 +58,6 @@ func GetCommentsByUserId(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch comments: %v", err))
 		return
 	}
-
-	if comments == nil {
-		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Comments from user with id %v not found", strId))
-		return
-	}
-
 	context.JSON(http.StatusOK, comments)
 }
 
@@ -86,12 +80,6 @@ func GetCommentsByProjectId(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch comments: %v", err))
 		return
 	}
-
-	if comments == nil {
-		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Comments from project with id %v not found", strId))
-		return
-	}
-
 	context.JSON(http.StatusOK, comments)
 }
 
@@ -114,12 +102,6 @@ func GetCommentsByPostId(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch comments: %v", err))
 		return
 	}
-
-	if comments == nil {
-		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Comments from post with id %v not found", strId))
-		return
-	}
-
 	context.JSON(http.StatusOK, comments)
 }
 
@@ -137,17 +119,11 @@ func GetCommentsByCommentId(context *gin.Context) {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse comment_id: %v", err))
 		return
 	}
-	comments, httpcode, err := database.QueryCommentsByUserId(id)
+	comments, httpcode, err := database.QueryCommentsByCommentId(id)
 	if err != nil {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch comments: %v", err))
 		return
 	}
-
-	if comments == nil {
-		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Comments from comment with id %v not found", strId))
-		return
-	}
-
 	context.JSON(http.StatusOK, comments)
 }
 
@@ -161,6 +137,11 @@ func GetCommentsByCommentId(context *gin.Context) {
 func CreateCommentOnPost(context *gin.Context) {
 	var newComment types.Comment
 	err := context.BindJSON(&newComment)
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != newComment.User {
+		RespondWithError(context, http.StatusForbidden, "Comment user does not match auth user")
+		return
+	}
 
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to bind to JSON: %v", err))
@@ -182,7 +163,7 @@ func CreateCommentOnPost(context *gin.Context) {
 	}
 
 	if username == "" {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify comment ownership. User could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify comment ownership. User could not be found")
 		return
 	}
 
@@ -194,7 +175,7 @@ func CreateCommentOnPost(context *gin.Context) {
 	}
 
 	if post == nil {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify post. Post could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify post. Post could not be found")
 		return
 	}
 
@@ -203,6 +184,21 @@ func CreateCommentOnPost(context *gin.Context) {
 	if err != nil {
 		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to create comment on post: %v", err))
 		return
+	}
+
+	if post.User != newComment.User {
+		postID64 := int64(post.ID)
+		commentID64 := int64(id)
+		actorName, _ := database.GetUsernameById(newComment.User)
+		createAndPushNotification(
+			int64(post.User),
+			int64(newComment.User),
+			"comment_post",
+			&postID64,
+			nil,
+			&commentID64,
+			notificationBody(actorName, "commented on your byte"),
+		)
 	}
 
 	context.JSON(http.StatusCreated, gin.H{"message": fmt.Sprintf("Comment created successfully with id %v", id)})
@@ -218,6 +214,11 @@ func CreateCommentOnPost(context *gin.Context) {
 func CreateCommentOnProject(context *gin.Context) {
 	var newComment types.Comment
 	err := context.BindJSON(&newComment)
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != newComment.User {
+		RespondWithError(context, http.StatusForbidden, "Comment user does not match auth user")
+		return
+	}
 
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to bind to JSON: %v", err))
@@ -239,7 +240,7 @@ func CreateCommentOnProject(context *gin.Context) {
 	}
 
 	if username == "" {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify comment ownership. User could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify comment ownership. User could not be found")
 		return
 	}
 
@@ -251,7 +252,7 @@ func CreateCommentOnProject(context *gin.Context) {
 	}
 
 	if project == nil {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify project. Project could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify project. Project could not be found")
 		return
 	}
 
@@ -275,6 +276,11 @@ func CreateCommentOnProject(context *gin.Context) {
 func CreateCommentOnComment(context *gin.Context) {
 	var newComment types.Comment
 	err := context.BindJSON(&newComment)
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != newComment.User {
+		RespondWithError(context, http.StatusForbidden, "Comment user does not match auth user")
+		return
+	}
 
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to bind to JSON: %v", err))
@@ -296,7 +302,7 @@ func CreateCommentOnComment(context *gin.Context) {
 	}
 
 	if username == "" {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify comment ownership. User could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify comment ownership. User could not be found")
 		return
 	}
 
@@ -308,7 +314,7 @@ func CreateCommentOnComment(context *gin.Context) {
 	}
 
 	if parentComment == nil {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify parent comment. Comment could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify parent comment. Comment could not be found")
 		return
 	}
 
@@ -334,6 +340,22 @@ func DeleteComment(context *gin.Context) {
 	id, err := strconv.Atoi(strId)
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse comment id: %v", err))
+		return
+	}
+
+	existingComment, err := database.QueryComment(id)
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to retrieve comment: %v", err))
+		return
+	}
+	if existingComment == nil {
+		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Comment with id %v not found", id))
+		return
+	}
+
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != existingComment.User {
+		RespondWithError(context, http.StatusForbidden, "Forbidden")
 		return
 	}
 
@@ -371,8 +393,15 @@ func UpdateCommentContent(context *gin.Context) {
 		return
 	}
 
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != existingComment.User {
+		RespondWithError(context, http.StatusForbidden, "Forbidden")
+		return
+	}
+
 	var requestData struct {
-		Content string `json:"content"`
+		Content string   `json:"content"`
+		Media   []string `json:"media"`
 	}
 
 	if err := context.BindJSON(&requestData); err != nil {
@@ -385,7 +414,14 @@ func UpdateCommentContent(context *gin.Context) {
 		return
 	}
 
-	httpcode, err := database.QueryUpdateCommentContent(id, requestData.Content)
+	updatedData := map[string]interface{}{
+		"content": requestData.Content,
+	}
+	if requestData.Media != nil {
+		updatedData["media"] = requestData.Media
+	}
+
+	httpcode, err := database.QueryUpdateComment(id, updatedData)
 	if err != nil {
 		RespondWithError(context, int(httpcode), fmt.Sprintf("Error updating comment: %v", err))
 		return
@@ -405,6 +441,7 @@ func UpdateCommentContent(context *gin.Context) {
 			"likes":          updatedComment.Likes,
 			"parent_comment": updatedComment.ParentComment,
 			"content":        updatedComment.Content,
+			"media":          updatedComment.Media,
 		},
 	})
 }

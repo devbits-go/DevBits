@@ -11,6 +11,35 @@ import (
 	"backend/api/internal/types"
 )
 
+func defaultUserSettings() types.UserSettings {
+	return types.UserSettings{
+		BackgroundRefreshEnabled: false,
+		RefreshIntervalMs:        120000,
+		ZenMode:                  false,
+		CompactMode:              false,
+		AccentColor:              "",
+		LinkOpenMode:             "asTyped",
+	}
+}
+
+func parseUserSettings(settingsJSON sql.NullString) types.UserSettings {
+	if !settingsJSON.Valid || settingsJSON.String == "" {
+		return defaultUserSettings()
+	}
+
+	var settings types.UserSettings
+	if err := json.Unmarshal([]byte(settingsJSON.String), &settings); err != nil {
+		return defaultUserSettings()
+	}
+	if settings.RefreshIntervalMs == 0 {
+		settings.RefreshIntervalMs = 120000
+	}
+	if settings.LinkOpenMode == "" {
+		settings.LinkOpenMode = "asTyped"
+	}
+	return settings
+}
+
 // GetUsernameById retrieves the username associated with the given user ID.
 //
 // Parameters:
@@ -64,13 +93,14 @@ func GetUserIdByUsername(username string) (int, error) {
 //   - *types.User: The user details if found.
 //   - error: An error if the query or data parsing fails.
 func QueryUsername(username string) (*types.User, error) {
-	query := `SELECT username, picture, bio, links, creation_date FROM Users WHERE username = ?;`
+	query := `SELECT id, username, picture, bio, links, settings, creation_date FROM Users WHERE username = ?;`
 
 	row := DB.QueryRow(query, username)
 
 	var user types.User
 	var linksJSON string
-	err := row.Scan(&user.Username, &user.Picture, &user.Bio, &linksJSON, &user.CreationDate)
+	var settingsJSON sql.NullString
+	err := row.Scan(&user.ID, &user.Username, &user.Picture, &user.Bio, &linksJSON, &settingsJSON, &user.CreationDate)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -85,7 +115,222 @@ func QueryUsername(username string) (*types.User, error) {
 	}
 
 	user.Links = links
+	user.Settings = parseUserSettings(settingsJSON)
 	return &user, nil
+}
+
+// QueryUserById retrieves all user data for the given user ID.
+//
+// Parameters:
+//   - id: The user ID to query.
+//
+// Returns:
+//   - *types.User: The user details if found.
+//   - error: An error if the query or data parsing fails.
+func QueryUserById(id int) (*types.User, error) {
+	query := `SELECT id, username, picture, bio, links, settings, creation_date FROM Users WHERE id = ?;`
+
+	row := DB.QueryRow(query, id)
+
+	var user types.User
+	var linksJSON string
+	var settingsJSON sql.NullString
+	err := row.Scan(&user.ID, &user.Username, &user.Picture, &user.Bio, &linksJSON, &settingsJSON, &user.CreationDate)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var links []string
+	if err := json.Unmarshal([]byte(linksJSON), &links); err != nil {
+		return nil, err
+	}
+
+	user.Links = links
+	user.Settings = parseUserSettings(settingsJSON)
+	return &user, nil
+}
+
+// QueryUsers retrieves all users from the database.
+//
+// Returns:
+//   - []types.User: The list of users.
+//   - error: An error if the query or data parsing fails.
+func QueryUsers() ([]types.User, error) {
+	query := `SELECT id, username, picture, bio, links, settings, creation_date FROM Users ORDER BY creation_date DESC;`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := []types.User{}
+	for rows.Next() {
+		var user types.User
+		var linksJSON string
+		var settingsJSON sql.NullString
+		err := rows.Scan(&user.ID, &user.Username, &user.Picture, &user.Bio, &linksJSON, &settingsJSON, &user.CreationDate)
+		if err != nil {
+			return nil, err
+		}
+
+		var links []string
+		if err := json.Unmarshal([]byte(linksJSON), &links); err != nil {
+			return nil, err
+		}
+		user.Links = links
+		user.Settings = parseUserSettings(settingsJSON)
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+// QueryUsersPage retrieves a window of users for large datasets.
+//
+// Parameters:
+//   - start: offset into the users list
+//   - count: max number of users to return
+//
+// Returns:
+//   - []types.User: the list of users
+//   - error: any query or parsing error
+func QueryUsersPage(start int, count int) ([]types.User, error) {
+	query := `SELECT id, username, picture, bio, links, settings, creation_date
+	          FROM Users
+	          ORDER BY creation_date DESC
+	          LIMIT ? OFFSET ?;`
+	rows, err := DB.Query(query, count, start)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := []types.User{}
+	for rows.Next() {
+		var user types.User
+		var linksJSON string
+		var settingsJSON sql.NullString
+		if err := rows.Scan(&user.ID, &user.Username, &user.Picture, &user.Bio, &linksJSON, &settingsJSON, &user.CreationDate); err != nil {
+			return nil, err
+		}
+
+		var links []string
+		if err := json.Unmarshal([]byte(linksJSON), &links); err != nil {
+			return nil, err
+		}
+		user.Links = links
+		user.Settings = parseUserSettings(settingsJSON)
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+// QueryCreateLogin creates a login record for a user.
+//
+// Parameters:
+//   - username: The user's username.
+//   - passwordHash: The bcrypt-hashed password.
+//
+// Returns:
+//   - error: An error if the insert fails.
+func QueryCreateLogin(username string, passwordHash string) error {
+	query := `INSERT INTO UserLoginInfo (username, password_hash) VALUES (?, ?);`
+	_, err := DB.Exec(query, username, passwordHash)
+	if err != nil {
+		return fmt.Errorf("Failed to create login info for '%v': %v", username, err)
+	}
+	return nil
+}
+
+// QueryGetPasswordHash retrieves the stored password hash for the username.
+//
+// Parameters:
+//   - username: The user's username.
+//
+// Returns:
+//   - string: The stored password hash, if found.
+//   - error: An error if the query fails.
+func QueryGetPasswordHash(username string) (string, error) {
+	query := `SELECT password_hash FROM UserLoginInfo WHERE username = ?;`
+	row := DB.QueryRow(query, username)
+	var passwordHash string
+	if err := row.Scan(&passwordHash); err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return passwordHash, nil
+}
+
+// QueryCreateUserWithLogin creates a user and login record atomically.
+//
+// Parameters:
+//   - user: The user data to insert.
+//   - passwordHash: The bcrypt-hashed password.
+//
+// Returns:
+//   - *types.User: The created user with ID populated.
+//   - error: An error if any insert fails.
+func QueryCreateUserWithLogin(user *types.User, passwordHash string) (*types.User, error) {
+	if user.Links == nil {
+		user.Links = []string{}
+	}
+	if user.Settings == (types.UserSettings{}) {
+		user.Settings = defaultUserSettings()
+	}
+
+	linksJSON, err := json.Marshal(user.Links)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal links for user '%v': %v", user.Username, err)
+	}
+	settingsJSON, err := json.Marshal(user.Settings)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal settings for user '%v': %v", user.Username, err)
+	}
+
+	currentTime := time.Now().UTC()
+
+	tx, err := DB.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to start transaction: %v", err)
+	}
+
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	insertUser := `INSERT INTO Users (username, picture, bio, links, settings, creation_date)
+	VALUES (?, ?, ?, ?, ?, ?);`
+
+	res, err := tx.Exec(insertUser, user.Username, user.Picture, user.Bio, string(linksJSON), string(settingsJSON), currentTime)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create user '%v': %v", user.Username, err)
+	}
+
+	userID, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to fetch new user ID: %v", err)
+	}
+
+	insertLogin := `INSERT INTO UserLoginInfo (username, password_hash) VALUES (?, ?);`
+	if _, err := tx.Exec(insertLogin, user.Username, passwordHash); err != nil {
+		return nil, fmt.Errorf("Failed to create login info for '%v': %v", user.Username, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("Failed to commit user creation: %v", err)
+	}
+
+	user.ID = userID
+	user.CreationDate = currentTime
+	return user, nil
 }
 
 // QueryCreateUser creates a new user in the database.
@@ -96,17 +341,27 @@ func QueryUsername(username string) (*types.User, error) {
 // Returns:
 //   - error: An error if the user creation fails.
 func QueryCreateUser(user *types.User) error {
+	if user.Links == nil {
+		user.Links = []string{}
+	}
+	if user.Settings == (types.UserSettings{}) {
+		user.Settings = defaultUserSettings()
+	}
 	linksJSON, err := json.Marshal(user.Links)
 	if err != nil {
 		return fmt.Errorf("Failed to marshal links for user '%v': %v", user.Username, err)
 	}
+	settingsJSON, err := json.Marshal(user.Settings)
+	if err != nil {
+		return fmt.Errorf("Failed to marshal settings for user '%v': %v", user.Username, err)
+	}
 
 	currentTime := time.Now().UTC()
 
-	query := `INSERT INTO Users (username, picture, bio, links, creation_date)
-	VALUES (?, ?, ?, ?, ?);`
+	query := `INSERT INTO Users (username, picture, bio, links, settings, creation_date)
+	VALUES (?, ?, ?, ?, ?, ?);`
 
-	res, err := DB.Exec(query, user.Username, user.Picture, user.Bio, string(linksJSON), currentTime)
+	res, err := DB.Exec(query, user.Username, user.Picture, user.Bio, string(linksJSON), string(settingsJSON), currentTime)
 	if err != nil {
 		return fmt.Errorf("Failed to create user '%v': %v", user.Username, err)
 	}
@@ -128,17 +383,35 @@ func QueryCreateUser(user *types.User) error {
 //   - int16: HTTP-like status code indicating the result.
 //   - error: An error if the deletion fails.
 func QueryDeleteUser(username string) (int16, error) {
-	query := `DELETE from Users WHERE username=?;`
-	res, err := DB.Exec(query, username)
+	tx, err := DB.Begin()
+	if err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Failed to start transaction: %v", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`DELETE FROM UserLoginInfo WHERE username = ?;`, username); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete login info: %v", err)
+	}
+
+	res, err := tx.Exec(`DELETE FROM Users WHERE username = ?;`, username)
 	if err != nil {
 		return http.StatusBadRequest, fmt.Errorf("Failed to delete user '%v': %v", username, err)
 	}
 
-	RowsAffected, err := res.RowsAffected()
-	if RowsAffected == 0 {
-		return http.StatusNotFound, fmt.Errorf("Deletion did not affect any records")
-	} else if err != nil {
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to fetch affected rows: %v", err)
+	}
+	if rowsAffected == 0 {
+		return http.StatusNotFound, fmt.Errorf("Deletion did not affect any records")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Failed to commit delete: %v", err)
 	}
 
 	return http.StatusOK, nil

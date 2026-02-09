@@ -56,13 +56,162 @@ func GetProjectsByUserId(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch projects: %v", err))
 		return
 	}
+	context.JSON(http.StatusOK, project)
+}
 
-	if project == nil {
-		RespondWithError(context, httpcode, fmt.Sprintf("User with id '%v' not found", strId))
+// GetProjectsByBuilderId handles GET requests to retrieve projects a user can build.
+// It expects the `user_id` parameter in the URL.
+// Returns:
+// - 400 Bad Request if the ID is invalid.
+// - 403 Forbidden if auth user does not match.
+// - 500 Internal Server Error if the database query fails.
+// On success, responds with a 200 OK status and the projects' details in JSON format.
+func GetProjectsByBuilderId(context *gin.Context) {
+	strId := context.Param("user_id")
+	userId, err := strconv.Atoi(strId)
+	if err != nil {
+		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse user_id: %v", err))
 		return
 	}
 
-	context.JSON(http.StatusOK, project)
+	authUserID, ok := GetAuthUserID(context)
+	if ok && int64(userId) != authUserID {
+		RespondWithError(context, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	projects, httpcode, err := database.QueryProjectsByBuilderId(userId)
+	if err != nil {
+		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch projects: %v", err))
+		return
+	}
+	context.JSON(http.StatusOK, projects)
+}
+
+// GetProjectBuilders handles GET requests to retrieve a project's builders.
+func GetProjectBuilders(context *gin.Context) {
+	strId := context.Param("project_id")
+	projectId, err := strconv.Atoi(strId)
+	if err != nil {
+		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse project_id: %v", err))
+		return
+	}
+
+	builders, httpcode, err := database.QueryProjectBuilders(projectId)
+	if err != nil {
+		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch builders: %v", err))
+		return
+	}
+
+	context.JSON(http.StatusOK, builders)
+}
+
+// AddProjectBuilder handles POST requests to add a builder by username.
+func AddProjectBuilder(context *gin.Context) {
+	projectId, err := strconv.Atoi(context.Param("project_id"))
+	if err != nil {
+		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse project_id: %v", err))
+		return
+	}
+
+	builderUsername := context.Param("username")
+	if builderUsername == "" {
+		RespondWithError(context, http.StatusBadRequest, "Missing builder username")
+		return
+	}
+
+	project, err := database.QueryProject(projectId)
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to load project: %v", err))
+		return
+	}
+	if project == nil {
+		RespondWithError(context, http.StatusNotFound, "Project not found")
+		return
+	}
+
+	authUserID, ok := GetAuthUserID(context)
+	if !ok || project.Owner != authUserID {
+		RespondWithError(context, http.StatusForbidden, "Only the owner can manage builders")
+		return
+	}
+
+	builderId, err := database.GetUserIdByUsername(builderUsername)
+	if err != nil || builderId == 0 {
+		RespondWithError(context, http.StatusBadRequest, "Builder user not found")
+		return
+	}
+
+	builderID64 := int64(builderId)
+	if builderID64 == project.Owner {
+		context.JSON(http.StatusOK, gin.H{"message": "Owner already has access"})
+		return
+	}
+
+	status, err := database.QueryAddProjectBuilder(projectId, builderID64)
+	if err != nil {
+		RespondWithError(context, status, fmt.Sprintf("Failed to add builder: %v", err))
+		return
+	}
+
+	projectID64 := int64(projectId)
+	ownerName, _ := database.GetUsernameById(project.Owner)
+	createAndPushNotification(
+		builderID64,
+		project.Owner,
+		"builder_added",
+		nil,
+		&projectID64,
+		nil,
+		notificationBody(ownerName, "added you as a builder"),
+	)
+
+	context.JSON(http.StatusOK, gin.H{"message": "Builder added"})
+}
+
+// RemoveProjectBuilder handles DELETE requests to remove a builder by username.
+func RemoveProjectBuilder(context *gin.Context) {
+	projectId, err := strconv.Atoi(context.Param("project_id"))
+	if err != nil {
+		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse project_id: %v", err))
+		return
+	}
+
+	builderUsername := context.Param("username")
+	if builderUsername == "" {
+		RespondWithError(context, http.StatusBadRequest, "Missing builder username")
+		return
+	}
+
+	project, err := database.QueryProject(projectId)
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to load project: %v", err))
+		return
+	}
+	if project == nil {
+		RespondWithError(context, http.StatusNotFound, "Project not found")
+		return
+	}
+
+	authUserID, ok := GetAuthUserID(context)
+	if !ok || project.Owner != authUserID {
+		RespondWithError(context, http.StatusForbidden, "Only the owner can manage builders")
+		return
+	}
+
+	builderId, err := database.GetUserIdByUsername(builderUsername)
+	if err != nil || builderId == 0 {
+		RespondWithError(context, http.StatusBadRequest, "Builder user not found")
+		return
+	}
+
+	status, err := database.QueryRemoveProjectBuilder(projectId, int64(builderId))
+	if err != nil {
+		RespondWithError(context, status, fmt.Sprintf("Failed to remove builder: %v", err))
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"message": "Builder removed"})
 }
 
 // CreateProject handles POST requests to create a new project.
@@ -89,7 +238,13 @@ func CreateProject(context *gin.Context) {
 	}
 
 	if username == "" {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify project ownership. User could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify project ownership. User could not be found")
+		return
+	}
+
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != newProj.Owner {
+		RespondWithError(context, http.StatusForbidden, "Owner does not match auth user")
 		return
 	}
 
@@ -113,6 +268,22 @@ func DeleteProject(context *gin.Context) {
 	id, err := strconv.Atoi(strId)
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse project id: %v", err))
+		return
+	}
+
+	project, err := database.QueryProject(id)
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to retrieve project: %v", err))
+		return
+	}
+	if project == nil {
+		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Project with id '%v' not found", id))
+		return
+	}
+
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != project.Owner {
+		RespondWithError(context, http.StatusForbidden, "Only the owner can delete a stream")
 		return
 	}
 
@@ -161,6 +332,19 @@ func UpdateProjectInfo(context *gin.Context) {
 	if existingProj == nil {
 		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Project with id '%v' not found", id))
 		return
+	}
+
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != existingProj.Owner {
+		isBuilder, err := database.QueryIsProjectBuilder(id, authUserID)
+		if err != nil {
+			RespondWithError(context, http.StatusInternalServerError, "Failed to verify builder permissions")
+			return
+		}
+		if !isBuilder {
+			RespondWithError(context, http.StatusForbidden, "Forbidden")
+			return
+		}
 	}
 
 	// Validate new owner if provided in update data
@@ -302,6 +486,22 @@ func FollowProject(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to add follower: %v", err))
 		return
 	}
+
+	projectInt, _ := strconv.Atoi(projectId)
+	project, _ := database.QueryProject(projectInt)
+	actorID, _ := database.GetUserIdByUsername(username)
+	if project != nil {
+		projectID64 := int64(project.ID)
+		createAndPushNotification(
+			project.Owner,
+			int64(actorID),
+			"save_project",
+			nil,
+			&projectID64,
+			nil,
+			notificationBody(username, "saved your stream"),
+		)
+	}
 	context.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%v now follows project %v", username, projectId)})
 }
 
@@ -318,6 +518,20 @@ func UnfollowProject(context *gin.Context) {
 	if err != nil {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to remove follower: %v", err))
 		return
+	}
+
+	projectInt, _ := strconv.Atoi(projectId)
+	project, _ := database.QueryProject(projectInt)
+	actorID, _ := database.GetUserIdByUsername(username)
+	if project != nil {
+		projectID64 := int64(project.ID)
+		_, _ = database.DeleteNotificationByReference(
+			project.Owner,
+			int64(actorID),
+			"save_project",
+			nil,
+			&projectID64,
+		)
 	}
 	context.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%v unfollowed project %v", username, projectId)})
 }

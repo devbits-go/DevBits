@@ -1,4 +1,4 @@
-# DevBits 
+# DevBits
 
 ## Note: This project was not funded and ultimately development ended on it, it is now READ ONLY and archived.
 
@@ -95,7 +95,7 @@ cd /path/to/DevBits/frontend
 #### 2. Check required packages are installed
 
 ```bash
-npm install     
+npm install
 ```
 
 #### 3. Start the app
@@ -125,4 +125,12 @@ cd /path/to/DevBits/frontend
 
 ```bash
 npm run all
+```
+
+#### Windows quick start (root script)
+
+From the project root, you can launch backend + frontend together:
+
+```powershell
+./run-all.ps1
 ```
