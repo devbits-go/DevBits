@@ -1,7 +1,5 @@
 # DevBits 
 
-## Note: This project was not funded and ultimately development ended on it, it is now READ ONLY and archived.
-
 ## Goal: Create an X and LinkedIn crossover for posting real content about your projects, semi-formally
 
 ### Outline
