@@ -19,22 +19,32 @@ import (
 //   - *types.Post: The post details if found.
 //   - error: An error if the query fails. Returns nil for both if no post exists.
 func QueryPost(id int) (*types.Post, error) {
-	query := `SELECT id, user_id, project_id, content, likes, creation_date FROM Posts WHERE id = ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+        COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+        creation_date
+        FROM Posts WHERE id = ?;`
 	row := DB.QueryRow(query, id)
 	var post types.Post
+	var mediaJSON string
 
 	err := row.Scan(
 		&post.ID,
 		&post.User,
 		&post.Project,
 		&post.Content,
+		&mediaJSON,
 		&post.Likes,
+			&post.Saves,
 		&post.CreationDate,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
+		return nil, err
+	}
+
+	if err := UnmarshalFromJSON(mediaJSON, &post.Media); err != nil {
 		return nil, err
 	}
 
@@ -51,11 +61,15 @@ func QueryPost(id int) (*types.Post, error) {
 //   - error: An error if the operation fails.
 func QueryCreatePost(post *types.Post) (int64, error) {
 	currentTime := time.Now().UTC()
+	mediaJSON, err := MarshalToJSON(post.Media)
+	if err != nil {
+		return -1, err
+	}
 
-	query := `INSERT INTO Posts (user_id, project_id, content, likes, creation_date) 
-              VALUES (?, ?, ?, ?, ?);`
+	query := `INSERT INTO Posts (user_id, project_id, content, media, likes, creation_date) 
+	              VALUES (?, ?, ?, ?, ?, ?);`
 
-	res, err := DB.Exec(query, post.ID, post.User, post.Project, post.Content, post.Likes, currentTime)
+	res, err := DB.Exec(query, post.User, post.Project, post.Content, string(mediaJSON), post.Likes, currentTime)
 	if err != nil {
 		return -1, fmt.Errorf("Failed to create post: %v", err)
 	}
@@ -133,7 +147,10 @@ func QueryUpdatePost(id int, updatedData map[string]interface{}) error {
 //   - []types.Post: The post details if found.
 //   - error: An error if the query fails. Returns nil for both if no post exists.
 func QueryPostsByUserId(userId int) ([]types.Post, int, error) {
-	query := `SELECT id, user_id, project_id, content, likes, creation_date FROM Posts WHERE user_id = ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+	COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+	creation_date
+	FROM Posts WHERE user_id = ?;`
 
 	rows, err := DB.Query(query, userId)
 	if err != nil {
@@ -141,16 +158,19 @@ func QueryPostsByUserId(userId int) ([]types.Post, int, error) {
 	}
 	defer rows.Close()
 
-	var posts []types.Post
+	posts := []types.Post{}
 
 	for rows.Next() {
 		var post types.Post
+		var mediaJSON string
 		err := rows.Scan(
 			&post.ID,
 			&post.User,
 			&post.Project,
 			&post.Content,
+			&mediaJSON,
 			&post.Likes,
+			&post.Saves,
 			&post.CreationDate,
 		)
 
@@ -159,6 +179,9 @@ func QueryPostsByUserId(userId int) ([]types.Post, int, error) {
 				return []types.Post{}, http.StatusOK, nil
 			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &post.Media); err != nil {
+			return nil, http.StatusBadRequest, err
 		}
 		posts = append(posts, post)
 	}
@@ -175,7 +198,10 @@ func QueryPostsByUserId(userId int) ([]types.Post, int, error) {
 //   - *types.Post: The post details if found.
 //   - error: An error if the query fails. Returns nil for both if no post exists.
 func QueryPostsByProjectId(projId int) ([]types.Post, int, error) {
-	query := `SELECT id, user_id, project_id, content, likes, creation_date FROM Posts WHERE project_id = ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+	COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+	creation_date
+	FROM Posts WHERE project_id = ?;`
 
 	rows, err := DB.Query(query, projId)
 	if err != nil {
@@ -183,16 +209,19 @@ func QueryPostsByProjectId(projId int) ([]types.Post, int, error) {
 	}
 	defer rows.Close()
 
-	var posts []types.Post = []types.Post{}
+	posts := []types.Post{}
 
 	for rows.Next() {
 		var post types.Post
+		var mediaJSON string
 		err := rows.Scan(
 			&post.ID,
 			&post.User,
 			&post.Project,
 			&post.Content,
+			&mediaJSON,
 			&post.Likes,
+			&post.Saves,
 			&post.CreationDate,
 		)
 
@@ -201,6 +230,9 @@ func QueryPostsByProjectId(projId int) ([]types.Post, int, error) {
 				return []types.Post{}, http.StatusOK, nil
 			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &post.Media); err != nil {
+			return nil, http.StatusBadRequest, err
 		}
 		posts = append(posts, post)
 	}

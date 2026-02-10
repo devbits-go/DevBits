@@ -22,6 +22,8 @@ func GetPostsFeed(context *gin.Context) {
 	strStart := context.Query("start")
 	strCount := context.Query("count")
 
+	const maxCount = 50
+
 	if feedType == "" || strStart == "" || strCount == "" {
 		RespondWithError(context, http.StatusBadRequest, "Missing one or more required url query parameters: type, start, or count")
 		return
@@ -32,11 +34,22 @@ func GetPostsFeed(context *gin.Context) {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse starting int: %v", err))
 		return
 	}
+	if start < 0 {
+		RespondWithError(context, http.StatusBadRequest, "Start must be 0 or greater")
+		return
+	}
 
 	count, err := strconv.Atoi(strCount)
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse count int: %v", err))
 		return
+	}
+	if count <= 0 {
+		RespondWithError(context, http.StatusBadRequest, "Count must be greater than 0")
+		return
+	}
+	if count > maxCount {
+		count = maxCount
 	}
 	var posts []types.Post = []types.Post{}
 	var code int
@@ -51,6 +64,7 @@ func GetPostsFeed(context *gin.Context) {
 	}
 	if err != nil {
 		RespondWithError(context, code, fmt.Sprintf("An error occurred getting feed: %v", err))
+		return
 	}
 	context.JSON(http.StatusOK, posts)
 }
@@ -67,6 +81,8 @@ func GetProjectsFeed(context *gin.Context) {
 	strStart := context.Query("start")
 	strCount := context.Query("count")
 
+	const maxCount = 50
+
 	if feedType == "" || strStart == "" || strCount == "" {
 		RespondWithError(context, http.StatusBadRequest, "Missing one or more required url query parameters: type, start, or count")
 		return
@@ -77,11 +93,22 @@ func GetProjectsFeed(context *gin.Context) {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse starting int: %v", err))
 		return
 	}
+	if start < 0 {
+		RespondWithError(context, http.StatusBadRequest, "Start must be 0 or greater")
+		return
+	}
 
 	count, err := strconv.Atoi(strCount)
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse count int: %v", err))
 		return
+	}
+	if count <= 0 {
+		RespondWithError(context, http.StatusBadRequest, "Count must be greater than 0")
+		return
+	}
+	if count > maxCount {
+		count = maxCount
 	}
 	var projects []types.Project = []types.Project{}
 	var code int
@@ -96,6 +123,7 @@ func GetProjectsFeed(context *gin.Context) {
 	}
 	if err != nil {
 		RespondWithError(context, code, fmt.Sprintf("An error occurred getting feed: %v", err))
+		return
 	}
 	context.JSON(http.StatusOK, projects)
 }

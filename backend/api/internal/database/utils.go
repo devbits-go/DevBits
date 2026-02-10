@@ -103,7 +103,7 @@ func BuildUpdateQuery(updatedData map[string]interface{}) (string, []interface{}
 		// if needs changes. This allows for only awkward
 		// datatypes, like the links, to be handled differently.
 		switch key {
-		case "links", "tags":
+		case "links", "tags", "settings", "media":
 			jsonData, err := MarshalToJSON(value)
 			if err != nil {
 				return "", nil, fmt.Errorf("Error marshaling list data for key `%v`: %v", key, err)

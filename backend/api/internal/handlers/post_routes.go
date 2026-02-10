@@ -58,12 +58,6 @@ func GetPostsByUserId(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch posts: %v", err))
 		return
 	}
-
-	if posts == nil {
-		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Posts from user with id %v not found", strId))
-		return
-	}
-
 	context.JSON(http.StatusOK, posts)
 }
 
@@ -86,12 +80,6 @@ func GetPostsByProjectId(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch posts: %v", err))
 		return
 	}
-
-	if posts == nil {
-		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Posts within project with id %v not found", strId))
-		return
-	}
-
 	context.JSON(http.StatusOK, posts)
 }
 
@@ -111,6 +99,12 @@ func CreatePost(context *gin.Context) {
 		return
 	}
 
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != newPost.User {
+		RespondWithError(context, http.StatusForbidden, "Post user does not match auth user")
+		return
+	}
+
 	// verify the owner
 	username, err := database.GetUsernameById(newPost.User)
 	if err != nil {
@@ -119,20 +113,32 @@ func CreatePost(context *gin.Context) {
 	}
 
 	if username == "" {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify post ownership. User could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify post ownership. User could not be found")
 		return
 	}
 
 	// verify the project
-	project, err := database.QueryPost(int(newPost.User))
+	project, err := database.QueryProject(int(newPost.Project))
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify post ownership: %v", err))
 		return
 	}
 
 	if project == nil {
-		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify post ownership. Ownin project could not be found"))
+		RespondWithError(context, http.StatusBadRequest, "Failed to verify post ownership. Owning project could not be found")
 		return
+	}
+
+	if ok && project.Owner != authUserID {
+		isBuilder, err := database.QueryIsProjectBuilder(int(project.ID), authUserID)
+		if err != nil {
+			RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to check builder access: %v", err))
+			return
+		}
+		if !isBuilder {
+			RespondWithError(context, http.StatusForbidden, "You are not a builder on this stream")
+			return
+		}
 	}
 
 	id, err := database.QueryCreatePost(&newPost)
@@ -155,6 +161,22 @@ func DeletePost(context *gin.Context) {
 	id, err := strconv.Atoi(strId)
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse post id: %v", err))
+		return
+	}
+
+	post, err := database.QueryPost(id)
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch post: %v", err))
+		return
+	}
+	if post == nil {
+		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Post with id '%v' not found", id))
+		return
+	}
+
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != post.User {
+		RespondWithError(context, http.StatusForbidden, "Forbidden")
 		return
 	}
 
@@ -200,6 +222,12 @@ func UpdatePostInfo(context *gin.Context) {
 	}
 	if existingPost == nil {
 		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("Post with id '%v' not found", id))
+		return
+	}
+
+	authUserID, ok := GetAuthUserID(context)
+	if ok && authUserID != existingPost.User {
+		RespondWithError(context, http.StatusForbidden, "Forbidden")
 		return
 	}
 
@@ -309,4 +337,75 @@ func IsPostLiked(context *gin.Context) {
 		return
 	}
 	context.JSON(httpcode, gin.H{"status": exists})
+}
+
+// SavePost handles POST requests to save a post.
+func SavePost(context *gin.Context) {
+	username := context.Param("username")
+	postId := context.Param("post_id")
+
+	httpcode, err := database.QuerySavePost(username, postId)
+	if err != nil {
+		RespondWithError(context, httpcode, fmt.Sprintf("Failed to save post: %v", err))
+		return
+	}
+
+	postInt, _ := strconv.Atoi(postId)
+	post, _ := database.QueryPost(postInt)
+	actorID, _ := database.GetUserIdByUsername(username)
+	if post != nil {
+		postID64 := int64(post.ID)
+		createAndPushNotification(
+			int64(post.User),
+			int64(actorID),
+			"save_post",
+			&postID64,
+			nil,
+			nil,
+			notificationBody(username, "saved your byte"),
+		)
+	}
+
+	context.JSON(httpcode, gin.H{"message": fmt.Sprintf("%v saved post %v", username, postId)})
+}
+
+// UnsavePost handles POST requests to unsave a post.
+func UnsavePost(context *gin.Context) {
+	username := context.Param("username")
+	postId := context.Param("post_id")
+
+	httpcode, err := database.QueryUnsavePost(username, postId)
+	if err != nil {
+		RespondWithError(context, httpcode, fmt.Sprintf("Failed to unsave post: %v", err))
+		return
+	}
+
+	postInt, _ := strconv.Atoi(postId)
+	post, _ := database.QueryPost(postInt)
+	actorID, _ := database.GetUserIdByUsername(username)
+	if post != nil {
+		postID64 := int64(post.ID)
+		_, _ = database.DeleteNotificationByReference(
+			int64(post.User),
+			int64(actorID),
+			"save_post",
+			&postID64,
+			nil,
+		)
+	}
+
+	context.JSON(httpcode, gin.H{"message": fmt.Sprintf("%v unsaved post %v", username, postId)})
+}
+
+// GetSavedPosts handles GET requests to list saved posts for a user.
+func GetSavedPosts(context *gin.Context) {
+	username := context.Param("username")
+
+	posts, httpcode, err := database.QuerySavedPostsByUser(username)
+	if err != nil {
+		RespondWithError(context, httpcode, fmt.Sprintf("Failed to fetch saved posts: %v", err))
+		return
+	}
+
+	context.JSON(http.StatusOK, posts)
 }

@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"backend/api/internal/database"
 	"backend/api/internal/types"
@@ -56,6 +57,75 @@ func GetUserByUsername(context *gin.Context) {
 	}
 
 	context.JSON(http.StatusOK, user)
+}
+
+// GetUserById handles GET requests to fetch a user by their ID.
+// It expects the `user_id` parameter in the URL.
+// Returns:
+// - 400 Bad Request if the user ID is invalid.
+// - 404 Not Found if no user is found with the given ID.
+// - 500 Internal Server Error if a database query fails.
+// On success, responds with a 200 OK status and the user data in JSON format.
+func GetUserById(context *gin.Context) {
+	strId := context.Param("user_id")
+	userId, err := strconv.Atoi(strId)
+	if err != nil {
+		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse user id: %v", err))
+		return
+	}
+
+	user, err := database.QueryUserById(userId)
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to get user: %v", err))
+		return
+	}
+
+	if user == nil {
+		RespondWithError(context, http.StatusNotFound, fmt.Sprintf("User with id '%v' not found", userId))
+		return
+	}
+
+	context.JSON(http.StatusOK, user)
+}
+
+// GetUsers handles GET requests to fetch all users.
+// Returns:
+// - 500 Internal Server Error if a database query fails.
+// On success, responds with a 200 OK status and the users list in JSON format.
+func GetUsers(context *gin.Context) {
+	strStart := context.Query("start")
+	strCount := context.Query("count")
+	start := 0
+	count := 50
+
+	if strStart != "" {
+		parsed, err := strconv.Atoi(strStart)
+		if err != nil || parsed < 0 {
+			RespondWithError(context, http.StatusBadRequest, "Start must be a non-negative integer")
+			return
+		}
+		start = parsed
+	}
+
+	if strCount != "" {
+		parsed, err := strconv.Atoi(strCount)
+		if err != nil || parsed <= 0 {
+			RespondWithError(context, http.StatusBadRequest, "Count must be a positive integer")
+			return
+		}
+		if parsed > 100 {
+			parsed = 100
+		}
+		count = parsed
+	}
+
+	users, err := database.QueryUsersPage(start, count)
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch users: %v", err))
+		return
+	}
+
+	context.JSON(http.StatusOK, users)
 }
 
 // CreateUser handles POST requests to create a new user.
@@ -215,7 +285,7 @@ func GetUsersFollowersUsernames(context *gin.Context) {
 		return
 	}
 
-    context.JSON(http.StatusOK, gin.H{"message": "Successfully got followers", "followers":followers})
+	context.JSON(http.StatusOK, gin.H{"message": "Successfully got followers", "followers": followers})
 }
 
 // GetUsersFollowingUsernames handles GET requests to fetch the usernames of users whom the specified user follows.
@@ -233,7 +303,7 @@ func GetUsersFollowingUsernames(context *gin.Context) {
 		return
 	}
 
-    context.JSON(http.StatusOK, gin.H{"message": "Successfully got following", "following": following})
+	context.JSON(http.StatusOK, gin.H{"message": "Successfully got following", "following": following})
 }
 
 // FollowUser handles POST requests to create a follow relationship between a user and another user.
@@ -251,6 +321,18 @@ func FollowUser(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to add follower: %v", err))
 		return
 	}
+
+	actorID, _ := database.GetUserIdByUsername(username)
+	userID, _ := database.GetUserIdByUsername(newFollow)
+	createAndPushNotification(
+		int64(userID),
+		int64(actorID),
+		"follow_user",
+		nil,
+		nil,
+		nil,
+		notificationBody(username, "followed you"),
+	)
 	context.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%v now follows %v", username, newFollow)})
 }
 

@@ -1,79 +1,155 @@
 import React, { useState } from "react";
-import { View, Text, Modal, Animated, Button } from "react-native";
-import { FAB, Icon, Switch } from "@rneui/themed";
+import {
+  Animated,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Switch,
+  View,
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { ThemedText } from "@/components/ThemedText";
+import { useAppColors } from "@/hooks/useAppColors";
 
 export const MyFilter: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
-  const [slideAnim] = useState(new Animated.Value(-400));
-  const [value, setValue] = React.useState(false);
+  const [slideAnim] = useState(new Animated.Value(40));
+  const [value, setValue] = useState(false);
+  const [trendingOnly, setTrendingOnly] = useState(true);
+  const colors = useAppColors();
 
   const toggleModal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setModalVisible(!modalVisible);
     if (!modalVisible) {
-      slideAnim.setValue(-400);
+      slideAnim.setValue(40);
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 100,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(slideAnim, {
-        toValue: 400,
-        duration: 100,
+        duration: 180,
         useNativeDriver: true,
       }).start();
     }
   };
+
   return (
     <View style={{ backgroundColor: "transparent" }}>
-      <FAB
-        visible={true}
-        title="Filter"
-      
-        icon={<Icon name="tune" type="material" color="black" size={25} />}
-        color="#16ff00"
-        size="large"
+      <Pressable
         onPress={toggleModal}
-        titleStyle={{ color: "black",fontSize:15 }}
-      />
+        style={[
+          styles.filterButton,
+          { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+        ]}
+      >
+        <Feather name="sliders" size={14} color={colors.muted} />
+        <ThemedText type="caption" style={{ color: colors.muted }}>
+          Filter
+        </ThemedText>
+      </Pressable>
       <Modal
         animationType="fade"
         transparent={true}
         visible={modalVisible}
         onRequestClose={toggleModal}
       >
-        <View
-          style={{
-            flex: 1,
-            justifyContent: "center",
-            alignItems: "center",
-            backgroundColor: "rgba(32, 48, 32, 0.5)",
-          }}
-        >
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={toggleModal} />
           <Animated.View
-            style={{
-              width: 300,
-              height: 200,
-              backgroundColor: "white",
-              borderRadius: 10,
-              justifyContent: "center",
-              alignItems: "center",
-              transform: [{ translateY: slideAnim }],
-              padding: 20,
-            }}
+            style={[
+              styles.panel,
+              {
+                transform: [{ translateY: slideAnim }],
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+              },
+            ]}
           >
-            <Text style={{ fontSize: 20, marginBottom: 20 }}>
-              Da Filter Options
-            </Text>
-            <Switch
-              color="#2089dc"
-              value={value}
-              onValueChange={() => setValue(!value)}
-            />
-            <Button title="Close Filter" onPress={toggleModal} />
+            <View style={styles.panelHeader}>
+              <ThemedText type="subtitle">Filter feed</ThemedText>
+              <Pressable onPress={toggleModal}>
+                <Feather name="x" color={colors.muted} size={20} />
+              </Pressable>
+            </View>
+            <View style={styles.toggleRow}>
+              <ThemedText type="default">
+                Only show projects with new updates
+              </ThemedText>
+              <Switch
+                trackColor={{ false: colors.surfaceAlt, true: colors.tint }}
+                thumbColor={colors.accent}
+                value={value}
+                onValueChange={() => {
+                  Haptics.selectionAsync();
+                  setValue(!value);
+                }}
+              />
+            </View>
+            <View style={styles.toggleRow}>
+              <ThemedText type="default">Trending this week</ThemedText>
+              <Switch
+                trackColor={{ false: colors.surfaceAlt, true: colors.tint }}
+                thumbColor={colors.accent}
+                value={trendingOnly}
+                onValueChange={() => {
+                  Haptics.selectionAsync();
+                  setTrendingOnly(!trendingOnly);
+                }}
+              />
+            </View>
+            <Pressable
+              style={[styles.applyButton, { backgroundColor: colors.tint }]}
+              onPress={toggleModal}
+            >
+              <ThemedText
+                type="defaultSemiBold"
+                style={{ color: colors.accent }}
+              >
+                Apply filters
+              </ThemedText>
+            </Pressable>
           </Animated.View>
         </View>
       </Modal>
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  filterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  backdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(9, 14, 12, 0.4)",
+    padding: 20,
+  },
+  panel: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    gap: 16,
+  },
+  panelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  applyButton: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+});

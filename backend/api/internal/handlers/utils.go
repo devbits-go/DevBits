@@ -38,7 +38,7 @@ func IsFieldAllowed(existingData interface{}, fieldName string) bool {
 		jsonTag := field.Tag.Get("json")
 
 		// If the JSON tag matches the fieldName, return true
-		if strings.ToLower(jsonTag) == strings.ToLower(fieldName) {
+		if strings.EqualFold(jsonTag, fieldName) {
 			return true
 		}
 	}
@@ -53,4 +53,13 @@ func RespondWithError(context *gin.Context, status int, message string) {
 		Message: message,
 	}
 	context.JSON(status, response)
+}
+
+func GetAuthUserID(context *gin.Context) (int64, bool) {
+	value, ok := context.Get(authUserIDKey)
+	if !ok || value == nil {
+		return 0, false
+	}
+	userID, ok := value.(int64)
+	return userID, ok
 }

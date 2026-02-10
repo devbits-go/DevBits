@@ -1,10 +1,10 @@
 -- Users
-INSERT INTO Users (username, picture, bio, links, creation_date) VALUES
-    ('dev_user1', 'https://example.com/dev_user1.jpg', 'Full-stack developer passionate about open-source projects.', '["https://github.com/dev_user1", "https://devuser1.com"]', '2023-12-13 00:00:00'),
-    ('tech_writer2', 'https://example.com/tech_writer2.jpg', 'Technical writer and Python enthusiast.', '["https://blog.techwriter.com"]', '2022-12-13 00:00:00'),
-    ('data_scientist3', 'https://example.com/data_scientist3.jpg', 'Data scientist with a passion for machine learning.', '["https://github.com/data_scientist3", "https://datascientist3.com"]', '2023-06-13 00:00:00'),
-    ('backend_guru4', 'https://example.com/backend_guru4.jpg', 'Backend expert specializing in scalable systems.', '["https://github.com/backend_guru4"]', '2024-01-15 00:00:00'),
-    ('ui_designer5', 'https://example.com/ui_designer5.jpg', 'UI/UX designer with a love for user-friendly apps.', '["https://portfolio.uidesigner5.com"]', '2023-05-10 00:00:00');
+INSERT INTO Users (username, picture, bio, links, settings, creation_date) VALUES
+    ('dev_user1', 'https://example.com/dev_user1.jpg', 'Full-stack developer passionate about open-source projects.', '["https://github.com/dev_user1", "https://devuser1.com"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2023-12-13 00:00:00'),
+    ('tech_writer2', 'https://example.com/tech_writer2.jpg', 'Technical writer and Python enthusiast.', '["https://blog.techwriter.com"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2022-12-13 00:00:00'),
+    ('data_scientist3', 'https://example.com/data_scientist3.jpg', 'Data scientist with a passion for machine learning.', '["https://github.com/data_scientist3", "https://datascientist3.com"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2023-06-13 00:00:00'),
+    ('backend_guru4', 'https://example.com/backend_guru4.jpg', 'Backend expert specializing in scalable systems.', '["https://github.com/backend_guru4"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2024-01-15 00:00:00'),
+    ('ui_designer5', 'https://example.com/ui_designer5.jpg', 'UI/UX designer with a love for user-friendly apps.', '["https://portfolio.uidesigner5.com"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2023-05-10 00:00:00');
 
 -- Projects
 INSERT INTO Projects (name, description, status, likes, tags, links, owner, creation_date) VALUES

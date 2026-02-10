@@ -8,16 +8,16 @@ package tests
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"testing"
-    "fmt"
-    "os"
-    "database/sql"
 
 	"github.com/stretchr/testify/assert"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type TestCase struct {

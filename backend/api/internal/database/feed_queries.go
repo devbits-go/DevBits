@@ -19,10 +19,12 @@ import (
 //   - int: http status code
 //   - error: An error if the function fails, nil otherwise
 func GetPostByTimeFeed(start int, count int) ([]types.Post, int, error) {
-	query := `SELECT id, user_id, project_id, content, likes, creation_date
-              FROM Posts
-              ORDER BY creation_date DESC
-              LIMIT ? OFFSET ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+			  COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+			  creation_date
+			  FROM Posts
+			  ORDER BY creation_date DESC
+			  LIMIT ? OFFSET ?;`
 
 	rows, err := DB.Query(query, count, start)
 	if err != nil {
@@ -33,12 +35,15 @@ func GetPostByTimeFeed(start int, count int) ([]types.Post, int, error) {
 
 	for rows.Next() {
 		var post types.Post
+		var mediaJSON string
 		err := rows.Scan(
 			&post.ID,
 			&post.User,
 			&post.Project,
 			&post.Content,
+			&mediaJSON,
 			&post.Likes,
+			&post.Saves,
 			&post.CreationDate,
 		)
 
@@ -47,6 +52,9 @@ func GetPostByTimeFeed(start int, count int) ([]types.Post, int, error) {
 				return []types.Post{}, http.StatusOK, nil
 			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &post.Media); err != nil {
+			return nil, http.StatusBadRequest, err
 		}
 		posts = append(posts, post)
 	}
@@ -66,10 +74,12 @@ func GetPostByTimeFeed(start int, count int) ([]types.Post, int, error) {
 //   - int: http status code
 //   - error: An error if the function fails, nil otherwise
 func GetPostByLikesFeed(start int, count int) ([]types.Post, int, error) {
-	query := `SELECT id, user_id, project_id, content, likes, creation_date
-              FROM Posts
-              ORDER BY likes DESC
-              LIMIT ? OFFSET ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+			  COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+			  creation_date
+			  FROM Posts
+			  ORDER BY likes DESC
+			  LIMIT ? OFFSET ?;`
 
 	rows, err := DB.Query(query, count, start)
 	if err != nil {
@@ -80,12 +90,15 @@ func GetPostByLikesFeed(start int, count int) ([]types.Post, int, error) {
 
 	for rows.Next() {
 		var post types.Post
+		var mediaJSON string
 		err := rows.Scan(
 			&post.ID,
 			&post.User,
 			&post.Project,
 			&post.Content,
+			&mediaJSON,
 			&post.Likes,
+			&post.Saves,
 			&post.CreationDate,
 		)
 
@@ -94,6 +107,9 @@ func GetPostByLikesFeed(start int, count int) ([]types.Post, int, error) {
 				return []types.Post{}, http.StatusOK, nil
 			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &post.Media); err != nil {
+			return nil, http.StatusBadRequest, err
 		}
 		posts = append(posts, post)
 	}
@@ -113,9 +129,11 @@ func GetPostByLikesFeed(start int, count int) ([]types.Post, int, error) {
 //   - int: http status code
 //   - error: An error if the function fails, nil otherwise
 func GetProjectByTimeFeed(start int, count int) ([]types.Project, int, error) {
-	query := `SELECT id, name, description, status, likes, links, tags, owner, creation_date
-              FROM Project
-              ORDER BY likes DESC
+	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+              COALESCE((SELECT COUNT(*) FROM ProjectFollows pf WHERE pf.project_id = Projects.id), 0),
+	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
+	          FROM Projects
+	              ORDER BY creation_date DESC
               LIMIT ? OFFSET ?;`
 
 	rows, err := DB.Query(query, count, start)
@@ -127,15 +145,18 @@ func GetProjectByTimeFeed(start int, count int) ([]types.Project, int, error) {
 
 	for rows.Next() {
 		var project types.Project
-		var linksJSON, tagsJSON string
+		var linksJSON, tagsJSON, mediaJSON string
 		err := rows.Scan(
 			&project.ID,
 			&project.Name,
 			&project.Description,
+			&project.AboutMd,
 			&project.Status,
 			&project.Likes,
+			&project.Saves,
 			&linksJSON,
 			&tagsJSON,
+			&mediaJSON,
 			&project.Owner,
 			&project.CreationDate,
 		)
@@ -152,6 +173,11 @@ func GetProjectByTimeFeed(start int, count int) ([]types.Project, int, error) {
 		if err := UnmarshalFromJSON(tagsJSON, &project.Tags); err != nil {
 			return nil, http.StatusBadRequest, err
 		}
+		if err := UnmarshalFromJSON(mediaJSON, &project.Media); err != nil {
+			return nil, http.StatusBadRequest, err
+		}
+
+		projects = append(projects, project)
 	}
 
 	return projects, http.StatusOK, nil
@@ -169,8 +195,10 @@ func GetProjectByTimeFeed(start int, count int) ([]types.Project, int, error) {
 //   - int: http status code
 //   - error: An error if the function fails, nil otherwise
 func GetProjectByLikesFeed(start int, count int) ([]types.Project, int, error) {
-	query := `SELECT id, name, description, status, likes, links, tags, owner, creation_date
-              FROM Project
+	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+              COALESCE((SELECT COUNT(*) FROM ProjectFollows pf WHERE pf.project_id = Projects.id), 0),
+	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
+	          FROM Projects
               ORDER BY likes DESC
               LIMIT ? OFFSET ?;`
 
@@ -183,15 +211,18 @@ func GetProjectByLikesFeed(start int, count int) ([]types.Project, int, error) {
 
 	for rows.Next() {
 		var project types.Project
-		var linksJSON, tagsJSON string
+		var linksJSON, tagsJSON, mediaJSON string
 		err := rows.Scan(
 			&project.ID,
 			&project.Name,
 			&project.Description,
+			&project.AboutMd,
 			&project.Status,
 			&project.Likes,
+			&project.Saves,
 			&linksJSON,
 			&tagsJSON,
+			&mediaJSON,
 			&project.Owner,
 			&project.CreationDate,
 		)
@@ -208,6 +239,11 @@ func GetProjectByLikesFeed(start int, count int) ([]types.Project, int, error) {
 		if err := UnmarshalFromJSON(tagsJSON, &project.Tags); err != nil {
 			return nil, http.StatusBadRequest, err
 		}
+		if err := UnmarshalFromJSON(mediaJSON, &project.Media); err != nil {
+			return nil, http.StatusBadRequest, err
+		}
+
+		projects = append(projects, project)
 	}
 
 	return projects, http.StatusOK, nil
