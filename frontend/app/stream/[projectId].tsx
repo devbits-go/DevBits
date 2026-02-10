@@ -43,6 +43,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
+import { emitProjectStats } from "@/services/projectEvents";
 
 const ensureUrlScheme = (url: string) =>
   /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
@@ -68,6 +69,8 @@ export default function StreamDetailScreen() {
   const bottom = useBottomTabOverflow();
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const prevSavedRef = useRef(false);
+  const hasInitializedSaveRef = useRef(false);
 
   const projectIdNumber = useMemo(() => Number(projectId), [projectId]);
   const isCreator = useMemo(
@@ -119,7 +122,6 @@ export default function StreamDetailScreen() {
         );
 
         setProject(projectData);
-        setSaveCount(projectData.saves ?? 0);
         setPosts(uiPosts);
         setBuilders(Array.isArray(builderList) ? builderList : []);
         setCreatorName(ownerUser?.username ?? `user-${projectData.owner}`);
@@ -166,18 +168,25 @@ export default function StreamDetailScreen() {
     setIsSaved(savedProjectIds.includes(projectIdNumber));
   }, [projectIdNumber, savedProjectIds]);
 
+  useEffect(() => {
+    if (!project) {
+      return;
+    }
+    setSaveCount(project.saves ?? 0);
+  }, [project?.id, project?.saves]);
+
   const handleToggleSave = async () => {
     if (!user?.username || !projectIdNumber || isSaving) {
       return;
     }
     setIsSaving(true);
     try {
+      const nextSaved = !isSaved;
+      const nextCount = Math.max(0, saveCount + (nextSaved ? 1 : -1));
       await toggleSave(projectIdNumber);
-      setIsSaved((prev) => {
-        const next = !prev;
-        setSaveCount((current) => Math.max(0, current + (next ? 1 : -1)));
-        return next;
-      });
+      setIsSaved(nextSaved);
+      setSaveCount(nextCount);
+      emitProjectStats(projectIdNumber, { saves: nextCount });
     } finally {
       setIsSaving(false);
     }

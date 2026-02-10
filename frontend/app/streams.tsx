@@ -33,6 +33,10 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
+import {
+  applyProjectEvent,
+  subscribeToProjectEvents,
+} from "@/services/projectEvents";
 
 export default function StreamsScreen() {
   const colors = useAppColors();
@@ -118,6 +122,12 @@ export default function StreamsScreen() {
   useEffect(() => {
     loadStreams();
   }, [loadStreams]);
+
+  useEffect(() => {
+    return subscribeToProjectEvents((event) => {
+      setProjects((prev) => applyProjectEvent(prev, event));
+    });
+  }, []);
 
   useFocusEffect(
     useCallback(() => {

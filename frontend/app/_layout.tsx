@@ -7,7 +7,7 @@ import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import "react-native-reanimated";
 import { Colors } from "@/constants/Colors";
@@ -18,8 +18,11 @@ import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { NotificationsProvider } from "@/contexts/NotificationsContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { HyprBackdrop } from "@/components/HyprBackdrop";
+import { BootScreen } from "@/components/BootScreen";
 // Prevent the splash screen from auto-hiding before asset loading is complete
 SplashScreen.preventAutoHideAsync();
+
+let hasShownBoot = false;
 
 export default function RootLayout() {
   return (
@@ -45,6 +48,11 @@ function RootLayoutNav() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const [showBoot, setShowBoot] = useState(() => !hasShownBoot);
+  const shouldShowBoot = useMemo(
+    () => loaded && showBoot && !hasShownBoot,
+    [loaded, showBoot],
+  );
 
   useEffect(() => {
     if (loaded) {
@@ -88,6 +96,14 @@ function RootLayoutNav() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="+not-found" />
         </Stack>
+        {shouldShowBoot ? (
+          <BootScreen
+            onDone={() => {
+              hasShownBoot = true;
+              setShowBoot(false);
+            }}
+          />
+        ) : null}
         <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       </View>
     </ThemeProvider>

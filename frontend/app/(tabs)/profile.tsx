@@ -15,7 +15,7 @@ import {
 } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import { UserProps } from "@/constants/Types";
+import { ApiUser, UserProps } from "@/constants/Types";
 import { ProjectCard } from "@/components/ProjectCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatPill } from "@/components/StatPill";
@@ -48,6 +48,10 @@ import { mapPostToUi, mapProjectToUi } from "@/services/mappers";
 import { useSaved } from "@/contexts/SavedContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 import { subscribeToPostEvents } from "@/services/postEvents";
+import {
+  applyProjectEvent,
+  subscribeToProjectEvents,
+} from "@/services/projectEvents";
 
 export default function ProfileScreen() {
   const colors = useAppColors();
@@ -55,7 +59,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user: authUser } = useAuth();
   const { savedPostIds } = useSaved();
-  const { savedProjectIds } = useSavedStreams();
+  const { savedProjectIds, removeSavedProjectIds } = useSavedStreams();
   const [currentUser, setCurrentUser] = useState<UserProps | null>(null);
   const [projects, setProjects] = useState(
     [] as ReturnType<typeof mapProjectToUi>[],
@@ -83,14 +87,15 @@ export default function ProfileScreen() {
   const [followingList, setFollowingList] = useState<string[]>([]);
   const [isFollowersLoading, setIsFollowersLoading] = useState(false);
   const [isFollowingLoading, setIsFollowingLoading] = useState(false);
-  const [followerUsers, setFollowerUsers] = useState<UserProps[]>([]);
-  const [followingUsers, setFollowingUsers] = useState<UserProps[]>([]);
+  const [followerUsers, setFollowerUsers] = useState<ApiUser[]>([]);
+  const [followingUsers, setFollowingUsers] = useState<ApiUser[]>([]);
   const [followingSet, setFollowingSet] = useState<Set<number>>(new Set());
   const [isFollowingBusy, setIsFollowingBusy] = useState(false);
   const [followersQuery, setFollowersQuery] = useState("");
   const [followingQuery, setFollowingQuery] = useState("");
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const hasLoadedRef = useRef(false);
 
   const filteredFollowerUsers = React.useMemo(() => {
     const trimmed = followersQuery.trim().toLowerCase();
@@ -125,116 +130,131 @@ export default function ProfileScreen() {
     }).start();
   }, [motion, reveal]);
 
-  const fetchUser = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      if (!authUser?.username || !authUser.id) {
-        setCurrentUser(null);
-        setProjects([]);
-        setPosts([]);
-        setIsLoading(false);
-        return;
-      }
-      let resolvedUser = authUser as UserProps;
+  const fetchUser = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const isSilent = options?.silent;
+      const shouldShowLoader = !isSilent && !hasLoadedRef.current;
       try {
-        const userData = await getUserByUsername(authUser.username);
-        if (userData) {
-          resolvedUser = userData;
+        if (shouldShowLoader) {
+          setIsLoading(true);
         }
-        setHasError(false);
-      } catch {
-        setHasError(true);
-      }
-
-      setCurrentUser(resolvedUser);
-
-      if (resolvedUser?.id) {
-        try {
-          const [userProjects, userPosts, followers, following] =
-            await Promise.all([
-              getProjectsByBuilderId(resolvedUser.id),
-              getPostsByUserId(resolvedUser.id),
-              getUsersFollowers(resolvedUser.username),
-              getUsersFollowing(resolvedUser.username),
-            ]);
-
-          const safeProjects = Array.isArray(userProjects) ? userProjects : [];
-          const safePosts = Array.isArray(userPosts) ? userPosts : [];
-          const safeFollowers = Array.isArray(followers) ? followers : [];
-          const safeFollowing = Array.isArray(following) ? following : [];
-
-          const projectMap = new Map(
-            safeProjects.map((project) => [project.id, project]),
-          );
-
-          const builderCounts = await Promise.all(
-            safeProjects.map((project) =>
-              getProjectBuilders(project.id).catch(() => []),
-            ),
-          );
-          setProjects(
-            safeProjects.map((project, index) =>
-              mapProjectToUi(project, builderCounts[index]?.length ?? 0),
-            ),
-          );
-          setBuilderProjectIds(safeProjects.map((project) => project.id));
-          setShipsCount(safePosts.length);
-          setFollowersCount(safeFollowers.length);
-          setFollowingCount(safeFollowing.length);
-          const uniqueDays = Array.from(
-            new Set(
-              safePosts.map((post) =>
-                new Date(post.created_on).toISOString().slice(0, 10),
-              ),
-            ),
-          ).sort((a, b) => (a > b ? -1 : 1));
-          let streak = 0;
-          let cursor = new Date();
-          for (const day of uniqueDays) {
-            const dayDate = new Date(day + "T00:00:00Z");
-            if (
-              cursor.toISOString().slice(0, 10) ===
-              dayDate.toISOString().slice(0, 10)
-            ) {
-              streak += 1;
-              cursor.setUTCDate(cursor.getUTCDate() - 1);
-            } else {
-              break;
-            }
-          }
-          setStreakCount(streak);
-          setPosts(
-            safePosts
-              .slice(0, 2)
-              .map((post) =>
-                mapPostToUi(
-                  post,
-                  { ...resolvedUser, id: resolvedUser.id! },
-                  projectMap.get(post.project) ?? null,
-                ),
-              ),
-          );
-        } catch {
+        if (!authUser?.username || !authUser.id) {
+          setCurrentUser(null);
           setProjects([]);
           setPosts([]);
-          setShipsCount(0);
-          setFollowersCount(0);
-          setFollowingCount(0);
-          setStreakCount(0);
-          setBuilderProjectIds([]);
+          return;
+        }
+        let resolvedUser = authUser as UserProps;
+        try {
+          const userData = await getUserByUsername(authUser.username);
+          if (userData) {
+            resolvedUser = userData;
+          }
+          setHasError(false);
+        } catch {
           setHasError(true);
         }
+
+        setCurrentUser(resolvedUser);
+
+        if (resolvedUser?.id) {
+          try {
+            const [userProjects, userPosts, followers, following] =
+              await Promise.all([
+                getProjectsByBuilderId(resolvedUser.id),
+                getPostsByUserId(resolvedUser.id),
+                getUsersFollowers(resolvedUser.username),
+                getUsersFollowing(resolvedUser.username),
+              ]);
+
+            const safeProjects = Array.isArray(userProjects)
+              ? userProjects
+              : [];
+            const safePosts = Array.isArray(userPosts) ? userPosts : [];
+            const safeFollowers = Array.isArray(followers) ? followers : [];
+            const safeFollowing = Array.isArray(following) ? following : [];
+
+            const projectMap = new Map(
+              safeProjects.map((project) => [project.id, project]),
+            );
+
+            const builderCounts = await Promise.all(
+              safeProjects.map((project) =>
+                getProjectBuilders(project.id).catch(() => []),
+              ),
+            );
+            setProjects(
+              safeProjects.map((project, index) =>
+                mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+              ),
+            );
+            setBuilderProjectIds(safeProjects.map((project) => project.id));
+            setShipsCount(safePosts.length);
+            setFollowersCount(safeFollowers.length);
+            setFollowingCount(safeFollowing.length);
+            const uniqueDays = Array.from(
+              new Set(
+                safePosts.map((post) =>
+                  new Date(post.created_on).toISOString().slice(0, 10),
+                ),
+              ),
+            ).sort((a, b) => (a > b ? -1 : 1));
+            let streak = 0;
+            let cursor = new Date();
+            for (const day of uniqueDays) {
+              const dayDate = new Date(day + "T00:00:00Z");
+              if (
+                cursor.toISOString().slice(0, 10) ===
+                dayDate.toISOString().slice(0, 10)
+              ) {
+                streak += 1;
+                cursor.setUTCDate(cursor.getUTCDate() - 1);
+              } else {
+                break;
+              }
+            }
+            setStreakCount(streak);
+            setPosts(
+              safePosts
+                .slice(0, 2)
+                .map((post) =>
+                  mapPostToUi(
+                    post,
+                    { ...resolvedUser, id: resolvedUser.id! },
+                    projectMap.get(post.project) ?? null,
+                  ),
+                ),
+            );
+          } catch {
+            if (!isSilent) {
+              setProjects([]);
+              setPosts([]);
+              setShipsCount(0);
+              setFollowersCount(0);
+              setFollowingCount(0);
+              setStreakCount(0);
+              setBuilderProjectIds([]);
+            }
+            setHasError(true);
+          }
+        }
+      } catch {
+        if (!isSilent) {
+          setCurrentUser(null);
+          setProjects([]);
+          setPosts([]);
+          setBuilderProjectIds([]);
+        }
+        setHasError(true);
+      } finally {
+        hasLoadedRef.current = true;
+        if (shouldShowLoader) {
+          setIsLoading(false);
+        }
       }
-    } catch {
-      setCurrentUser(null);
-      setProjects([]);
-      setPosts([]);
-      setBuilderProjectIds([]);
-      setHasError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [authUser]);
+    },
+    [authUser],
+  );
 
   const loadFollowers = useCallback(async () => {
     if (!authUser?.username) {
@@ -248,7 +268,7 @@ export default function ProfileScreen() {
       const users = await Promise.all(
         names.map((name) => getUserByUsername(name).catch(() => null)),
       );
-      setFollowerUsers(users.filter((item): item is UserProps => !!item));
+      setFollowerUsers(users.filter((item): item is ApiUser => item !== null));
       const followingIds = await getUsersFollowing(authUser.username).catch(
         () => [],
       );
@@ -270,7 +290,7 @@ export default function ProfileScreen() {
       const users = await Promise.all(
         names.map((name) => getUserByUsername(name).catch(() => null)),
       );
-      setFollowingUsers(users.filter((item): item is UserProps => !!item));
+      setFollowingUsers(users.filter((item): item is ApiUser => item !== null));
       const followingIds = await getUsersFollowing(authUser.username).catch(
         () => [],
       );
@@ -280,7 +300,7 @@ export default function ProfileScreen() {
     }
   }, [authUser?.username]);
 
-  const handleToggleFollow = async (target: UserProps) => {
+  const handleToggleFollow = async (target: ApiUser) => {
     if (!authUser?.username || isFollowingBusy) {
       return;
     }
@@ -312,39 +332,48 @@ export default function ProfileScreen() {
     fetchUser();
   }, [fetchUser]);
 
-  const loadSaved = useCallback(async () => {
-    if (!savedPostIds.length) {
-      setSavedPosts([]);
-      return;
-    }
-    setIsSavedLoading(true);
-    try {
-      const savedData = await Promise.all(
-        savedPostIds.map(async (postId) => {
-          try {
-            const post = await getPostById(postId);
-            const [user, project] = await Promise.all([
-              getUserById(post.user).catch(() => null),
-              getProjectById(post.project).catch(() => null),
-            ]);
-            return mapPostToUi(post, user, project);
-          } catch {
-            return null;
-          }
-        }),
-      );
+  const loadSaved = useCallback(
+    async (showLoader = true) => {
+      if (!savedPostIds.length) {
+        setSavedPosts([]);
+        return;
+      }
+      if (showLoader) {
+        setIsSavedLoading(true);
+      }
+      try {
+        const savedData = await Promise.all(
+          savedPostIds.map(async (postId) => {
+            try {
+              const post = await getPostById(postId);
+              const [user, project] = await Promise.all([
+                getUserById(post.user).catch(() => null),
+                getProjectById(post.project).catch(() => null),
+              ]);
+              return mapPostToUi(post, user, project);
+            } catch {
+              return null;
+            }
+          }),
+        );
 
-      setSavedPosts(
-        savedData.filter(
-          (post): post is ReturnType<typeof mapPostToUi> => post !== null,
-        ),
-      );
-    } catch {
-      setSavedPosts([]);
-    } finally {
-      setIsSavedLoading(false);
-    }
-  }, [savedPostIds]);
+        setSavedPosts(
+          savedData.filter(
+            (post): post is ReturnType<typeof mapPostToUi> => post !== null,
+          ),
+        );
+      } catch {
+        if (showLoader) {
+          setSavedPosts([]);
+        }
+      } finally {
+        if (showLoader) {
+          setIsSavedLoading(false);
+        }
+      }
+    },
+    [savedPostIds],
+  );
 
   const loadSavedStreams = useCallback(
     async (showLoader = true) => {
@@ -364,6 +393,12 @@ export default function ProfileScreen() {
             getProjectById(projectId).catch(() => null),
           ),
         );
+        const missingIds = savedProjectIds.filter(
+          (_, index) => !projectsData[index],
+        );
+        if (missingIds.length) {
+          void removeSavedProjectIds(missingIds);
+        }
         const validProjects = projectsData.filter((project) => project);
         const builderCounts = await Promise.all(
           validProjects.map((project) =>
@@ -382,7 +417,7 @@ export default function ProfileScreen() {
         }
       }
     },
-    [savedProjectIds],
+    [removeSavedProjectIds, savedProjectIds],
   );
 
   useEffect(() => {
@@ -431,17 +466,28 @@ export default function ProfileScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    return subscribeToProjectEvents((event) => {
+      setProjects((prev) => applyProjectEvent(prev, event));
+      setSavedStreams((prev) => applyProjectEvent(prev, event));
+    });
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       clearApiCache();
-      fetchUser();
-      loadSaved();
+      fetchUser({ silent: true });
+      loadSaved(false);
       loadSavedStreams(false);
     }, [fetchUser, loadSaved, loadSavedStreams]),
   );
 
   const refreshProfile = useCallback(async () => {
-    await Promise.all([fetchUser(), loadSaved(), loadSavedStreams()]);
+    await Promise.all([
+      fetchUser({ silent: true }),
+      loadSaved(false),
+      loadSavedStreams(false),
+    ]);
   }, [fetchUser, loadSaved, loadSavedStreams]);
 
   const handleRefresh = useCallback(async () => {

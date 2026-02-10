@@ -34,6 +34,10 @@ import { ApiProject } from "@/constants/Types";
 import { TagChip } from "@/components/TagChip";
 import { MediaGallery } from "@/components/MediaGallery";
 import { MarkdownText } from "@/components/MarkdownText";
+import {
+  emitProjectDeleted,
+  emitProjectUpdated,
+} from "@/services/projectEvents";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 
@@ -195,6 +199,22 @@ export default function ManageStreamsScreen() {
       };
       const response = await updateProject(project.id, payload);
       const updated = response.project;
+      emitProjectUpdated(updated.id, {
+        name: updated.name,
+        summary: updated.description ?? "",
+        about_md: updated.about_md ?? "",
+        stage:
+          updated.status === 2
+            ? "launch"
+            : updated.status === 1
+              ? "beta"
+              : "alpha",
+        tags: updated.tags ?? [],
+        media: updated.media ?? [],
+        updated_on: updated.creation_date,
+        likes: updated.likes,
+        saves: updated.saves ?? 0,
+      });
       setProjects((prev) =>
         prev.map((item) => (item.id === project.id ? updated : item)),
       );
@@ -299,6 +319,7 @@ export default function ManageStreamsScreen() {
               setDeletingProjectId(projectId);
               try {
                 await deleteProject(projectId);
+                emitProjectDeleted(projectId);
                 setProjects((prev) =>
                   prev.filter((item) => item.id !== projectId),
                 );

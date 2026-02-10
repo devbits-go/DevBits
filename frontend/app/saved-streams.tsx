@@ -24,11 +24,15 @@ import {
   getProjectBuilders,
 } from "@/services/api";
 import { mapProjectToUi } from "@/services/mappers";
+import {
+  applyProjectEvent,
+  subscribeToProjectEvents,
+} from "@/services/projectEvents";
 
 export default function SavedStreamsScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
-  const { savedProjectIds } = useSavedStreams();
+  const { savedProjectIds, removeSavedProjectIds } = useSavedStreams();
   const [projects, setProjects] = useState(
     [] as ReturnType<typeof mapProjectToUi>[],
   );
@@ -68,6 +72,12 @@ export default function SavedStreamsScreen() {
             getProjectById(projectId).catch(() => null),
           ),
         );
+        const missingIds = savedProjectIds.filter(
+          (_, index) => !projectsData[index],
+        );
+        if (missingIds.length) {
+          void removeSavedProjectIds(missingIds);
+        }
         const validProjects = projectsData.filter((project) => project);
         const builderCounts = await Promise.all(
           validProjects.map((project) =>
@@ -91,6 +101,12 @@ export default function SavedStreamsScreen() {
   useEffect(() => {
     loadSaved();
   }, [loadSaved]);
+
+  useEffect(() => {
+    return subscribeToProjectEvents((event) => {
+      setProjects((prev) => applyProjectEvent(prev, event));
+    });
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -163,7 +179,19 @@ export default function SavedStreamsScreen() {
             </View>
           ) : projects.length ? (
             projects.map((project) => (
-              <ProjectCard key={project.id} project={project} variant="full" />
+              <ProjectCard
+                key={project.id}
+                project={project}
+                variant="full"
+                saved={savedProjectIds.includes(project.id)}
+                onSavedChange={(nextSaved) => {
+                  if (!nextSaved) {
+                    setProjects((prev) =>
+                      prev.filter((item) => item.id !== project.id),
+                    );
+                  }
+                }}
+              />
             ))
           ) : (
             <View style={styles.emptyState}>

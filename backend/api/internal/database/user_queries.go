@@ -383,6 +383,15 @@ func QueryCreateUser(user *types.User) error {
 //   - int16: HTTP-like status code indicating the result.
 //   - error: An error if the deletion fails.
 func QueryDeleteUser(username string) (int16, error) {
+	user, lookupErr := QueryUsername(username)
+	if lookupErr != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Failed to lookup user '%v': %v", username, lookupErr)
+	}
+	if user == nil {
+		return http.StatusNotFound, fmt.Errorf("Deletion did not affect any records")
+	}
+	userId := user.ID
+
 	tx, err := DB.Begin()
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to start transaction: %v", err)
@@ -392,6 +401,103 @@ func QueryDeleteUser(username string) (int16, error) {
 			_ = tx.Rollback()
 		}
 	}()
+
+	execDelete := func(query string, args ...interface{}) error {
+		if _, execErr := tx.Exec(query, args...); execErr != nil {
+			return execErr
+		}
+		return nil
+	}
+
+	if err = execDelete(`DELETE FROM Notifications WHERE user_id = ? OR actor_id = ?;`, userId, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete notifications: %v", err)
+	}
+	if err = execDelete(`DELETE FROM UserPushTokens WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete push tokens: %v", err)
+	}
+	if err = execDelete(`DELETE FROM UserFollows WHERE follower_id = ? OR follows_id = ?;`, userId, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete user follows: %v", err)
+	}
+	if err = execDelete(`DELETE FROM ProjectFollows WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project follows: %v", err)
+	}
+	if err = execDelete(`DELETE FROM ProjectLikes WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project likes: %v", err)
+	}
+	if err = execDelete(`DELETE FROM PostLikes WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete post likes: %v", err)
+	}
+	if err = execDelete(`DELETE FROM PostSaves WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete post saves: %v", err)
+	}
+	if err = execDelete(`DELETE FROM CommentLikes WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete comment likes: %v", err)
+	}
+	if err = execDelete(`DELETE FROM ProjectBuilders WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project builders: %v", err)
+	}
+	if err = execDelete(`DELETE FROM PostComments WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete post comments: %v", err)
+	}
+	if err = execDelete(`DELETE FROM ProjectComments WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project comments: %v", err)
+	}
+	if err = execDelete(`DELETE FROM Comments WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete user comments: %v", err)
+	}
+
+	if err = execDelete(`DELETE FROM CommentLikes WHERE comment_id IN (
+		SELECT pc.comment_id
+		FROM PostComments pc
+		JOIN Posts p ON pc.post_id = p.id
+		WHERE p.project_id IN (SELECT id FROM Projects WHERE owner = ?)
+	);`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project comment likes: %v", err)
+	}
+	if err = execDelete(`DELETE FROM CommentLikes WHERE comment_id IN (
+		SELECT comment_id
+		FROM ProjectComments
+		WHERE project_id IN (SELECT id FROM Projects WHERE owner = ?)
+	);`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project comment likes: %v", err)
+	}
+	if err = execDelete(`DELETE FROM PostComments WHERE post_id IN (
+		SELECT id FROM Posts WHERE project_id IN (SELECT id FROM Projects WHERE owner = ?)
+	);`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project post comments: %v", err)
+	}
+	if err = execDelete(`DELETE FROM ProjectComments WHERE project_id IN (
+		SELECT id FROM Projects WHERE owner = ?
+	);`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project comments: %v", err)
+	}
+	if err = execDelete(`DELETE FROM Comments WHERE id IN (
+		SELECT pc.comment_id
+		FROM PostComments pc
+		JOIN Posts p ON pc.post_id = p.id
+		WHERE p.project_id IN (SELECT id FROM Projects WHERE owner = ?)
+	);`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project post comments: %v", err)
+	}
+	if err = execDelete(`DELETE FROM Comments WHERE id IN (
+		SELECT comment_id
+		FROM ProjectComments
+		WHERE project_id IN (SELECT id FROM Projects WHERE owner = ?)
+	);`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project comments: %v", err)
+	}
+
+	if err = execDelete(`DELETE FROM Posts WHERE project_id IN (
+		SELECT id FROM Projects WHERE owner = ?
+	);`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete project posts: %v", err)
+	}
+	if err = execDelete(`DELETE FROM Posts WHERE user_id = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete user posts: %v", err)
+	}
+	if err = execDelete(`DELETE FROM Projects WHERE owner = ?;`, userId); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("Failed to delete user projects: %v", err)
+	}
 
 	if _, err = tx.Exec(`DELETE FROM UserLoginInfo WHERE username = ?;`, username); err != nil {
 		return http.StatusBadRequest, fmt.Errorf("Failed to delete login info: %v", err)

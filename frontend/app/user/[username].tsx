@@ -85,6 +85,7 @@ export default function UserProfileScreen() {
   const [followingQuery, setFollowingQuery] = useState("");
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const hasLoadedRef = useRef(false);
 
   const filteredFollowerUsers = useMemo(() => {
     const trimmed = followersQuery.trim().toLowerCase();
@@ -119,90 +120,102 @@ export default function UserProfileScreen() {
     }).start();
   }, [motion, reveal]);
 
-  const loadUser = useCallback(async () => {
-    if (!username || Array.isArray(username)) {
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const userData = await getUserByUsername(username);
-      setProfileUser(userData);
+  const loadUser = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const isSilent = options?.silent;
+      const shouldShowLoader = !isSilent && !hasLoadedRef.current;
+      if (!username || Array.isArray(username)) {
+        return;
+      }
+      if (shouldShowLoader) {
+        setIsLoading(true);
+      }
+      try {
+        const userData = await getUserByUsername(username);
+        setProfileUser(userData);
 
-      const isSelf =
-        !!authUser?.username && authUser.username === userData.username;
-      const loadProjects = async () => {
-        if (!userData.id) {
-          return [];
-        }
-        if (isSelf) {
-          try {
-            return await getProjectsByBuilderId(userData.id);
-          } catch {
-            return await getProjectsByUserId(userData.id);
+        const isSelf =
+          !!authUser?.username && authUser.username === userData.username;
+        const loadProjects = async () => {
+          if (!userData.id) {
+            return [];
           }
+          if (isSelf) {
+            try {
+              return await getProjectsByBuilderId(userData.id);
+            } catch {
+              return await getProjectsByUserId(userData.id);
+            }
+          }
+          return await getProjectsByUserId(userData.id);
+        };
+
+        const [userProjects, userPosts, followers, followingIds, following] =
+          await Promise.all([
+            loadProjects().catch(() => []),
+            userData.id ? getPostsByUserId(userData.id) : Promise.resolve([]),
+            getUsersFollowers(userData.username).catch(() => []),
+            authUser?.username
+              ? getUsersFollowing(authUser.username).catch(() => [])
+              : Promise.resolve([]),
+            getUsersFollowing(userData.username).catch(() => []),
+          ]);
+
+        const safeProjects = Array.isArray(userProjects) ? userProjects : [];
+        const safePosts = Array.isArray(userPosts) ? userPosts : [];
+        const safeFollowers = Array.isArray(followers) ? followers : [];
+        const safeFollowing = Array.isArray(followingIds) ? followingIds : [];
+        const safeProfileFollowing = Array.isArray(following) ? following : [];
+
+        const projectMap = new Map(
+          safeProjects.map((project) => [project.id, project]),
+        );
+
+        const builderCounts = await Promise.all(
+          safeProjects.map((project) =>
+            getProjectBuilders(project.id).catch(() => []),
+          ),
+        );
+        setProjects(
+          safeProjects.map((project, index) =>
+            mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+          ),
+        );
+        setShipsCount(safePosts.length);
+        setFollowersCount(safeFollowers.length);
+        setFollowingCount(safeProfileFollowing.length);
+        setPosts(
+          await Promise.all(
+            safePosts.slice(0, 4).map(async (post) => {
+              const project = projectMap.get(post.project)
+                ? Promise.resolve(projectMap.get(post.project)!)
+                : getProjectById(post.project).catch(() => null);
+              return mapPostToUi(post, userData, await project);
+            }),
+          ),
+        );
+
+        setIsFollowing(safeFollowing.includes(userData.id));
+        setHasError(false);
+      } catch {
+        if (!isSilent) {
+          setProfileUser(null);
+          setProjects([]);
+          setPosts([]);
+          setFollowersCount(0);
+          setFollowingCount(0);
+          setShipsCount(0);
         }
-        return await getProjectsByUserId(userData.id);
-      };
-
-      const [userProjects, userPosts, followers, followingIds, following] =
-        await Promise.all([
-          loadProjects().catch(() => []),
-          userData.id ? getPostsByUserId(userData.id) : Promise.resolve([]),
-          getUsersFollowers(userData.username).catch(() => []),
-          authUser?.username
-            ? getUsersFollowing(authUser.username).catch(() => [])
-            : Promise.resolve([]),
-          getUsersFollowing(userData.username).catch(() => []),
-        ]);
-
-      const safeProjects = Array.isArray(userProjects) ? userProjects : [];
-      const safePosts = Array.isArray(userPosts) ? userPosts : [];
-      const safeFollowers = Array.isArray(followers) ? followers : [];
-      const safeFollowing = Array.isArray(followingIds) ? followingIds : [];
-      const safeProfileFollowing = Array.isArray(following) ? following : [];
-
-      const projectMap = new Map(
-        safeProjects.map((project) => [project.id, project]),
-      );
-
-      const builderCounts = await Promise.all(
-        safeProjects.map((project) =>
-          getProjectBuilders(project.id).catch(() => []),
-        ),
-      );
-      setProjects(
-        safeProjects.map((project, index) =>
-          mapProjectToUi(project, builderCounts[index]?.length ?? 0),
-        ),
-      );
-      setShipsCount(safePosts.length);
-      setFollowersCount(safeFollowers.length);
-      setFollowingCount(safeProfileFollowing.length);
-      setPosts(
-        await Promise.all(
-          safePosts.slice(0, 4).map(async (post) => {
-            const project = projectMap.get(post.project)
-              ? Promise.resolve(projectMap.get(post.project)!)
-              : getProjectById(post.project).catch(() => null);
-            return mapPostToUi(post, userData, await project);
-          }),
-        ),
-      );
-
-      setIsFollowing(safeFollowing.includes(userData.id));
-      setHasError(false);
-    } catch {
-      setProfileUser(null);
-      setProjects([]);
-      setPosts([]);
-      setFollowersCount(0);
-      setFollowingCount(0);
-      setShipsCount(0);
-      setHasError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [authUser?.username, username]);
+        setHasError(true);
+      } finally {
+        hasLoadedRef.current = true;
+        if (shouldShowLoader) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [authUser?.username, username],
+  );
 
   useEffect(() => {
     clearApiCache();
@@ -245,18 +258,18 @@ export default function UserProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       clearApiCache();
-      loadUser();
+      loadUser({ silent: true });
     }, [loadUser]),
   );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     clearApiCache();
-    await loadUser();
+    await loadUser({ silent: true });
     setIsRefreshing(false);
   }, [loadUser]);
 
-  useAutoRefresh(loadUser, { focusRefresh: false });
+  useAutoRefresh(() => loadUser({ silent: true }), { focusRefresh: false });
 
   const loadFollowers = useCallback(async () => {
     if (!profileUser?.username) {

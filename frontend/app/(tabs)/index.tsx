@@ -36,6 +36,10 @@ import { StatPill } from "@/components/StatPill";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { subscribeToPostEvents } from "@/services/postEvents";
+import {
+  applyProjectEvent,
+  subscribeToProjectEvents,
+} from "@/services/projectEvents";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 
@@ -217,6 +221,12 @@ export default function HomeScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    return subscribeToProjectEvents((event) => {
+      setProjects((prev) => applyProjectEvent(prev, event));
+    });
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       clearApiCache();
@@ -315,18 +325,6 @@ export default function HomeScreen() {
                         variant="full"
                         saved={savedProjectIds.includes(project.id)}
                         isBuilder={builderProjectIds.includes(project.id)}
-                        onSavedChange={(nextSaved) => {
-                          setSavedProjectIds((prev) => {
-                            const already = prev.includes(project.id);
-                            if (nextSaved && !already) {
-                              return [...prev, project.id];
-                            }
-                            if (!nextSaved && already) {
-                              return prev.filter((id) => id !== project.id);
-                            }
-                            return prev;
-                          });
-                        }}
                       />
                     </View>
                   ))}

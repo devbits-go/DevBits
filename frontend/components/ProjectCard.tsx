@@ -8,6 +8,10 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 import { isProjectLiked, likeProject, unlikeProject } from "@/services/api";
+import {
+  emitProjectStats,
+  subscribeToProjectEvents,
+} from "@/services/projectEvents";
 import { useRouter } from "expo-router";
 
 type ProjectCardProps = {
@@ -37,6 +41,10 @@ export function ProjectCard({
   const [isSaved, setIsSaved] = useState(Boolean(saved));
   const [isSaving, setIsSaving] = useState(false);
   const [saveCount, setSaveCount] = useState(project.saves ?? 0);
+  const pendingEmitRef = useRef<{
+    likes?: number;
+    saves?: number;
+  } | null>(null);
   const likeScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -48,8 +56,12 @@ export function ProjectCard({
   }, [isStreamSaved, project.id, saved]);
 
   useEffect(() => {
+    setLikeCount(project.likes ?? 0);
+  }, [project.id, project.likes]);
+
+  useEffect(() => {
     setSaveCount(project.saves ?? 0);
-  }, [project.saves]);
+  }, [project.id, project.saves]);
 
   useEffect(() => {
     let isMounted = true;
@@ -83,11 +95,23 @@ export function ProjectCard({
       if (isLiked) {
         await unlikeProject(user.username, project.id);
         setIsLiked(false);
-        setLikeCount((prev) => Math.max(0, prev - 1));
+        const nextLikes = Math.max(0, likeCount - 1);
+        setLikeCount(nextLikes);
+        pendingEmitRef.current = {
+          ...(pendingEmitRef.current ?? {}),
+          likes: nextLikes,
+          isLiked: false,
+        };
       } else {
         await likeProject(user.username, project.id);
         setIsLiked(true);
-        setLikeCount((prev) => prev + 1);
+        const nextLikes = likeCount + 1;
+        setLikeCount(nextLikes);
+        pendingEmitRef.current = {
+          ...(pendingEmitRef.current ?? {}),
+          likes: nextLikes,
+          isLiked: true,
+        };
       }
     } finally {
       setIsUpdating(false);
@@ -101,9 +125,14 @@ export function ProjectCard({
     setIsSaving(true);
     try {
       const nextSaved = !isSaved;
+      const nextCount = Math.max(0, saveCount + (nextSaved ? 1 : -1));
       await toggleSave(project.id);
       setIsSaved(nextSaved);
-      setSaveCount((prev) => Math.max(0, prev + (nextSaved ? 1 : -1)));
+      setSaveCount(nextCount);
+      pendingEmitRef.current = {
+        ...(pendingEmitRef.current ?? {}),
+        saves: nextCount,
+      };
       onSavedChange?.(nextSaved);
     } catch {
       setIsSaved(isStreamSaved(project.id));
@@ -130,6 +159,32 @@ export function ProjectCard({
       }),
     ]).start();
   }, [isLiked, likeScale]);
+
+  useEffect(() => {
+    return subscribeToProjectEvents((event) => {
+      if (event.type !== "stats" || event.projectId !== project.id) {
+        return;
+      }
+      if (typeof event.likes === "number") {
+        setLikeCount(event.likes);
+      }
+      if (typeof event.saves === "number") {
+        setSaveCount(event.saves);
+      }
+      if (typeof event.isLiked === "boolean") {
+        setIsLiked(event.isLiked);
+      }
+    });
+  }, [project.id]);
+
+  useEffect(() => {
+    if (!pendingEmitRef.current) {
+      return;
+    }
+    const payload = pendingEmitRef.current;
+    pendingEmitRef.current = null;
+    emitProjectStats(project.id, payload);
+  }, [likeCount, project.id, saveCount]);
 
   return (
     <Pressable
