@@ -74,6 +74,7 @@ export default function ManageStreamsScreen() {
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(
     null,
   );
+  const [leavingProjectId, setLeavingProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -326,6 +327,41 @@ export default function ManageStreamsScreen() {
     await removeProjectBuilder(projectId, username);
     const list = await getProjectBuilders(projectId).catch(() => []);
     setBuilderMap((prev) => ({ ...prev, [projectId]: list }));
+  };
+
+  const handleLeaveProject = (projectId: number) => {
+    if (!user?.username || leavingProjectId) {
+      return;
+    }
+    Alert.alert(
+      "Leave stream?",
+      "You will be removed as a builder from this stream.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              setLeavingProjectId(projectId);
+              try {
+                await removeProjectBuilder(projectId, user.username);
+                setProjects((prev) =>
+                  prev.filter((item) => item.id !== projectId),
+                );
+                setBuilderMap((prev) => {
+                  const next = { ...prev };
+                  delete next[projectId];
+                  return next;
+                });
+              } finally {
+                setLeavingProjectId(null);
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -745,7 +781,23 @@ export default function ManageStreamsScreen() {
                             Delete
                           </ThemedText>
                         </Pressable>
-                      ) : null}
+                      ) : (
+                        <Pressable
+                          onPress={() => handleLeaveProject(project.id)}
+                          style={[
+                            styles.actionButton,
+                            { borderColor: colors.border },
+                          ]}
+                          disabled={leavingProjectId === project.id}
+                        >
+                          <ThemedText
+                            type="caption"
+                            style={{ color: colors.muted }}
+                          >
+                            Leave
+                          </ThemedText>
+                        </Pressable>
+                      )}
                     </View>
                   </View>
                 );

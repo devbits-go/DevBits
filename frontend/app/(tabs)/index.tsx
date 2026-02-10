@@ -18,6 +18,8 @@ import {
   getUsersFollowing,
   getPostsFeed,
   getProjectById,
+  getProjectBuilders,
+  getProjectsByBuilderId,
   getProjectsFeed,
   getUserById,
 } from "@/services/api";
@@ -35,16 +37,19 @@ import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { subscribeToPostEvents } from "@/services/postEvents";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 
 export default function HomeScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
+  const { savedProjectIds } = useSavedStreams();
   const [posts, setPosts] = useState([] as ReturnType<typeof mapPostToUi>[]);
   const [projects, setProjects] = useState(
     [] as ReturnType<typeof mapProjectToUi>[],
   );
+  const [builderProjectIds, setBuilderProjectIds] = useState<number[]>([]);
   const [tags, setTags] = useState([] as string[]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -80,19 +85,27 @@ export default function HomeScreen() {
         if (showLoader) {
           setIsLoading(true);
         }
-        const [postFeedRaw, projectFeedRaw, followingIdsRaw] =
-          await Promise.all([
-            getPostsFeed("time", 0, 20),
-            getProjectsFeed("time", 0, 4),
-            user?.username
-              ? getUsersFollowing(user.username)
-              : Promise.resolve([]),
-          ]);
+        const [
+          postFeedRaw,
+          projectFeedRaw,
+          followingIdsRaw,
+          builderProjectsRaw,
+        ] = await Promise.all([
+          getPostsFeed("time", 0, 20),
+          getProjectsFeed("time", 0, 4),
+          user?.username
+            ? getUsersFollowing(user.username)
+            : Promise.resolve([]),
+          user?.id ? getProjectsByBuilderId(user.id) : Promise.resolve([]),
+        ]);
 
         const postFeed = Array.isArray(postFeedRaw) ? postFeedRaw : [];
         const projectFeed = Array.isArray(projectFeedRaw) ? projectFeedRaw : [];
         const followingIds = Array.isArray(followingIdsRaw)
           ? followingIdsRaw
+          : [];
+        const builderProjects = Array.isArray(builderProjectsRaw)
+          ? builderProjectsRaw
           : [];
 
         const followingPosts = followingIds.length
@@ -106,7 +119,18 @@ export default function HomeScreen() {
         const projectMap = new Map(
           projectFeed.map((project) => [project.id, project]),
         );
-        const uiProjects = projectFeed.map(mapProjectToUi);
+        builderProjects.forEach((project) => {
+          projectMap.set(project.id, project);
+        });
+        const combinedProjects = Array.from(projectMap.values());
+        const builderCounts = await Promise.all(
+          combinedProjects.map((project) =>
+            getProjectBuilders(project.id).catch(() => []),
+          ),
+        );
+        const uiProjects = combinedProjects.map((project, index) =>
+          mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+        );
 
         const uiPosts = await Promise.all(
           selectedPosts.map(async (post) => {
@@ -134,6 +158,7 @@ export default function HomeScreen() {
 
         setProjects(uiProjects);
         setPosts(uiPosts);
+        setBuilderProjectIds(builderProjects.map((project) => project.id));
         setTags(
           Array.from(tagCounts.entries())
             .sort((a, b) => b[1] - a[1])
@@ -151,7 +176,7 @@ export default function HomeScreen() {
         }
       }
     },
-    [user?.username],
+    [user?.id, user?.username],
   );
 
   useEffect(() => {
@@ -285,7 +310,24 @@ export default function HomeScreen() {
                 <View style={styles.carouselRow}>
                   {projects.map((project) => (
                     <View key={project.id} style={styles.carouselCardWrap}>
-                      <ProjectCard project={project} variant="full" />
+                      <ProjectCard
+                        project={project}
+                        variant="full"
+                        saved={savedProjectIds.includes(project.id)}
+                        isBuilder={builderProjectIds.includes(project.id)}
+                        onSavedChange={(nextSaved) => {
+                          setSavedProjectIds((prev) => {
+                            const already = prev.includes(project.id);
+                            if (nextSaved && !already) {
+                              return [...prev, project.id];
+                            }
+                            if (!nextSaved && already) {
+                              return prev.filter((id) => id !== project.id);
+                            }
+                            return prev;
+                          });
+                        }}
+                      />
                     </View>
                   ))}
                 </View>

@@ -20,11 +20,17 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
-import { deleteUser, updateUser } from "@/services/api";
+import {
+  deleteUser,
+  resolveMediaUrl,
+  updateUser,
+  uploadMedia,
+} from "@/services/api";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import * as ImagePicker from "expo-image-picker";
@@ -32,12 +38,18 @@ import * as ImagePicker from "expo-image-picker";
 export default function SettingsScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user, refreshUser, signOut } = useAuth();
   const { preferences, updatePreferences } = usePreferences();
   const motion = useMotionConfig();
   const reveal = React.useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
   const [picture, setPicture] = useState(user?.picture ?? "");
+  const [pendingPicture, setPendingPicture] = useState<{
+    uri: string;
+    name: string;
+    type: string;
+  } | null>(null);
   const [bio, setBio] = useState(user?.bio ?? "");
   const [website, setWebsite] = useState("");
   const [github, setGithub] = useState("");
@@ -73,6 +85,7 @@ export default function SettingsScreen() {
       return;
     }
     setPicture(user.picture ?? "");
+    setPendingPicture(null);
     setBio(user.bio ?? "");
     const parsed = parseLinks(user.links ?? []);
     setWebsite(parsed.website);
@@ -181,10 +194,18 @@ export default function SettingsScreen() {
     });
 
     if (!result.canceled && result.assets?.length) {
-      setPicture(result.assets[0].uri);
+      const asset = result.assets[0];
+      setPicture(asset.uri);
+      setPendingPicture({
+        uri: asset.uri,
+        name: asset.fileName ?? `profile-${Date.now()}.jpg`,
+        type: asset.mimeType ?? "image/jpeg",
+      });
       setIsDirty(true);
     }
   };
+
+  const resolvedPicture = resolveMediaUrl(picture);
 
   const handleSave = async () => {
     if (!user?.username) {
@@ -193,6 +214,13 @@ export default function SettingsScreen() {
     setIsSaving(true);
     setMessage("");
     try {
+      let nextPicture = picture.trim();
+      if (pendingPicture && /^file:|^content:/i.test(nextPicture)) {
+        const upload = await uploadMedia(pendingPicture);
+        nextPicture = upload?.url ?? nextPicture;
+        setPicture(nextPicture);
+        setPendingPicture(null);
+      }
       const linkList = buildLinks({
         website,
         github,
@@ -203,7 +231,7 @@ export default function SettingsScreen() {
       await updateUser(user.username, {
         bio,
         links: linkList,
-        picture: picture.trim(),
+        picture: nextPicture,
       });
       await refreshUser();
       setIsDirty(false);
@@ -309,7 +337,7 @@ export default function SettingsScreen() {
                       >
                         {picture ? (
                           <Image
-                            source={{ uri: picture }}
+                            source={{ uri: resolvedPicture }}
                             style={styles.avatarImage}
                           />
                         ) : (
@@ -350,6 +378,7 @@ export default function SettingsScreen() {
                         onChangeText={(value) => {
                           setIsDirty(true);
                           setPicture(value);
+                          setPendingPicture(null);
                         }}
                         placeholder="Profile image URL"
                         placeholderTextColor={colors.muted}
@@ -741,6 +770,57 @@ export default function SettingsScreen() {
                     </View>
 
                     <View style={styles.section}>
+                      <ThemedText type="subtitle">Profile</ThemedText>
+                      <ThemedText
+                        type="caption"
+                        style={{ color: colors.muted }}
+                      >
+                        View your public profile.
+                      </ThemedText>
+                      <Pressable
+                        onPress={() => {
+                          if (!user?.username) {
+                            return;
+                          }
+                          router.push({
+                            pathname: "/user/[username]",
+                            params: { username: user.username },
+                          });
+                        }}
+                        style={[
+                          styles.secondaryButton,
+                          { borderColor: colors.border },
+                        ]}
+                        disabled={!user?.username}
+                      >
+                        <ThemedText
+                          type="defaultSemiBold"
+                          style={{ color: colors.muted }}
+                        >
+                          View public profile
+                        </ThemedText>
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.section}>
+                      <ThemedText type="subtitle">Account</ThemedText>
+                      <Pressable
+                        onPress={signOut}
+                        style={[
+                          styles.secondaryButton,
+                          { borderColor: colors.border },
+                        ]}
+                      >
+                        <ThemedText
+                          type="defaultSemiBold"
+                          style={{ color: colors.muted }}
+                        >
+                          Sign out
+                        </ThemedText>
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.section}>
                       <ThemedText type="subtitle">Danger zone</ThemedText>
                       <ThemedText
                         type="caption"
@@ -888,6 +968,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
+  },
+  secondaryButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
   },
   dangerButton: {
     borderRadius: 12,

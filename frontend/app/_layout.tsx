@@ -13,6 +13,7 @@ import "react-native-reanimated";
 import { Colors } from "@/constants/Colors";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SavedProvider } from "@/contexts/SavedContext";
+import { SavedStreamsProvider } from "@/contexts/SavedStreamsContext";
 import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { NotificationsProvider } from "@/contexts/NotificationsContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -26,7 +27,9 @@ export default function RootLayout() {
       <PreferencesProvider>
         <NotificationsProvider>
           <SavedProvider>
-            <RootLayoutNav />
+            <SavedStreamsProvider>
+              <RootLayoutNav />
+            </SavedStreamsProvider>
           </SavedProvider>
         </NotificationsProvider>
       </PreferencesProvider>

@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  TextInput,
   View,
 } from "react-native";
 import {
@@ -18,6 +20,7 @@ import { ProjectCard } from "@/components/ProjectCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatPill } from "@/components/StatPill";
 import { ThemedText } from "@/components/ThemedText";
+import { UserCard } from "@/components/UserCard";
 import { Post } from "@/components/Post";
 import User from "@/components/User";
 import { TopBlur } from "@/components/TopBlur";
@@ -30,22 +33,29 @@ import {
   getPostById,
   getPostsByUserId,
   getProjectById,
-  getProjectFollowing,
-  getProjectsByUserId,
+  getProjectBuilders,
+  getProjectsByBuilderId,
   getUserById,
   getUserByUsername,
   getUsersFollowers,
+  getUsersFollowersUsernames,
+  getUsersFollowing,
+  getUsersFollowingUsernames,
+  followUser,
+  unfollowUser,
 } from "@/services/api";
 import { mapPostToUi, mapProjectToUi } from "@/services/mappers";
 import { useSaved } from "@/contexts/SavedContext";
+import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 import { subscribeToPostEvents } from "@/services/postEvents";
 
 export default function ProfileScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signOut, user: authUser } = useAuth();
+  const { user: authUser } = useAuth();
   const { savedPostIds } = useSaved();
+  const { savedProjectIds } = useSavedStreams();
   const [currentUser, setCurrentUser] = useState<UserProps | null>(null);
   const [projects, setProjects] = useState(
     [] as ReturnType<typeof mapProjectToUi>[],
@@ -57,16 +67,50 @@ export default function ProfileScreen() {
   const [savedStreams, setSavedStreams] = useState(
     [] as ReturnType<typeof mapProjectToUi>[],
   );
+  const [builderProjectIds, setBuilderProjectIds] = useState<number[]>([]);
   const [isSavedLoading, setIsSavedLoading] = useState(false);
   const [isSavedStreamsLoading, setIsSavedStreamsLoading] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
   const [streakCount, setStreakCount] = useState(0);
   const [shipsCount, setShipsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isFollowersOpen, setIsFollowersOpen] = useState(false);
+  const [isFollowingOpen, setIsFollowingOpen] = useState(false);
+  const [followersList, setFollowersList] = useState<string[]>([]);
+  const [followingList, setFollowingList] = useState<string[]>([]);
+  const [isFollowersLoading, setIsFollowersLoading] = useState(false);
+  const [isFollowingLoading, setIsFollowingLoading] = useState(false);
+  const [followerUsers, setFollowerUsers] = useState<UserProps[]>([]);
+  const [followingUsers, setFollowingUsers] = useState<UserProps[]>([]);
+  const [followingSet, setFollowingSet] = useState<Set<number>>(new Set());
+  const [isFollowingBusy, setIsFollowingBusy] = useState(false);
+  const [followersQuery, setFollowersQuery] = useState("");
+  const [followingQuery, setFollowingQuery] = useState("");
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+
+  const filteredFollowerUsers = React.useMemo(() => {
+    const trimmed = followersQuery.trim().toLowerCase();
+    if (!trimmed) {
+      return followerUsers;
+    }
+    return followerUsers.filter((user) =>
+      user.username.toLowerCase().includes(trimmed),
+    );
+  }, [followerUsers, followersQuery]);
+
+  const filteredFollowingUsers = React.useMemo(() => {
+    const trimmed = followingQuery.trim().toLowerCase();
+    if (!trimmed) {
+      return followingUsers;
+    }
+    return followingUsers.filter((user) =>
+      user.username.toLowerCase().includes(trimmed),
+    );
+  }, [followingUsers, followingQuery]);
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -106,23 +150,37 @@ export default function ProfileScreen() {
 
       if (resolvedUser?.id) {
         try {
-          const [userProjects, userPosts, followers] = await Promise.all([
-            getProjectsByUserId(resolvedUser.id),
-            getPostsByUserId(resolvedUser.id),
-            getUsersFollowers(resolvedUser.username),
-          ]);
+          const [userProjects, userPosts, followers, following] =
+            await Promise.all([
+              getProjectsByBuilderId(resolvedUser.id),
+              getPostsByUserId(resolvedUser.id),
+              getUsersFollowers(resolvedUser.username),
+              getUsersFollowing(resolvedUser.username),
+            ]);
 
           const safeProjects = Array.isArray(userProjects) ? userProjects : [];
           const safePosts = Array.isArray(userPosts) ? userPosts : [];
           const safeFollowers = Array.isArray(followers) ? followers : [];
+          const safeFollowing = Array.isArray(following) ? following : [];
 
           const projectMap = new Map(
             safeProjects.map((project) => [project.id, project]),
           );
 
-          setProjects(safeProjects.map(mapProjectToUi));
+          const builderCounts = await Promise.all(
+            safeProjects.map((project) =>
+              getProjectBuilders(project.id).catch(() => []),
+            ),
+          );
+          setProjects(
+            safeProjects.map((project, index) =>
+              mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+            ),
+          );
+          setBuilderProjectIds(safeProjects.map((project) => project.id));
           setShipsCount(safePosts.length);
           setFollowersCount(safeFollowers.length);
+          setFollowingCount(safeFollowing.length);
           const uniqueDays = Array.from(
             new Set(
               safePosts.map((post) =>
@@ -161,7 +219,9 @@ export default function ProfileScreen() {
           setPosts([]);
           setShipsCount(0);
           setFollowersCount(0);
+          setFollowingCount(0);
           setStreakCount(0);
+          setBuilderProjectIds([]);
           setHasError(true);
         }
       }
@@ -169,11 +229,83 @@ export default function ProfileScreen() {
       setCurrentUser(null);
       setProjects([]);
       setPosts([]);
+      setBuilderProjectIds([]);
       setHasError(true);
     } finally {
       setIsLoading(false);
     }
   }, [authUser]);
+
+  const loadFollowers = useCallback(async () => {
+    if (!authUser?.username) {
+      return;
+    }
+    setIsFollowersLoading(true);
+    try {
+      const list = await getUsersFollowersUsernames(authUser.username);
+      const names = Array.isArray(list) ? list : [];
+      setFollowersList(names);
+      const users = await Promise.all(
+        names.map((name) => getUserByUsername(name).catch(() => null)),
+      );
+      setFollowerUsers(users.filter((item): item is UserProps => !!item));
+      const followingIds = await getUsersFollowing(authUser.username).catch(
+        () => [],
+      );
+      setFollowingSet(new Set(Array.isArray(followingIds) ? followingIds : []));
+    } finally {
+      setIsFollowersLoading(false);
+    }
+  }, [authUser?.username]);
+
+  const loadFollowing = useCallback(async () => {
+    if (!authUser?.username) {
+      return;
+    }
+    setIsFollowingLoading(true);
+    try {
+      const list = await getUsersFollowingUsernames(authUser.username);
+      const names = Array.isArray(list) ? list : [];
+      setFollowingList(names);
+      const users = await Promise.all(
+        names.map((name) => getUserByUsername(name).catch(() => null)),
+      );
+      setFollowingUsers(users.filter((item): item is UserProps => !!item));
+      const followingIds = await getUsersFollowing(authUser.username).catch(
+        () => [],
+      );
+      setFollowingSet(new Set(Array.isArray(followingIds) ? followingIds : []));
+    } finally {
+      setIsFollowingLoading(false);
+    }
+  }, [authUser?.username]);
+
+  const handleToggleFollow = async (target: UserProps) => {
+    if (!authUser?.username || isFollowingBusy) {
+      return;
+    }
+    const targetId = target.id ?? -1;
+    const isFollowing = followingSet.has(targetId);
+    setIsFollowingBusy(true);
+    try {
+      if (isFollowing) {
+        await unfollowUser(authUser.username, target.username);
+      } else {
+        await followUser(authUser.username, target.username);
+      }
+      setFollowingSet((prev) => {
+        const next = new Set(prev);
+        if (isFollowing) {
+          next.delete(targetId);
+        } else if (targetId > 0) {
+          next.add(targetId);
+        }
+        return next;
+      });
+    } finally {
+      setIsFollowingBusy(false);
+    }
+  };
 
   useEffect(() => {
     clearApiCache();
@@ -189,16 +321,24 @@ export default function ProfileScreen() {
     try {
       const savedData = await Promise.all(
         savedPostIds.map(async (postId) => {
-          const post = await getPostById(postId);
-          const [user, project] = await Promise.all([
-            getUserById(post.user).catch(() => null),
-            getProjectById(post.project).catch(() => null),
-          ]);
-          return mapPostToUi(post, user, project);
+          try {
+            const post = await getPostById(postId);
+            const [user, project] = await Promise.all([
+              getUserById(post.user).catch(() => null),
+              getProjectById(post.project).catch(() => null),
+            ]);
+            return mapPostToUi(post, user, project);
+          } catch {
+            return null;
+          }
         }),
       );
 
-      setSavedPosts(savedData);
+      setSavedPosts(
+        savedData.filter(
+          (post): post is ReturnType<typeof mapPostToUi> => post !== null,
+        ),
+      );
     } catch {
       setSavedPosts([]);
     } finally {
@@ -206,32 +346,44 @@ export default function ProfileScreen() {
     }
   }, [savedPostIds]);
 
-  const loadSavedStreams = useCallback(async () => {
-    if (!authUser?.username) {
-      setSavedStreams([]);
-      return;
-    }
-    setIsSavedStreamsLoading(true);
-    try {
-      const savedIds = await getProjectFollowing(authUser.username);
-      const safeIds = Array.isArray(savedIds) ? savedIds : [];
-      if (!safeIds.length) {
+  const loadSavedStreams = useCallback(
+    async (showLoader = true) => {
+      if (!savedProjectIds.length) {
         setSavedStreams([]);
+        if (showLoader) {
+          setIsSavedStreamsLoading(false);
+        }
         return;
       }
-      const projectsData = await Promise.all(
-        safeIds.map((projectId) => getProjectById(projectId).catch(() => null)),
-      );
-      const mapped = projectsData
-        .filter((project) => project)
-        .map((project) => mapProjectToUi(project!));
-      setSavedStreams(mapped);
-    } catch {
-      setSavedStreams([]);
-    } finally {
-      setIsSavedStreamsLoading(false);
-    }
-  }, [authUser?.username]);
+      if (showLoader) {
+        setIsSavedStreamsLoading(true);
+      }
+      try {
+        const projectsData = await Promise.all(
+          savedProjectIds.map((projectId) =>
+            getProjectById(projectId).catch(() => null),
+          ),
+        );
+        const validProjects = projectsData.filter((project) => project);
+        const builderCounts = await Promise.all(
+          validProjects.map((project) =>
+            getProjectBuilders(project!.id).catch(() => []),
+          ),
+        );
+        const mapped = validProjects.map((project, index) =>
+          mapProjectToUi(project!, builderCounts[index]?.length ?? 0),
+        );
+        setSavedStreams(mapped);
+      } catch {
+        setSavedStreams([]);
+      } finally {
+        if (showLoader) {
+          setIsSavedStreamsLoading(false);
+        }
+      }
+    },
+    [savedProjectIds],
+  );
 
   useEffect(() => {
     clearApiCache();
@@ -284,7 +436,7 @@ export default function ProfileScreen() {
       clearApiCache();
       fetchUser();
       loadSaved();
-      loadSavedStreams();
+      loadSavedStreams(false);
     }, [fetchUser, loadSaved, loadSavedStreams]),
   );
 
@@ -387,7 +539,22 @@ export default function ProfileScreen() {
                 />
                 <View style={styles.statRow}>
                   <StatPill label="Streak" value={`${streakCount}d`} />
-                  <StatPill label="Followers" value={followersCount} />
+                  <Pressable
+                    onPress={() => {
+                      setIsFollowersOpen(true);
+                      loadFollowers();
+                    }}
+                  >
+                    <StatPill label="Followers" value={followersCount} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setIsFollowingOpen(true);
+                      loadFollowing();
+                    }}
+                  >
+                    <StatPill label="Following" value={followingCount} />
+                  </Pressable>
                   <StatPill label="Ships" value={shipsCount} />
                 </View>
                 <Pressable
@@ -399,14 +566,6 @@ export default function ProfileScreen() {
                 >
                   <ThemedText type="caption" style={{ color: colors.muted }}>
                     Settings
-                  </ThemedText>
-                </Pressable>
-                <Pressable
-                  style={[styles.signOutButton, { borderColor: colors.border }]}
-                  onPress={signOut}
-                >
-                  <ThemedText type="caption" style={{ color: colors.muted }}>
-                    Sign out
                   </ThemedText>
                 </Pressable>
               </>
@@ -446,7 +605,11 @@ export default function ProfileScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.projectRow}>
                   {projects.map((project) => (
-                    <ProjectCard key={project.id} project={project} />
+                    <ProjectCard
+                      key={project.id}
+                      project={project}
+                      isBuilder={builderProjectIds.includes(project.id)}
+                    />
                   ))}
                 </View>
               </ScrollView>
@@ -462,8 +625,8 @@ export default function ProfileScreen() {
           <View>
             <SectionHeader
               title="Saved streams"
-              actionLabel="See all"
-              actionOnPress={() => router.push("/streams")}
+              actionLabel="Library"
+              actionOnPress={() => router.push("/saved-streams")}
             />
             {isSavedStreamsLoading ? (
               <View style={styles.skeletonStack}>
@@ -484,7 +647,18 @@ export default function ProfileScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.projectRow}>
                   {savedStreams.map((project) => (
-                    <ProjectCard key={project.id} project={project} />
+                    <ProjectCard
+                      key={project.id}
+                      project={project}
+                      saved
+                      onSavedChange={(nextSaved) => {
+                        if (!nextSaved) {
+                          setSavedStreams((prev) =>
+                            prev.filter((item) => item.id !== project.id),
+                          );
+                        }
+                      }}
+                    />
                   ))}
                 </View>
               </ScrollView>
@@ -563,6 +737,128 @@ export default function ProfileScreen() {
         </ScrollView>
       </SafeAreaView>
       <TopBlur />
+      <Modal
+        visible={isFollowersOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsFollowersOpen(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setIsFollowersOpen(false)}
+        >
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <ThemedText type="subtitle">Followers</ThemedText>
+            <TextInput
+              value={followersQuery}
+              onChangeText={setFollowersQuery}
+              placeholder="Search followers"
+              placeholderTextColor={colors.muted}
+              style={[
+                styles.searchInput,
+                {
+                  backgroundColor: colors.surfaceAlt,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+            />
+            <ScrollView>
+              {isFollowersLoading ? (
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  Loading...
+                </ThemedText>
+              ) : filteredFollowerUsers.length ? (
+                filteredFollowerUsers.map((item) => (
+                  <UserCard
+                    key={item.username}
+                    username={item.username}
+                    picture={item.picture}
+                    isFollowing={followingSet.has(item.id ?? -1)}
+                    onPress={() => {
+                      setIsFollowersOpen(false);
+                      router.push({
+                        pathname: "/user/[username]",
+                        params: { username: item.username },
+                      });
+                    }}
+                    onToggleFollow={() => handleToggleFollow(item)}
+                  />
+                ))
+              ) : followersQuery.trim() ? (
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  No matches found.
+                </ThemedText>
+              ) : (
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  No followers yet.
+                </ThemedText>
+              )}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+      <Modal
+        visible={isFollowingOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsFollowingOpen(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setIsFollowingOpen(false)}
+        >
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <ThemedText type="subtitle">Following</ThemedText>
+            <TextInput
+              value={followingQuery}
+              onChangeText={setFollowingQuery}
+              placeholder="Search following"
+              placeholderTextColor={colors.muted}
+              style={[
+                styles.searchInput,
+                {
+                  backgroundColor: colors.surfaceAlt,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+            />
+            <ScrollView>
+              {isFollowingLoading ? (
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  Loading...
+                </ThemedText>
+              ) : filteredFollowingUsers.length ? (
+                filteredFollowingUsers.map((item) => (
+                  <UserCard
+                    key={item.username}
+                    username={item.username}
+                    picture={item.picture}
+                    isFollowing={followingSet.has(item.id ?? -1)}
+                    onPress={() => {
+                      setIsFollowingOpen(false);
+                      router.push({
+                        pathname: "/user/[username]",
+                        params: { username: item.username },
+                      });
+                    }}
+                    onToggleFollow={() => handleToggleFollow(item)}
+                  />
+                ))
+              ) : followingQuery.trim() ? (
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  No matches found.
+                </ThemedText>
+              ) : (
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  Not following anyone yet.
+                </ThemedText>
+              )}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -630,13 +926,6 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 10,
   },
-  signOutButton: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
   deleteAccountButton: {
     alignSelf: "flex-start",
     borderWidth: 1,
@@ -656,5 +945,29 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 4,
     paddingRight: 20,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    maxHeight: "70%",
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+  },
+  modalRow: {
+    paddingVertical: 8,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
   },
 });

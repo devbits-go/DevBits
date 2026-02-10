@@ -193,19 +193,25 @@ func RemoveProjectBuilder(context *gin.Context) {
 		return
 	}
 
-	authUserID, ok := GetAuthUserID(context)
-	if !ok || project.Owner != authUserID {
-		RespondWithError(context, http.StatusForbidden, "Only the owner can manage builders")
-		return
-	}
-
 	builderId, err := database.GetUserIdByUsername(builderUsername)
 	if err != nil || builderId == 0 {
 		RespondWithError(context, http.StatusBadRequest, "Builder user not found")
 		return
 	}
 
-	status, err := database.QueryRemoveProjectBuilder(projectId, int64(builderId))
+	authUserID, ok := GetAuthUserID(context)
+	if !ok {
+		RespondWithError(context, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	builderID64 := int64(builderId)
+	if project.Owner != authUserID && builderID64 != authUserID {
+		RespondWithError(context, http.StatusForbidden, "Only the owner can manage builders")
+		return
+	}
+
+	status, err := database.QueryRemoveProjectBuilder(projectId, builderID64)
 	if err != nil {
 		RespondWithError(context, status, fmt.Sprintf("Failed to remove builder: %v", err))
 		return

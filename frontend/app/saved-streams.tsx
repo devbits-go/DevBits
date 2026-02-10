@@ -11,27 +11,27 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { Post } from "@/components/Post";
+import { ProjectCard } from "@/components/ProjectCard";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
-import { useSaved } from "@/contexts/SavedContext";
+import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 import {
   clearApiCache,
-  getPostById,
   getProjectById,
-  getUserById,
+  getProjectBuilders,
 } from "@/services/api";
-import { mapPostToUi } from "@/services/mappers";
-import { subscribeToPostEvents } from "@/services/postEvents";
+import { mapProjectToUi } from "@/services/mappers";
 
-export default function SavedLibraryScreen() {
+export default function SavedStreamsScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
-  const { savedPostIds } = useSaved();
-  const [posts, setPosts] = useState([] as ReturnType<typeof mapPostToUi>[]);
+  const { savedProjectIds } = useSavedStreams();
+  const [projects, setProjects] = useState(
+    [] as ReturnType<typeof mapProjectToUi>[],
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
@@ -52,8 +52,8 @@ export default function SavedLibraryScreen() {
 
   const loadSaved = useCallback(
     async (showLoader = true) => {
-      if (!savedPostIds.length) {
-        setPosts([]);
+      if (!savedProjectIds.length) {
+        setProjects([]);
         if (showLoader) {
           setIsLoading(false);
         }
@@ -63,71 +63,34 @@ export default function SavedLibraryScreen() {
         if (showLoader) {
           setIsLoading(true);
         }
-        const savedData = await Promise.all(
-          savedPostIds.map(async (postId) => {
-            try {
-              const post = await getPostById(postId);
-              const [postUser, postProject] = await Promise.all([
-                getUserById(post.user).catch(() => null),
-                getProjectById(post.project).catch(() => null),
-              ]);
-              return mapPostToUi(post, postUser, postProject);
-            } catch {
-              return null;
-            }
-          }),
-        );
-
-        setPosts(
-          savedData.filter(
-            (post): post is ReturnType<typeof mapPostToUi> => post !== null,
+        const projectsData = await Promise.all(
+          savedProjectIds.map((projectId) =>
+            getProjectById(projectId).catch(() => null),
           ),
         );
+        const validProjects = projectsData.filter((project) => project);
+        const builderCounts = await Promise.all(
+          validProjects.map((project) =>
+            getProjectBuilders(project!.id).catch(() => []),
+          ),
+        );
+        const mapped = validProjects.map((project, index) =>
+          mapProjectToUi(project!, builderCounts[index]?.length ?? 0),
+        );
+
+        setProjects(mapped);
       } finally {
         if (showLoader) {
           setIsLoading(false);
         }
       }
     },
-    [savedPostIds],
+    [savedProjectIds],
   );
 
   useEffect(() => {
     loadSaved();
   }, [loadSaved]);
-
-  useEffect(() => {
-    return subscribeToPostEvents((event) => {
-      setPosts((prev) => {
-        if (event.type === "updated") {
-          return prev.map((post) =>
-            post.id === event.postId
-              ? {
-                  ...post,
-                  content: event.content,
-                  media: event.media ?? post.media,
-                }
-              : post,
-          );
-        }
-        if (event.type === "stats") {
-          return prev.map((post) =>
-            post.id === event.postId
-              ? {
-                  ...post,
-                  likes: event.likes ?? post.likes,
-                  comments: event.comments ?? post.comments,
-                }
-              : post,
-          );
-        }
-        if (event.type === "deleted") {
-          return prev.filter((post) => post.id !== event.postId);
-        }
-        return prev;
-      });
-    });
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -176,10 +139,10 @@ export default function SavedLibraryScreen() {
             }}
           >
             <ThemedText type="display" style={styles.title}>
-              Saved library
+              Saved streams
             </ThemedText>
             <ThemedText type="caption" style={{ color: colors.muted }}>
-              Everything you bookmarked.
+              Your saved stream library.
             </ThemedText>
           </Animated.View>
 
@@ -198,12 +161,14 @@ export default function SavedLibraryScreen() {
                 />
               ))}
             </View>
-          ) : posts.length ? (
-            posts.map((post) => <Post key={post.id} {...post} />)
+          ) : projects.length ? (
+            projects.map((project) => (
+              <ProjectCard key={project.id} project={project} variant="full" />
+            ))
           ) : (
             <View style={styles.emptyState}>
               <ThemedText type="caption" style={{ color: colors.muted }}>
-                No saved bytes yet.
+                No saved streams yet.
               </ThemedText>
             </View>
           )}
@@ -235,7 +200,7 @@ const styles = StyleSheet.create({
   },
   skeletonCard: {
     borderRadius: 14,
-    height: 96,
+    height: 120,
     borderWidth: 1,
     opacity: 0.7,
   },

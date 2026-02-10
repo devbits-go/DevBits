@@ -17,6 +17,7 @@ export interface ProjectProps {
     about_md?: string;
     status: number;
     likes: number;
+    saves?: number;
     tags: string[];
     links: string[];
     media?: string[];
@@ -28,6 +29,7 @@ export interface PostProps {
     user: number;
     project: number;
     likes: number;
+    saves?: number;
     content: string;
     media?: string[];
     comments: number[];
@@ -128,6 +130,7 @@ export interface ApiProject {
     about_md?: string;
     status: number;
     likes: number;
+    saves: number;
     tags: string[];
     links: string[];
     media?: string[];
@@ -139,6 +142,7 @@ export interface ApiPost {
     user: number;
     project: number;
     likes: number;
+    saves: number;
     content: string;
     media?: string[];
     created_on: string;
@@ -176,6 +180,7 @@ export interface UiPost {
     projectName: string;
     projectStage: string;
     likes: number;
+    saves: number;
     comments: number;
     content: string;
     media?: string[];
@@ -185,11 +190,13 @@ export interface UiPost {
 
 export interface UiProject {
     id: number;
+    ownerId: number;
     name: string;
     summary: string;
     about_md?: string;
     stage: string;
     likes: number;
+    saves: number;
     contributors: number;
     tags: string[];
     media?: string[];

@@ -19,18 +19,16 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { ApiProject } from "@/constants/Types";
 import {
   clearApiCache,
-  followProject,
   getPostsByProjectId,
   getProjectBuilders,
   getProjectById,
-  getProjectFollowing,
   getUserById,
-  unfollowProject,
+  removeProjectBuilder,
 } from "@/services/api";
 import { mapPostToUi } from "@/services/mappers";
 import { Post } from "@/components/Post";
@@ -44,6 +42,7 @@ import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 
 const ensureUrlScheme = (url: string) =>
   /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
@@ -51,7 +50,9 @@ const ensureUrlScheme = (url: string) =>
 export default function StreamDetailScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user } = useAuth();
+  const { savedProjectIds, toggleSave } = useSavedStreams();
   const { projectId } = useLocalSearchParams<{ projectId?: string }>();
   const [project, setProject] = useState<ApiProject | null>(null);
   const [posts, setPosts] = useState([] as ReturnType<typeof mapPostToUi>[]);
@@ -61,12 +62,23 @@ export default function StreamDetailScreen() {
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [saveCount, setSaveCount] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const bottom = useBottomTabOverflow();
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
 
   const projectIdNumber = useMemo(() => Number(projectId), [projectId]);
+  const isCreator = useMemo(
+    () => (project && user?.id ? project.owner === user.id : false),
+    [project, user?.id],
+  );
+  const isBuilder = useMemo(
+    () =>
+      !isCreator && user?.username ? builders.includes(user.username) : false,
+    [builders, isCreator, user?.username],
+  );
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -107,6 +119,7 @@ export default function StreamDetailScreen() {
         );
 
         setProject(projectData);
+        setSaveCount(projectData.saves ?? 0);
         setPosts(uiPosts);
         setBuilders(Array.isArray(builderList) ? builderList : []);
         setCreatorName(ownerUser?.username ?? `user-${projectData.owner}`);
@@ -147,27 +160,11 @@ export default function StreamDetailScreen() {
   useAutoRefresh(() => loadStream(false), { focusRefresh: false });
 
   useEffect(() => {
-    let isMounted = true;
-    const loadSaved = async () => {
-      if (!user?.username || !projectIdNumber) {
-        return;
-      }
-      try {
-        const savedIds = await getProjectFollowing(user.username);
-        if (isMounted) {
-          setIsSaved(savedIds.includes(projectIdNumber));
-        }
-      } catch {
-        if (isMounted) {
-          setIsSaved(false);
-        }
-      }
-    };
-    loadSaved();
-    return () => {
-      isMounted = false;
-    };
-  }, [projectIdNumber, user?.username]);
+    if (!projectIdNumber) {
+      return;
+    }
+    setIsSaved(savedProjectIds.includes(projectIdNumber));
+  }, [projectIdNumber, savedProjectIds]);
 
   const handleToggleSave = async () => {
     if (!user?.username || !projectIdNumber || isSaving) {
@@ -175,17 +172,29 @@ export default function StreamDetailScreen() {
     }
     setIsSaving(true);
     try {
-      if (isSaved) {
-        await unfollowProject(user.username, projectIdNumber);
-        setIsSaved(false);
-      } else {
-        await followProject(user.username, projectIdNumber);
-        setIsSaved(true);
-      }
-    } catch {
-      // Ignore conflicts when state is already in sync.
+      await toggleSave(projectIdNumber);
+      setIsSaved((prev) => {
+        const next = !prev;
+        setSaveCount((current) => Math.max(0, current + (next ? 1 : -1)));
+        return next;
+      });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleLeaveBuilder = async () => {
+    if (!user?.username || !projectIdNumber || !isBuilder || isLeaving) {
+      return;
+    }
+    setIsLeaving(true);
+    try {
+      await removeProjectBuilder(projectIdNumber, user.username);
+      setBuilders((prev) =>
+        prev.filter((builder) => builder !== user.username),
+      );
+    } finally {
+      setIsLeaving(false);
     }
   };
 
@@ -255,23 +264,68 @@ export default function StreamDetailScreen() {
               </View>
             ) : project ? (
               <View style={styles.streamCard}>
-                <View style={styles.titleRow}>
-                  <View>
-                    <ThemedText type="display" style={styles.title}>
-                      {project.name}
-                    </ThemedText>
-                    {createdLabel || creatorName ? (
-                      <ThemedText
-                        type="caption"
-                        style={{ color: colors.muted }}
-                      >
-                        {createdLabel ? `Created ${createdLabel}` : "Created"}
-                        {creatorName ? ` · Creator ${creatorName}` : ""}
-                      </ThemedText>
-                    ) : null}
-                  </View>
-                  <View style={styles.titleActions}>
+                <View style={styles.headerBlock}>
+                  <ThemedText type="display" style={styles.title}>
+                    {project.name}
+                  </ThemedText>
+                  {createdLabel || creatorName ? (
+                    <View style={styles.metaRow}>
+                      {createdLabel ? (
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Created {createdLabel}
+                        </ThemedText>
+                      ) : null}
+                      {creatorName ? (
+                        <Pressable
+                          onPress={() =>
+                            router.push({
+                              pathname: "/user/[username]",
+                              params: { username: creatorName },
+                            })
+                          }
+                        >
+                          <ThemedText
+                            type="caption"
+                            style={{ color: colors.tint }}
+                          >
+                            Creator {creatorName}
+                          </ThemedText>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                  <View style={styles.chipRow}>
                     <TagChip label={stageLabel} tone="accent" />
+                    {isCreator ? (
+                      <TagChip label="Creator" tone="accent" />
+                    ) : null}
+                    {isBuilder ? <TagChip label="Builder" /> : null}
+                  </View>
+                  <View style={styles.actionRow}>
+                    {isBuilder ? (
+                      <Pressable
+                        onPress={handleLeaveBuilder}
+                        style={({ pressed }) => [
+                          styles.saveButton,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: colors.surfaceAlt,
+                          },
+                          pressed && styles.saveButtonPressed,
+                        ]}
+                        disabled={isLeaving}
+                      >
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Leave
+                        </ThemedText>
+                      </Pressable>
+                    ) : null}
                     <Pressable
                       onPress={handleToggleSave}
                       style={({ pressed }) => [
@@ -288,7 +342,7 @@ export default function StreamDetailScreen() {
                         type="caption"
                         style={{ color: isSaved ? colors.tint : colors.muted }}
                       >
-                        {isSaved ? "Saved" : "Save"}
+                        {saveCount}
                       </ThemedText>
                     </Pressable>
                   </View>
@@ -379,15 +433,24 @@ const styles = StyleSheet.create({
   streamCard: {
     gap: 12,
   },
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  headerBlock: {
+    gap: 8,
   },
-  titleActions: {
+  metaRow: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
     gap: 10,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  actionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    alignItems: "center",
   },
   saveButton: {
     borderRadius: 10,

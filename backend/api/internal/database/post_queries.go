@@ -19,7 +19,10 @@ import (
 //   - *types.Post: The post details if found.
 //   - error: An error if the query fails. Returns nil for both if no post exists.
 func QueryPost(id int) (*types.Post, error) {
-	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes, creation_date FROM Posts WHERE id = ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+        COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+        creation_date
+        FROM Posts WHERE id = ?;`
 	row := DB.QueryRow(query, id)
 	var post types.Post
 	var mediaJSON string
@@ -31,6 +34,7 @@ func QueryPost(id int) (*types.Post, error) {
 		&post.Content,
 		&mediaJSON,
 		&post.Likes,
+			&post.Saves,
 		&post.CreationDate,
 	)
 	if err != nil {
@@ -143,7 +147,10 @@ func QueryUpdatePost(id int, updatedData map[string]interface{}) error {
 //   - []types.Post: The post details if found.
 //   - error: An error if the query fails. Returns nil for both if no post exists.
 func QueryPostsByUserId(userId int) ([]types.Post, int, error) {
-	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes, creation_date FROM Posts WHERE user_id = ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+	COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+	creation_date
+	FROM Posts WHERE user_id = ?;`
 
 	rows, err := DB.Query(query, userId)
 	if err != nil {
@@ -163,6 +170,7 @@ func QueryPostsByUserId(userId int) ([]types.Post, int, error) {
 			&post.Content,
 			&mediaJSON,
 			&post.Likes,
+			&post.Saves,
 			&post.CreationDate,
 		)
 
@@ -190,7 +198,10 @@ func QueryPostsByUserId(userId int) ([]types.Post, int, error) {
 //   - *types.Post: The post details if found.
 //   - error: An error if the query fails. Returns nil for both if no post exists.
 func QueryPostsByProjectId(projId int) ([]types.Post, int, error) {
-	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes, creation_date FROM Posts WHERE project_id = ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+	COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+	creation_date
+	FROM Posts WHERE project_id = ?;`
 
 	rows, err := DB.Query(query, projId)
 	if err != nil {
@@ -210,6 +221,7 @@ func QueryPostsByProjectId(projId int) ([]types.Post, int, error) {
 			&post.Content,
 			&mediaJSON,
 			&post.Likes,
+			&post.Saves,
 			&post.CreationDate,
 		)
 

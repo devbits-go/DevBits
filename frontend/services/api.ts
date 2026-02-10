@@ -64,6 +64,24 @@ const getDefaultBaseUrl = () => {
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL || getDefaultBaseUrl();
 
+export const resolveMediaUrl = (value?: string | null) => {
+  if (!value) {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return trimmed;
+  }
+  const normalized = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
+  if (normalized.startsWith("uploads/")) {
+    return `${API_BASE_URL}/${normalized}`;
+  }
+  return trimmed;
+};
+
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const authHeader = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -220,6 +238,20 @@ export const getUsersFollowers = (username: string) =>
 
 export const getUsersFollowing = (username: string) =>
   request<number[]>(`/users/${username}/follows`);
+
+export const getUsersFollowersUsernames = async (username: string) => {
+  const response = await request<{ followers?: string[] }>(
+    `/users/${username}/followers/usernames`,
+  );
+  return response?.followers ?? [];
+};
+
+export const getUsersFollowingUsernames = async (username: string) => {
+  const response = await request<{ following?: string[] }>(
+    `/users/${username}/follows/usernames`,
+  );
+  return response?.following ?? [];
+};
 
 export const getProjectFollowing = (username: string) =>
   request<number[]>(`/projects/follows/${username}`);

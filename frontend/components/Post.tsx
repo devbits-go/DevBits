@@ -24,6 +24,7 @@ import {
   isPostLiked,
   likePost,
   deletePost,
+  resolveMediaUrl,
   updatePost,
   uploadMedia,
   unlikePost,
@@ -82,6 +83,7 @@ export function Post({
   projectName,
   projectStage,
   likes,
+  saves,
   comments,
   content,
   media,
@@ -95,9 +97,11 @@ export function Post({
   const { user } = useAuth();
   const { isSaved, toggleSave } = useSaved();
   const [likeCount, setLikeCount] = useState(likes);
+  const [saveCount, setSaveCount] = useState(saves);
   const [commentCount, setCommentCount] = useState(comments);
   const [isLiked, setIsLiked] = useState(false);
   const [isLikeUpdating, setIsLikeUpdating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const [localContent, setLocalContent] = useState(content);
@@ -107,6 +111,7 @@ export function Post({
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const likeScale = useRef(new Animated.Value(1)).current;
+  const resolvedUserPicture = resolveMediaUrl(userPicture);
 
   const initials = useMemo(() => {
     return username
@@ -147,6 +152,10 @@ export function Post({
   useEffect(() => {
     setLikeCount(likes);
   }, [likes]);
+
+  useEffect(() => {
+    setSaveCount(saves);
+  }, [saves]);
 
   useEffect(() => {
     setCommentCount((prev) => {
@@ -225,6 +234,20 @@ export function Post({
       }
     } finally {
       setIsLikeUpdating(false);
+    }
+  };
+
+  const handleToggleSave = async () => {
+    if (isSaving) {
+      return;
+    }
+    const wasSaved = isSaved(id);
+    setIsSaving(true);
+    try {
+      await toggleSave(id);
+      setSaveCount((prev) => Math.max(0, prev + (wasSaved ? -1 : 1)));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -370,8 +393,11 @@ export function Post({
     >
       <View style={styles.header}>
         <Pressable style={styles.headerMeta} onPress={handleOpenProfile}>
-          {userPicture ? (
-            <Image source={{ uri: userPicture }} style={styles.avatar} />
+          {resolvedUserPicture ? (
+            <Image
+              source={{ uri: resolvedUserPicture }}
+              style={styles.avatar}
+            />
           ) : (
             <View
               style={[styles.avatar, { backgroundColor: colors.surfaceAlt }]}
@@ -540,9 +566,9 @@ export function Post({
         />
         <PostAction
           icon="bookmark"
-          label={isSaved(id) ? "saved" : "save"}
+          label={saveCount}
           color={isSaved(id) ? colors.tint : colors.muted}
-          onPress={() => toggleSave(id)}
+          onPress={handleToggleSave}
         />
       </View>
     </View>

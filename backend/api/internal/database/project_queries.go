@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 //   - error: An error if the query fails. Returns nil for both if no project exists.
 func QueryProject(id int) (*types.Project, error) {
 	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+              COALESCE((SELECT COUNT(*) FROM ProjectFollows pf WHERE pf.project_id = Projects.id), 0),
 	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
 	          FROM Projects WHERE id = ?;`
 	row := DB.QueryRow(query, id)
@@ -34,6 +34,7 @@ func QueryProject(id int) (*types.Project, error) {
 		&project.AboutMd,
 		&project.Status,
 		&project.Likes,
+		&project.Saves,
 		&linksJSON,
 		&tagsJSON,
 		&mediaJSON,
@@ -70,6 +71,7 @@ func QueryProject(id int) (*types.Project, error) {
 //   - error: An error if the query fails. Returns nil for both if no project exists.
 func QueryProjectsByUserId(userId int) ([]types.Project, int, error) {
 	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+              COALESCE((SELECT COUNT(*) FROM ProjectFollows pf WHERE pf.project_id = Projects.id), 0),
 	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
 	          FROM Projects WHERE owner = ?;`
 	rows, err := DB.Query(query, userId)
@@ -89,6 +91,7 @@ func QueryProjectsByUserId(userId int) ([]types.Project, int, error) {
 			&project.AboutMd,
 			&project.Status,
 			&project.Likes,
+			&project.Saves,
 			&linksJSON,
 			&tagsJSON,
 			&mediaJSON,
@@ -339,6 +342,7 @@ func QueryGetProjectFollowingNames(username string) ([]string, int, error) {
 // QueryProjectsByBuilderId retrieves projects a user owns or can build.
 func QueryProjectsByBuilderId(userId int) ([]types.Project, int, error) {
 	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+              COALESCE((SELECT COUNT(*) FROM ProjectFollows pf WHERE pf.project_id = Projects.id), 0),
 	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
 	          FROM Projects
 	          WHERE owner = ? OR id IN (
@@ -361,6 +365,7 @@ func QueryProjectsByBuilderId(userId int) ([]types.Project, int, error) {
 			&project.AboutMd,
 			&project.Status,
 			&project.Likes,
+			&project.Saves,
 			&linksJSON,
 			&tagsJSON,
 			&mediaJSON,
@@ -543,11 +548,6 @@ func CreateNewProjectFollow(username string, projectID string) (int, error) {
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("An error occurred parsing project id: %v", projectID)
 	}
-	currFollowing, httpCode, err := QueryGetProjectFollowers(userID)
-	if err != nil {
-		return httpCode, fmt.Errorf("Cannot retrieve user's following list: %v", err)
-	}
-
 	existingProj, err := QueryProject(intProjectID)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Error querying for existing project: %v", err)
@@ -557,19 +557,13 @@ func CreateNewProjectFollow(username string, projectID string) (int, error) {
 		return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", intProjectID)
 	}
 
-	if slices.Contains(currFollowing, intProjectID) {
-		return http.StatusConflict, fmt.Errorf("User is already following this project")
-	}
-
-	query := `INSERT INTO ProjectFollows (user_id, project_id) VALUES (?, ?)`
+	query := `INSERT OR IGNORE INTO ProjectFollows (user_id, project_id) VALUES (?, ?)`
 	rowsAffected, err := ExecUpdate(query, userID, projectID)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("An error occurred adding project follow: %v", err)
 	}
 
-	if rowsAffected == 0 {
-		return http.StatusInternalServerError, fmt.Errorf("Failed to add the follow relationship")
-	}
+	_ = rowsAffected
 
 	return http.StatusOK, nil
 }
@@ -603,24 +597,13 @@ func RemoveProjectFollow(username string, projectID string) (int, error) {
 		return http.StatusNotFound, fmt.Errorf("Project with id %v does not exist", intProjectID)
 	}
 
-	currFollowing, httpCode, err := QueryGetProjectFollowers(userID)
-	if err != nil {
-		return httpCode, fmt.Errorf("Error retrieving user's following list: %v", err)
-	}
-
-	if !slices.Contains(currFollowing, intProjectID) {
-		return http.StatusConflict, fmt.Errorf("User is not following this project")
-	}
-
 	query := `DELETE FROM ProjectFollows WHERE user_id = ? AND project_id = ?`
 	rowsAffected, err := ExecUpdate(query, userID, projectID)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("An error occurred removing project follow: %v", err)
 	}
 
-	if rowsAffected == 0 {
-		return http.StatusConflict, fmt.Errorf("No such follow relationship exists")
-	}
+	_ = rowsAffected
 
 	return http.StatusOK, nil
 }

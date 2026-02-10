@@ -6,20 +6,15 @@ import { ThemedText } from "@/components/ThemedText";
 import { TagChip } from "@/components/TagChip";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  followProject,
-  getProjectFollowing,
-  isProjectLiked,
-  likeProject,
-  unfollowProject,
-  unlikeProject,
-} from "@/services/api";
+import { useSavedStreams } from "@/contexts/SavedStreamsContext";
+import { isProjectLiked, likeProject, unlikeProject } from "@/services/api";
 import { useRouter } from "expo-router";
 
 type ProjectCardProps = {
   project: UiProject;
   variant?: "compact" | "full";
   saved?: boolean;
+  isBuilder?: boolean;
   onSavedChange?: (saved: boolean) => void;
 };
 
@@ -27,23 +22,34 @@ export function ProjectCard({
   project,
   variant = "compact",
   saved,
+  isBuilder,
   onSavedChange,
 }: ProjectCardProps) {
   const colors = useAppColors();
   const router = useRouter();
   const { user } = useAuth();
+  const { isSaved: isStreamSaved, toggleSave } = useSavedStreams();
+  const isCreator =
+    typeof project.ownerId === "number" && user?.id === project.ownerId;
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(project.likes);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isSaved, setIsSaved] = useState(Boolean(saved));
   const [isSaving, setIsSaving] = useState(false);
+  const [saveCount, setSaveCount] = useState(project.saves ?? 0);
   const likeScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (typeof saved === "boolean") {
       setIsSaved(saved);
+      return;
     }
-  }, [saved]);
+    setIsSaved(isStreamSaved(project.id));
+  }, [isStreamSaved, project.id, saved]);
+
+  useEffect(() => {
+    setSaveCount(project.saves ?? 0);
+  }, [project.saves]);
 
   useEffect(() => {
     let isMounted = true;
@@ -52,17 +58,9 @@ export function ProjectCard({
         return;
       }
       try {
-        const [status, following] = await Promise.all([
-          isProjectLiked(user.username, project.id),
-          typeof saved === "boolean"
-            ? Promise.resolve(null)
-            : getProjectFollowing(user.username).catch(() => null),
-        ]);
+        const status = await isProjectLiked(user.username, project.id);
         if (isMounted) {
           setIsLiked(status.status);
-          if (following && Array.isArray(following)) {
-            setIsSaved(following.includes(project.id));
-          }
         }
       } catch {
         if (isMounted) {
@@ -74,7 +72,7 @@ export function ProjectCard({
     return () => {
       isMounted = false;
     };
-  }, [project.id, user?.username]);
+  }, [project.id, saved, user?.username]);
 
   const handleLikeToggle = async () => {
     if (!user?.username || isUpdating) {
@@ -102,17 +100,13 @@ export function ProjectCard({
     }
     setIsSaving(true);
     try {
-      if (isSaved) {
-        await unfollowProject(user.username, project.id);
-        setIsSaved(false);
-        onSavedChange?.(false);
-      } else {
-        await followProject(user.username, project.id);
-        setIsSaved(true);
-        onSavedChange?.(true);
-      }
+      const nextSaved = !isSaved;
+      await toggleSave(project.id);
+      setIsSaved(nextSaved);
+      setSaveCount((prev) => Math.max(0, prev + (nextSaved ? 1 : -1)));
+      onSavedChange?.(nextSaved);
     } catch {
-      // Ignore conflicts when state is already in sync.
+      setIsSaved(isStreamSaved(project.id));
     } finally {
       setIsSaving(false);
     }
@@ -167,6 +161,11 @@ export function ProjectCard({
         {project.summary}
       </ThemedText>
       <View style={styles.tagRow}>
+        {isCreator ? (
+          <TagChip label="Creator" tone="accent" />
+        ) : isBuilder ? (
+          <TagChip label="Builder" />
+        ) : null}
         {project.tags.map((tag) => (
           <TagChip key={tag} label={tag} />
         ))}
@@ -206,9 +205,10 @@ export function ProjectCard({
             pressed && styles.metaPressed,
           ]}
           onPress={handleSaveToggle}
+          disabled={false}
         >
           <Feather
-            name={isSaved ? "bookmark" : "bookmark"}
+            name="bookmark"
             size={14}
             color={isSaved ? colors.tint : colors.muted}
           />
@@ -216,7 +216,7 @@ export function ProjectCard({
             type="caption"
             style={{ color: isSaved ? colors.tint : colors.muted }}
           >
-            {isSaved ? "Saved" : "Save"}
+            {saveCount}
           </ThemedText>
         </Pressable>
         <View style={styles.metaItem}>

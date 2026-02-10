@@ -46,6 +46,7 @@ function VideoItem({ source }: VideoItemProps) {
     />
   );
 }
+import { resolveMediaUrl } from "@/services/api";
 
 export function MediaGallery({ media }: MediaGalleryProps) {
   const colors = useAppColors();
@@ -54,9 +55,13 @@ export function MediaGallery({ media }: MediaGalleryProps) {
     return null;
   }
 
+  const normalizedMedia = media
+    .map((item) => resolveMediaUrl(item))
+    .filter(Boolean);
+
   return (
     <View style={styles.container}>
-      {media.map((item) => {
+      {normalizedMedia.map((item) => {
         if (isVideo(item)) {
           return <VideoItem key={item} source={item} />;
         }

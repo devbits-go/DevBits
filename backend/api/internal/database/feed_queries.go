@@ -19,10 +19,12 @@ import (
 //   - int: http status code
 //   - error: An error if the function fails, nil otherwise
 func GetPostByTimeFeed(start int, count int) ([]types.Post, int, error) {
-	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes, creation_date
-              FROM Posts
-              ORDER BY creation_date DESC
-              LIMIT ? OFFSET ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+			  COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+			  creation_date
+			  FROM Posts
+			  ORDER BY creation_date DESC
+			  LIMIT ? OFFSET ?;`
 
 	rows, err := DB.Query(query, count, start)
 	if err != nil {
@@ -41,6 +43,7 @@ func GetPostByTimeFeed(start int, count int) ([]types.Post, int, error) {
 			&post.Content,
 			&mediaJSON,
 			&post.Likes,
+			&post.Saves,
 			&post.CreationDate,
 		)
 
@@ -71,10 +74,12 @@ func GetPostByTimeFeed(start int, count int) ([]types.Post, int, error) {
 //   - int: http status code
 //   - error: An error if the function fails, nil otherwise
 func GetPostByLikesFeed(start int, count int) ([]types.Post, int, error) {
-	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes, creation_date
-              FROM Posts
-              ORDER BY likes DESC
-              LIMIT ? OFFSET ?;`
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'), likes,
+			  COALESCE((SELECT COUNT(*) FROM PostSaves ps WHERE ps.post_id = Posts.id), 0),
+			  creation_date
+			  FROM Posts
+			  ORDER BY likes DESC
+			  LIMIT ? OFFSET ?;`
 
 	rows, err := DB.Query(query, count, start)
 	if err != nil {
@@ -93,6 +98,7 @@ func GetPostByLikesFeed(start int, count int) ([]types.Post, int, error) {
 			&post.Content,
 			&mediaJSON,
 			&post.Likes,
+			&post.Saves,
 			&post.CreationDate,
 		)
 
@@ -124,6 +130,7 @@ func GetPostByLikesFeed(start int, count int) ([]types.Post, int, error) {
 //   - error: An error if the function fails, nil otherwise
 func GetProjectByTimeFeed(start int, count int) ([]types.Project, int, error) {
 	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+              COALESCE((SELECT COUNT(*) FROM ProjectFollows pf WHERE pf.project_id = Projects.id), 0),
 	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
 	          FROM Projects
 	              ORDER BY creation_date DESC
@@ -146,6 +153,7 @@ func GetProjectByTimeFeed(start int, count int) ([]types.Project, int, error) {
 			&project.AboutMd,
 			&project.Status,
 			&project.Likes,
+			&project.Saves,
 			&linksJSON,
 			&tagsJSON,
 			&mediaJSON,
@@ -188,6 +196,7 @@ func GetProjectByTimeFeed(start int, count int) ([]types.Project, int, error) {
 //   - error: An error if the function fails, nil otherwise
 func GetProjectByLikesFeed(start int, count int) ([]types.Project, int, error) {
 	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+              COALESCE((SELECT COUNT(*) FROM ProjectFollows pf WHERE pf.project_id = Projects.id), 0),
 	          COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
 	          FROM Projects
               ORDER BY likes DESC
@@ -210,6 +219,7 @@ func GetProjectByLikesFeed(start int, count int) ([]types.Project, int, error) {
 			&project.AboutMd,
 			&project.Status,
 			&project.Likes,
+			&project.Saves,
 			&linksJSON,
 			&tagsJSON,
 			&mediaJSON,

@@ -6,6 +6,7 @@ import { MarkdownText } from "@/components/MarkdownText";
 import { UserProps } from "@/constants/Types";
 import { useAppColors } from "@/hooks/useAppColors";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { resolveMediaUrl } from "@/services/api";
 
 export default function User({
   username,
@@ -18,7 +19,8 @@ export default function User({
   const { preferences } = usePreferences();
   const creationDate = new Date(created_on);
   const safeLinks = Array.isArray(links) ? links : [];
-  const hasPicture = Boolean(picture && picture.trim().length);
+  const resolvedPicture = resolveMediaUrl(picture);
+  const hasPicture = Boolean(resolvedPicture);
   const [isImageOpen, setIsImageOpen] = useState(false);
   const openUrlSafe = async (url: string) => {
     const trimmed = url.trim();
@@ -65,7 +67,7 @@ export default function User({
             onPress={() => setIsImageOpen(true)}
             style={styles.avatarButton}
           >
-            <Image source={{ uri: picture }} style={styles.avatar} />
+            <Image source={{ uri: resolvedPicture }} style={styles.avatar} />
           </Pressable>
         ) : (
           <View
@@ -117,7 +119,7 @@ export default function User({
           <View style={styles.viewerCard}>
             {hasPicture ? (
               <Image
-                source={{ uri: picture }}
+                source={{ uri: resolvedPicture }}
                 style={styles.viewerImage}
                 resizeMode="contain"
               />

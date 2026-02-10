@@ -32,6 +32,7 @@ import {
   getAllUsers,
   getPostsFeed,
   getProjectById,
+  getProjectBuilders,
   getProjectsFeed,
   getProjectsByUserId,
   getUserById,
@@ -126,7 +127,14 @@ export default function ExploreScreen() {
           ? followingIdsRaw
           : [];
 
-        const uiProjects = projectFeed.map(mapProjectToUi);
+        const builderCounts = await Promise.all(
+          projectFeed.map((project) =>
+            getProjectBuilders(project.id).catch(() => []),
+          ),
+        );
+        const uiProjects = projectFeed.map((project, index) =>
+          mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+        );
         const projectMap = new Map(
           projectFeed.map((project) => [project.id, project]),
         );
@@ -372,10 +380,15 @@ export default function ExploreScreen() {
         }),
       );
 
-      const mergedProjects = [
-        ...scoredProjects,
-        ...extraProjects.map(mapProjectToUi),
-      ];
+      const extraBuilderCounts = await Promise.all(
+        extraProjects.map((project) =>
+          getProjectBuilders(project.id).catch(() => []),
+        ),
+      );
+      const extraProjectsUi = extraProjects.map((project, index) =>
+        mapProjectToUi(project, extraBuilderCounts[index]?.length ?? 0),
+      );
+      const mergedProjects = [...scoredProjects, ...extraProjectsUi];
       const uniqueProjects = Array.from(
         new Map(
           mergedProjects.map((project) => [project.id, project]),

@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Animated,
   Pressable,
@@ -14,7 +20,8 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import {
   clearApiCache,
-  getProjectFollowing,
+  getProjectBuilders,
+  getProjectsByBuilderId,
   getProjectsFeed,
 } from "@/services/api";
 import { mapProjectToUi } from "@/services/mappers";
@@ -25,6 +32,7 @@ import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 
 export default function StreamsScreen() {
   const colors = useAppColors();
@@ -33,7 +41,8 @@ export default function StreamsScreen() {
   const [projects, setProjects] = useState(
     [] as ReturnType<typeof mapProjectToUi>[],
   );
-  const [savedIds, setSavedIds] = useState<number[]>([]);
+  const { savedProjectIds } = useSavedStreams();
+  const [builderProjectIds, setBuilderProjectIds] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -60,22 +69,33 @@ export default function StreamsScreen() {
         if (showLoader) {
           setIsLoading(true);
         }
-        const [projectFeedRaw, savedIdsRaw] = await Promise.all([
+        const [projectFeedRaw, builderProjectsRaw] = await Promise.all([
           getProjectsFeed("time", 0, 30),
-          user?.username
-            ? getProjectFollowing(user.username)
-            : Promise.resolve([]),
+          user?.id ? getProjectsByBuilderId(user.id) : Promise.resolve([]),
         ]);
         const projectFeed = Array.isArray(projectFeedRaw) ? projectFeedRaw : [];
-        const savedIds = Array.isArray(savedIdsRaw) ? savedIdsRaw : [];
-        const visibleProjects =
-          activeFilter === "saved" && savedIds.length
-            ? projectFeed.filter((project) => savedIds.includes(project.id))
-            : projectFeed;
-        const uiProjects = visibleProjects.map(mapProjectToUi);
+        const builderProjects = Array.isArray(builderProjectsRaw)
+          ? builderProjectsRaw
+          : [];
+        const combinedMap = new Map(
+          projectFeed.map((project) => [project.id, project]),
+        );
+        builderProjects.forEach((project) => {
+          combinedMap.set(project.id, project);
+        });
+        const combinedProjects = Array.from(combinedMap.values());
+        const builderIds = builderProjects.map((project) => project.id);
+        const builderCounts = await Promise.all(
+          combinedProjects.map((project) =>
+            getProjectBuilders(project.id).catch(() => []),
+          ),
+        );
+        const uiProjects = combinedProjects.map((project, index) =>
+          mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+        );
 
         setProjects(uiProjects);
-        setSavedIds(savedIds);
+        setBuilderProjectIds(builderIds);
         setHasError(false);
       } catch {
         setProjects([]);
@@ -86,8 +106,14 @@ export default function StreamsScreen() {
         }
       }
     },
-    [activeFilter, user?.username],
+    [user?.id],
   );
+  const visibleProjects = useMemo(() => {
+    if (activeFilter !== "saved") {
+      return projects;
+    }
+    return projects.filter((project) => savedProjectIds.includes(project.id));
+  }, [activeFilter, projects, savedProjectIds]);
 
   useEffect(() => {
     loadStreams();
@@ -196,31 +222,16 @@ export default function StreamsScreen() {
                 />
               ))}
             </View>
-          ) : projects.length ? (
+          ) : visibleProjects.length ? (
             <View style={styles.projectGrid}>
-              {projects.map((project) => (
+              {visibleProjects.map((project) => (
                 <ProjectCard
                   key={project.id}
                   project={project}
                   variant="full"
-                  saved={savedIds.includes(project.id)}
-                  onSavedChange={(nextSaved) => {
-                    setSavedIds((prev) => {
-                      const already = prev.includes(project.id);
-                      if (nextSaved && !already) {
-                        return [...prev, project.id];
-                      }
-                      if (!nextSaved && already) {
-                        return prev.filter((id) => id !== project.id);
-                      }
-                      return prev;
-                    });
-                    if (!nextSaved && activeFilter === "saved") {
-                      setProjects((prev) =>
-                        prev.filter((item) => item.id !== project.id),
-                      );
-                    }
-                  }}
+                  saved={savedProjectIds.includes(project.id)}
+                  isBuilder={builderProjectIds.includes(project.id)}
+                  onSavedChange={() => undefined}
                 />
               ))}
             </View>
