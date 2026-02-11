@@ -66,29 +66,26 @@ export function PreferencesProvider({
         return;
       }
 
-      if (user.settings) {
-        setPreferences({ ...defaultPreferences, ...user.settings });
-        setIsLoading(false);
-        isHydratingRef.current = false;
-        return;
-      }
-
       const stored = await SecureStore.getItemAsync(
         prefsKeyForUser(user.username),
       );
       if (!isActive) {
         return;
       }
+      let parsed: Partial<Preferences> = {};
       if (stored) {
         try {
-          const parsed = JSON.parse(stored) as Partial<Preferences>;
-          setPreferences({ ...defaultPreferences, ...parsed });
+          parsed = JSON.parse(stored) as Partial<Preferences>;
         } catch {
-          setPreferences(defaultPreferences);
+          parsed = {};
         }
-      } else {
-        setPreferences(defaultPreferences);
       }
+
+      setPreferences({
+        ...defaultPreferences,
+        ...parsed,
+        ...(user.settings ?? {}),
+      });
       setIsLoading(false);
       isHydratingRef.current = false;
     };
