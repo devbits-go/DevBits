@@ -641,7 +641,7 @@ export default function PostDetailScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={[]}>
+      <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <KeyboardAvoidingView
           style={styles.safeArea}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -656,7 +656,9 @@ export default function PostDetailScreen() {
                   refreshing={isRefreshing}
                   onRefresh={handleRefresh}
                   tintColor={colors.tint}
-                  progressViewOffset={insets.top + 12}
+                  colors={[colors.tint]}
+                  titleColor={colors.tint}
+                  progressViewOffset={48}
                 />
               }
               keyboardShouldPersistTaps="handled"
@@ -664,7 +666,7 @@ export default function PostDetailScreen() {
               contentContainerStyle={[
                 styles.container,
                 {
-                  paddingTop: insets.top + 8,
+                  paddingTop: 8,
                   paddingBottom: 96 + insets.bottom,
                 },
               ]}

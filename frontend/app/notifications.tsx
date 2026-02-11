@@ -109,7 +109,7 @@ export default function NotificationsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <SafeAreaView style={styles.screen} edges={[]}>
+      <SafeAreaView style={styles.screen} edges={["top"]}>
         <Animated.ScrollView
           onScroll={onScroll}
           scrollEventThrottle={16}
@@ -118,7 +118,9 @@ export default function NotificationsScreen() {
               refreshing={isLoading}
               onRefresh={refresh}
               tintColor={colors.tint}
-              progressViewOffset={insets.top + 12}
+              colors={[colors.tint]}
+              titleColor={colors.tint}
+              progressViewOffset={48}
             />
           }
           contentContainerStyle={{ paddingBottom: 96 + insets.bottom }}
@@ -127,7 +129,7 @@ export default function NotificationsScreen() {
             style={[
               styles.content,
               {
-                paddingTop: insets.top + 8,
+                paddingTop: 8,
                 opacity: reveal,
                 transform: [
                   {

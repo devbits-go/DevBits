@@ -207,7 +207,7 @@ export default function StreamsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.background} pointerEvents="none" />
-      <SafeAreaView style={styles.safeArea} edges={[]}>
+      <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <Animated.FlatList
           data={visibleProjects}
           keyExtractor={(item) => String(item.id)}
@@ -229,7 +229,9 @@ export default function StreamsScreen() {
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.tint}
-              progressViewOffset={insets.top + 12}
+              colors={[colors.tint]}
+              titleColor={colors.tint}
+              progressViewOffset={48}
             />
           }
           ListHeaderComponent={
@@ -329,7 +331,7 @@ export default function StreamsScreen() {
           }
           contentContainerStyle={[
             styles.container,
-            { paddingTop: insets.top + 8, paddingBottom: 96 + insets.bottom },
+            { paddingTop: 8, paddingBottom: 96 + insets.bottom },
           ]}
           removeClippedSubviews
           initialNumToRender={6}
