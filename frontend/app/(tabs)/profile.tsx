@@ -514,6 +514,7 @@ export default function ProfileScreen() {
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
           }
           contentContainerStyle={[

@@ -118,6 +118,7 @@ export default function NotificationsScreen() {
               refreshing={isLoading}
               onRefresh={refresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
           }
           contentContainerStyle={{ paddingBottom: 96 + insets.bottom }}

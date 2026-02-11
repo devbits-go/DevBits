@@ -463,6 +463,7 @@ export default function ExploreScreen() {
                 refreshing={isRefreshing}
                 onRefresh={handleRefresh}
                 tintColor={colors.tint}
+                progressViewOffset={insets.top + 12}
               />
             }
             contentContainerStyle={[

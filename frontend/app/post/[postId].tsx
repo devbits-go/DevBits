@@ -656,6 +656,7 @@ export default function PostDetailScreen() {
                   refreshing={isRefreshing}
                   onRefresh={handleRefresh}
                   tintColor={colors.tint}
+                  progressViewOffset={insets.top + 12}
                 />
               }
               keyboardShouldPersistTaps="handled"

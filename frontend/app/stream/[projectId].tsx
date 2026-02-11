@@ -305,6 +305,7 @@ export default function StreamDetailScreen() {
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
           }
           scrollIndicatorInsets={{ bottom: bottom + insets.bottom }}

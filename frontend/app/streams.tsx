@@ -229,6 +229,7 @@ export default function StreamsScreen() {
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
           }
           ListHeaderComponent={
