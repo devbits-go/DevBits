@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   Animated,
+  FlatList,
   Modal,
   Pressable,
   RefreshControl,
@@ -33,6 +34,7 @@ import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   clearApiCache,
@@ -86,6 +88,7 @@ export default function UserProfileScreen() {
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
   const hasLoadedRef = useRef(false);
+  const { scrollY, onScroll } = useTopBlurScroll();
 
   const filteredFollowerUsers = useMemo(() => {
     const trimmed = followersQuery.trim().toLowerCase();
@@ -379,13 +382,16 @@ export default function UserProfileScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={[]}>
-        <ScrollView
+        <Animated.ScrollView
           contentInsetAdjustmentBehavior="never"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
           }
           contentContainerStyle={[
@@ -538,9 +544,9 @@ export default function UserProfileScreen() {
               </View>
             )}
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
       <Modal
         visible={isFollowersOpen}
         transparent
@@ -567,38 +573,47 @@ export default function UserProfileScreen() {
                 },
               ]}
             />
-            <ScrollView>
-              {isFollowersLoading ? (
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  Loading...
-                </ThemedText>
-              ) : filteredFollowerUsers.length ? (
-                filteredFollowerUsers.map((item) => (
-                  <UserCard
-                    key={item.username}
-                    username={item.username}
-                    picture={item.picture}
-                    isFollowing={followingSet.has(item.id ?? -1)}
-                    onPress={() => {
-                      setIsFollowersOpen(false);
-                      router.push({
-                        pathname: "/user/[username]",
-                        params: { username: item.username },
-                      });
-                    }}
-                    onToggleFollow={() => handleToggleModalFollow(item)}
-                  />
-                ))
-              ) : followersQuery.trim() ? (
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  No matches found.
-                </ThemedText>
-              ) : (
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  No followers yet.
-                </ThemedText>
+            <FlatList
+              data={filteredFollowerUsers}
+              keyExtractor={(item) => item.username}
+              renderItem={({ item }) => (
+                <UserCard
+                  username={item.username}
+                  picture={item.picture}
+                  isFollowing={followingSet.has(item.id ?? -1)}
+                  onPress={() => {
+                    setIsFollowersOpen(false);
+                    router.push({
+                      pathname: "/user/[username]",
+                      params: { username: item.username },
+                    });
+                  }}
+                  onToggleFollow={() => handleToggleModalFollow(item)}
+                />
               )}
-            </ScrollView>
+              ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+              ListEmptyComponent={
+                isFollowersLoading ? (
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Loading...
+                  </ThemedText>
+                ) : followersQuery.trim() ? (
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    No matches found.
+                  </ThemedText>
+                ) : (
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    No followers yet.
+                  </ThemedText>
+                )
+              }
+              contentContainerStyle={styles.modalList}
+              removeClippedSubviews
+              initialNumToRender={8}
+              maxToRenderPerBatch={8}
+              windowSize={7}
+              updateCellsBatchingPeriod={50}
+            />
           </View>
         </Pressable>
       </Modal>
@@ -628,38 +643,47 @@ export default function UserProfileScreen() {
                 },
               ]}
             />
-            <ScrollView>
-              {isFollowingLoading ? (
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  Loading...
-                </ThemedText>
-              ) : filteredFollowingUsers.length ? (
-                filteredFollowingUsers.map((item) => (
-                  <UserCard
-                    key={item.username}
-                    username={item.username}
-                    picture={item.picture}
-                    isFollowing={followingSet.has(item.id ?? -1)}
-                    onPress={() => {
-                      setIsFollowingOpen(false);
-                      router.push({
-                        pathname: "/user/[username]",
-                        params: { username: item.username },
-                      });
-                    }}
-                    onToggleFollow={() => handleToggleModalFollow(item)}
-                  />
-                ))
-              ) : followingQuery.trim() ? (
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  No matches found.
-                </ThemedText>
-              ) : (
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  Not following anyone yet.
-                </ThemedText>
+            <FlatList
+              data={filteredFollowingUsers}
+              keyExtractor={(item) => item.username}
+              renderItem={({ item }) => (
+                <UserCard
+                  username={item.username}
+                  picture={item.picture}
+                  isFollowing={followingSet.has(item.id ?? -1)}
+                  onPress={() => {
+                    setIsFollowingOpen(false);
+                    router.push({
+                      pathname: "/user/[username]",
+                      params: { username: item.username },
+                    });
+                  }}
+                  onToggleFollow={() => handleToggleModalFollow(item)}
+                />
               )}
-            </ScrollView>
+              ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+              ListEmptyComponent={
+                isFollowingLoading ? (
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Loading...
+                  </ThemedText>
+                ) : followingQuery.trim() ? (
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    No matches found.
+                  </ThemedText>
+                ) : (
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Not following anyone yet.
+                  </ThemedText>
+                )
+              }
+              contentContainerStyle={styles.modalList}
+              removeClippedSubviews
+              initialNumToRender={8}
+              maxToRenderPerBatch={8}
+              windowSize={7}
+              updateCellsBatchingPeriod={50}
+            />
           </View>
         </Pressable>
       </Modal>
@@ -678,7 +702,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   container: {
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
     gap: 16,
     paddingTop: 0,
   },
@@ -715,6 +740,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     gap: 12,
+  },
+  modalList: {
+    paddingBottom: 8,
   },
   modalRow: {
     paddingVertical: 8,

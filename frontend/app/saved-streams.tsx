@@ -17,6 +17,7 @@ import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 import {
   clearApiCache,
@@ -40,6 +41,7 @@ export default function SavedStreamsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const { scrollY, onScroll } = useTopBlurScroll();
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -127,13 +129,16 @@ export default function SavedStreamsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={[]}>
-        <ScrollView
+        <Animated.ScrollView
           contentInsetAdjustmentBehavior="never"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
           }
           contentContainerStyle={[
@@ -200,9 +205,9 @@ export default function SavedStreamsScreen() {
               </ThemedText>
             </View>
           )}
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }
@@ -215,7 +220,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
     gap: 16,
     paddingTop: 0,
   },

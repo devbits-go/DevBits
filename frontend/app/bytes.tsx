@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -26,6 +26,7 @@ import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { subscribeToPostEvents } from "@/services/postEvents";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -38,8 +39,14 @@ export default function BytesScreen() {
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"all" | "following">("all");
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [pageIndex, setPageIndex] = useState(0);
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const { scrollY, onScroll } = useTopBlurScroll();
+  const followingIdsRef = useRef<number[]>([]);
+  const pageSize = 20;
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -55,21 +62,36 @@ export default function BytesScreen() {
   }, [motion, reveal]);
 
   const loadBytes = useCallback(
-    async (showLoader = true) => {
+    async ({
+      showLoader = true,
+      nextPage = 0,
+      append = false,
+    }: {
+      showLoader?: boolean;
+      nextPage?: number;
+      append?: boolean;
+    } = {}) => {
       try {
         if (showLoader) {
           setIsLoading(true);
         }
+        const start = nextPage * pageSize;
         const [postFeedRaw, followingIdsRaw] = await Promise.all([
-          getPostsFeed("time", 0, 30),
+          getPostsFeed("time", start, pageSize),
           activeFilter === "following" && user?.username
-            ? getUsersFollowing(user.username)
+            ? followingIdsRef.current.length
+              ? Promise.resolve(followingIdsRef.current)
+              : getUsersFollowing(user.username)
             : Promise.resolve([]),
         ]);
         const postFeed = Array.isArray(postFeedRaw) ? postFeedRaw : [];
         const followingIds = Array.isArray(followingIdsRaw)
           ? followingIdsRaw
           : [];
+
+        if (activeFilter === "following") {
+          followingIdsRef.current = followingIds;
+        }
 
         const visiblePosts =
           activeFilter === "following" && followingIds.length
@@ -86,10 +108,14 @@ export default function BytesScreen() {
           }),
         );
 
-        setPosts(uiPosts);
+        setPosts((prev) => (append ? prev.concat(uiPosts) : uiPosts));
+        setPageIndex(nextPage);
+        setHasMore(postFeed.length === pageSize);
         setHasError(false);
       } catch {
-        setPosts([]);
+        if (!append) {
+          setPosts([]);
+        }
         setHasError(true);
       } finally {
         if (showLoader) {
@@ -101,8 +127,11 @@ export default function BytesScreen() {
   );
 
   useEffect(() => {
-    loadBytes();
-  }, [loadBytes]);
+    followingIdsRef.current = [];
+    setHasMore(true);
+    setPageIndex(0);
+    loadBytes({ nextPage: 0 });
+  }, [activeFilter, loadBytes]);
 
   useEffect(() => {
     return subscribeToPostEvents((event) => {
@@ -140,122 +169,165 @@ export default function BytesScreen() {
   useFocusEffect(
     useCallback(() => {
       clearApiCache();
-      loadBytes(false);
+      loadBytes({ showLoader: false, nextPage: 0 });
     }, [loadBytes]),
   );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     clearApiCache();
-    await loadBytes(false);
+    followingIdsRef.current = [];
+    setHasMore(true);
+    setPageIndex(0);
+    await loadBytes({ showLoader: false, nextPage: 0 });
     setIsRefreshing(false);
   }, [loadBytes]);
 
-  useAutoRefresh(() => loadBytes(false), { focusRefresh: false });
+  useAutoRefresh(() => loadBytes({ showLoader: false, nextPage: 0 }), {
+    focusRefresh: false,
+  });
+
+  const handleLoadMore = useCallback(() => {
+    if (isLoadingMore || !hasMore || isLoading) {
+      return;
+    }
+    setIsLoadingMore(true);
+    loadBytes({
+      showLoader: false,
+      nextPage: pageIndex + 1,
+      append: true,
+    }).finally(() => setIsLoadingMore(false));
+  }, [hasMore, isLoading, isLoadingMore, loadBytes, pageIndex]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={[]}>
-        <ScrollView
-          contentInsetAdjustmentBehavior="never"
+        <Animated.FlatList
+          data={posts}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item }) => <Post {...item} />}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
+          }
+          ListHeaderComponent={
+            <View>
+              <Animated.View
+                style={{
+                  opacity: reveal,
+                  transform: [
+                    {
+                      scale: reveal.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.985, 1],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                <View style={styles.headerRow}>
+                  <View>
+                    <ThemedText type="display" style={styles.title}>
+                      All bytes
+                    </ThemedText>
+                    <ThemedText type="caption" style={{ color: colors.muted }}>
+                      Full feed of shipped updates.
+                    </ThemedText>
+                  </View>
+                </View>
+                <View style={styles.filterRow}>
+                  {["all", "following"].map((key) => {
+                    const isActive = key === activeFilter;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() =>
+                          setActiveFilter(key as "all" | "following")
+                        }
+                        style={[
+                          styles.filterChip,
+                          {
+                            backgroundColor: isActive
+                              ? colors.tint
+                              : colors.surfaceAlt,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: isActive ? colors.accent : colors.muted,
+                          }}
+                        >
+                          {key === "all" ? "All" : "Following"}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </Animated.View>
+              {isLoading ? (
+                <View style={styles.skeletonStack}>
+                  {[0, 1, 2].map((key) => (
+                    <View
+                      key={key}
+                      style={[
+                        styles.skeletonCard,
+                        {
+                          backgroundColor: colors.surfaceAlt,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          }
+          ListEmptyComponent={
+            !isLoading ? (
+              <View style={styles.emptyState}>
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  {hasError
+                    ? "Feed unavailable. Check the API and try again."
+                    : activeFilter === "following"
+                      ? "No bytes from people you follow yet."
+                      : "No bytes yet."}
+                </ThemedText>
+              </View>
+            ) : null
+          }
+          ListFooterComponent={
+            isLoadingMore ? (
+              <View style={styles.loadingMore}>
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  Loading more...
+                </ThemedText>
+              </View>
+            ) : null
           }
           contentContainerStyle={[
             styles.container,
             { paddingTop: insets.top + 8, paddingBottom: 96 + insets.bottom },
           ]}
-        >
-          <Animated.View
-            style={{
-              opacity: reveal,
-              transform: [
-                {
-                  scale: reveal.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.985, 1],
-                  }),
-                },
-              ],
-            }}
-          >
-            <View style={styles.headerRow}>
-              <View>
-                <ThemedText type="display" style={styles.title}>
-                  All bytes
-                </ThemedText>
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  Full feed of shipped updates.
-                </ThemedText>
-              </View>
-            </View>
-            <View style={styles.filterRow}>
-              {["all", "following"].map((key) => {
-                const isActive = key === activeFilter;
-                return (
-                  <Pressable
-                    key={key}
-                    onPress={() => setActiveFilter(key as "all" | "following")}
-                    style={[
-                      styles.filterChip,
-                      {
-                        backgroundColor: isActive
-                          ? colors.tint
-                          : colors.surfaceAlt,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  >
-                    <ThemedText
-                      type="caption"
-                      style={{
-                        color: isActive ? colors.accent : colors.muted,
-                      }}
-                    >
-                      {key === "all" ? "All" : "Following"}
-                    </ThemedText>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Animated.View>
-
-          {isLoading ? (
-            <View style={styles.skeletonStack}>
-              {[0, 1, 2].map((key) => (
-                <View
-                  key={key}
-                  style={[
-                    styles.skeletonCard,
-                    {
-                      backgroundColor: colors.surfaceAlt,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                />
-              ))}
-            </View>
-          ) : posts.length ? (
-            posts.map((post) => <Post key={post.id} {...post} />)
-          ) : (
-            <View style={styles.emptyState}>
-              <ThemedText type="caption" style={{ color: colors.muted }}>
-                {hasError
-                  ? "Feed unavailable. Check the API and try again."
-                  : activeFilter === "following"
-                    ? "No bytes from people you follow yet."
-                    : "No bytes yet."}
-              </ThemedText>
-            </View>
-          )}
-        </ScrollView>
+          removeClippedSubviews
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={8}
+          updateCellsBatchingPeriod={50}
+        />
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }
@@ -271,7 +343,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   container: {
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
     gap: 16,
     paddingTop: 0,
   },
@@ -304,6 +377,10 @@ const styles = StyleSheet.create({
     height: 96,
     borderWidth: 1,
     opacity: 0.7,
+  },
+  loadingMore: {
+    alignItems: "center",
+    paddingVertical: 18,
   },
   emptyState: {
     alignItems: "center",

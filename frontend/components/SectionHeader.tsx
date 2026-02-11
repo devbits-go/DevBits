@@ -50,7 +50,8 @@ const styles = StyleSheet.create({
   action: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
+    marginRight: 16,
   },
   pressed: {
     opacity: 0.8,

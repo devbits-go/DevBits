@@ -6,6 +6,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from "react-native";
@@ -14,11 +15,13 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useLocalSearchParams } from "expo-router";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   addProjectBuilder,
@@ -34,6 +37,7 @@ import { ApiProject } from "@/constants/Types";
 import { TagChip } from "@/components/TagChip";
 import { MediaGallery } from "@/components/MediaGallery";
 import { MarkdownText } from "@/components/MarkdownText";
+import Markdown from "react-native-markdown-display";
 import {
   emitProjectDeleted,
   emitProjectUpdated,
@@ -45,6 +49,8 @@ export default function ManageStreamsScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { editId } = useLocalSearchParams<{ editId?: string }>();
+  const editTargetId = Number(editId);
   const getMediaLabel = (url: string) => {
     const trimmed = url.split("?")[0].split("#")[0];
     return trimmed.split("/").pop() || "attachment";
@@ -84,6 +90,90 @@ export default function ManageStreamsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const { scrollY, onScroll } = useTopBlurScroll();
+  const toOneLine = (value: string) => value.replace(/\s+/g, " ").trim();
+  const inlineMarkdownRules = {
+    paragraph: (node: { key?: string }, children: React.ReactNode[]) => (
+      <Text
+        key={node.key}
+        style={styles.inlineNameText}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        {children}
+      </Text>
+    ),
+    text: (node: { content?: string }) => node.content,
+    strong: (node: { key?: string }, children: React.ReactNode[]) => (
+      <Text key={node.key} style={styles.inlineStrong}>
+        {children}
+      </Text>
+    ),
+    em: (node: { key?: string }, children: React.ReactNode[]) => (
+      <Text key={node.key} style={styles.inlineEm}>
+        {children}
+      </Text>
+    ),
+    s: (node: { key?: string }, children: React.ReactNode[]) => (
+      <Text key={node.key} style={styles.inlineStrike}>
+        {children}
+      </Text>
+    ),
+    code_inline: (node: { key?: string; content?: string }) => (
+      <Text
+        key={node.key}
+        style={[
+          styles.inlineCode,
+          { backgroundColor: colors.tint, color: colors.background },
+        ]}
+      >
+        {` ${node.content} `}
+      </Text>
+    ),
+  } as const;
+  const inlineMarkdownStyle = {
+    body: {
+      color: colors.text,
+      fontSize: 15,
+      lineHeight: 20,
+      fontWeight: "600",
+      fontFamily: "SpaceMono",
+    },
+    paragraph: { marginTop: 0, marginBottom: 0 },
+  } as const;
+  const inlineSummaryStyle = {
+    ...inlineMarkdownStyle,
+    body: {
+      color: colors.muted,
+      fontSize: 13,
+      lineHeight: 18,
+      fontFamily: "SpaceMono",
+    },
+  } as const;
+  const renderInlineMarkdown = (value: string, variant: "name" | "summary") => (
+    <Markdown
+      rules={{
+        ...inlineMarkdownRules,
+        paragraph: (node: { key?: string }, children: React.ReactNode[]) => (
+          <Text
+            key={node.key}
+            style={
+              variant === "name"
+                ? [styles.inlineNameText, { color: colors.text }]
+                : [styles.inlineSummaryText, { color: colors.muted }]
+            }
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {children}
+          </Text>
+        ),
+      }}
+      style={variant === "name" ? inlineMarkdownStyle : inlineSummaryStyle}
+    >
+      {toOneLine(value)}
+    </Markdown>
+  );
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -154,6 +244,22 @@ export default function ManageStreamsScreen() {
   useEffect(() => {
     loadStreams();
   }, [loadStreams]);
+
+  useEffect(() => {
+    if (!editId || Number.isNaN(editTargetId)) {
+      return;
+    }
+    if (!projects.length) {
+      return;
+    }
+    const exists = projects.some((project) => project.id === editTargetId);
+    if (!exists) {
+      return;
+    }
+    setEditMap((prev) =>
+      prev[editTargetId] ? prev : { ...prev, [editTargetId]: true },
+    );
+  }, [editId, editTargetId, projects]);
 
   useFocusEffect(
     useCallback(() => {
@@ -388,13 +494,16 @@ export default function ManageStreamsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={[]}>
-        <ScrollView
+        <Animated.ScrollView
           contentInsetAdjustmentBehavior="never"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
           }
           contentContainerStyle={[
@@ -464,9 +573,7 @@ export default function ManageStreamsScreen() {
                   >
                     <View style={styles.cardHeader}>
                       <View>
-                        <ThemedText type="defaultSemiBold">
-                          {project.name}
-                        </ThemedText>
+                        {renderInlineMarkdown(project.name, "name")}
                         <ThemedText
                           type="caption"
                           style={{ color: colors.muted }}
@@ -689,9 +796,7 @@ export default function ManageStreamsScreen() {
                       </View>
                     ) : (
                       <View style={styles.previewBlock}>
-                        <ThemedText type="default">
-                          {project.description}
-                        </ThemedText>
+                        {renderInlineMarkdown(project.description, "summary")}
                         {project.about_md ? (
                           <MarkdownText>{project.about_md}</MarkdownText>
                         ) : null}
@@ -831,9 +936,9 @@ export default function ManageStreamsScreen() {
               </ThemedText>
             </View>
           )}
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }
@@ -846,7 +951,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
     gap: 16,
     paddingTop: 0,
   },
@@ -872,8 +978,31 @@ const styles = StyleSheet.create({
   previewBlock: {
     gap: 8,
   },
-  editBlock: {
-    gap: 10,
+  inlineCode: {
+    fontFamily: "SpaceMono",
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  inlineNameText: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "600",
+    fontFamily: "SpaceMono",
+  },
+  inlineSummaryText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "SpaceMono",
+  },
+  inlineStrong: {
+    fontWeight: "700",
+  },
+  inlineEm: {
+    fontStyle: "italic",
+  },
+  inlineStrike: {
+    textDecorationLine: "line-through",
   },
   mediaSection: {
     gap: 10,

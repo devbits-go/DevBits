@@ -59,6 +59,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 
@@ -76,6 +77,7 @@ export default function PostDetailScreen() {
   const { user } = useAuth();
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const { scrollY, onScroll } = useTopBlurScroll();
   const [post, setPost] = useState<ApiPost | null>(null);
   const [project, setProject] = useState<ApiProject | null>(null);
   const [author, setAuthor] = useState<ApiUser | null>(null);
@@ -645,13 +647,16 @@ export default function PostDetailScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <ScrollView
+            <Animated.ScrollView
               contentInsetAdjustmentBehavior="never"
+              onScroll={onScroll}
+              scrollEventThrottle={16}
               refreshControl={
                 <RefreshControl
                   refreshing={isRefreshing}
                   onRefresh={handleRefresh}
                   tintColor={colors.tint}
+                  progressViewOffset={insets.top + 12}
                 />
               }
               keyboardShouldPersistTaps="handled"
@@ -1239,11 +1244,11 @@ export default function PostDetailScreen() {
                   </View>
                 )}
               </Animated.View>
-            </ScrollView>
+            </Animated.ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }
@@ -1256,7 +1261,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
     gap: 16,
     paddingTop: 0,
   },

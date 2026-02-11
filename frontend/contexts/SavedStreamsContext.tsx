@@ -71,35 +71,24 @@ export function SavedStreamsProvider({
 
   const toggleSave = async (projectId: number) => {
     const isAlreadySaved = savedProjectIds.includes(projectId);
+    const nextIds = isAlreadySaved
+      ? normalizeIds(savedProjectIds.filter((id) => id !== projectId))
+      : normalizeIds([...savedProjectIds, projectId]);
+    setSavedProjectIds(nextIds);
     if (user?.username) {
-      if (isAlreadySaved) {
-        await unfollowProject(user.username, projectId);
-        setSavedProjectIds((prev) =>
-          normalizeIds(prev.filter((id) => id !== projectId)),
-        );
-      } else {
-        await followProject(user.username, projectId);
-        setSavedProjectIds((prev) => normalizeIds([...prev, projectId]));
-      }
-
       try {
-        const ids = await getProjectFollowing(user.username);
-        setSavedProjectIds(Array.isArray(ids) ? normalizeIds(ids) : []);
+        if (isAlreadySaved) {
+          await unfollowProject(user.username, projectId);
+        } else {
+          await followProject(user.username, projectId);
+        }
       } catch {
-        // Keep optimistic state if refresh fails.
+        setSavedProjectIds(savedProjectIds);
       }
       return;
     }
 
-    setSavedProjectIds((prev) => {
-      const next = normalizeIds(
-        prev.includes(projectId)
-          ? prev.filter((id) => id !== projectId)
-          : [...prev, projectId],
-      );
-      SecureStore.setItemAsync(SAVED_STREAMS_KEY, JSON.stringify(next));
-      return next;
-    });
+    SecureStore.setItemAsync(SAVED_STREAMS_KEY, JSON.stringify(nextIds));
   };
 
   const removeSavedProjectIds = async (projectIds: number[]) => {

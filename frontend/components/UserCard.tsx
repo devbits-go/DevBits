@@ -1,5 +1,6 @@
 import React from "react";
-import { Image, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { FadeInImage } from "@/components/FadeInImage";
 import { ThemedText } from "@/components/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { resolveMediaUrl } from "@/services/api";
@@ -41,7 +42,7 @@ export function UserCard({
           ]}
         >
           {resolvedPicture ? (
-            <Image
+            <FadeInImage
               source={{ uri: resolvedPicture }}
               style={styles.avatarImage}
             />

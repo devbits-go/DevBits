@@ -16,6 +16,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useNotifications } from "@/contexts/NotificationsContext";
 
 export default function NotificationsScreen() {
@@ -24,6 +25,7 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const { scrollY, onScroll } = useTopBlurScroll();
   const { notifications, isLoading, refresh, markRead, remove, clearAll } =
     useNotifications();
 
@@ -108,12 +110,15 @@ export default function NotificationsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.screen} edges={[]}>
-        <ScrollView
+        <Animated.ScrollView
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
               onRefresh={refresh}
               tintColor={colors.tint}
+              progressViewOffset={insets.top + 12}
             />
           }
           contentContainerStyle={{ paddingBottom: 96 + insets.bottom }}
@@ -218,9 +223,9 @@ export default function NotificationsScreen() {
               </View>
             )}
           </Animated.View>
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }
@@ -231,7 +236,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     gap: 6,
   },
   headerRow: {

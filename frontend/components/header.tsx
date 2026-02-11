@@ -24,7 +24,7 @@ export function MyHeader() {
             type="caption"
             style={[styles.tagline, { color: colors.muted }]}
           >
-            bytes, streams, and late-night commits
+            A Pace for Devs
           </ThemedText>
         </View>
       </View>
@@ -106,6 +106,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    marginRight: 24,
   },
   iconButton: {
     width: 34,

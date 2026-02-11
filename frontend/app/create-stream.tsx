@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   TouchableWithoutFeedback,
@@ -22,6 +21,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { createProject, uploadMedia } from "@/services/api";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
@@ -43,7 +43,8 @@ export default function CreateStreamScreen() {
   const motion = useMotionConfig();
   const bottom = useBottomTabOverflow();
   const reveal = React.useRef(new Animated.Value(0)).current;
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<Animated.ScrollView>(null);
+  const { scrollY, onScroll } = useTopBlurScroll();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [aboutMd, setAboutMd] = useState("");
@@ -174,10 +175,12 @@ export default function CreateStreamScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <ScrollView
+            <Animated.ScrollView
               ref={scrollRef}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              onScroll={onScroll}
+              scrollEventThrottle={16}
               contentContainerStyle={[
                 styles.content,
                 {
@@ -408,11 +411,11 @@ export default function CreateStreamScreen() {
                   </Pressable>
                 </View>
               </Animated.View>
-            </ScrollView>
+            </Animated.ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }
