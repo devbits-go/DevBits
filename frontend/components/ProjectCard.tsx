@@ -100,7 +100,6 @@ export function ProjectCard({
         pendingEmitRef.current = {
           ...(pendingEmitRef.current ?? {}),
           likes: nextLikes,
-          isLiked: false,
         };
       } else {
         await likeProject(user.username, project.id);
@@ -110,7 +109,6 @@ export function ProjectCard({
         pendingEmitRef.current = {
           ...(pendingEmitRef.current ?? {}),
           likes: nextLikes,
-          isLiked: true,
         };
       }
     } finally {
