@@ -21,11 +21,32 @@ type MarkdownTextProps = {
   children: string;
 };
 
+type InlineCodeScope = "callout" | "blockquote" | null;
+
+const InlineCodeContext = React.createContext<{ scope: InlineCodeScope }>({
+  scope: null,
+});
+
 export function MarkdownText({ children }: MarkdownTextProps) {
   const colors = useAppColors();
   const { preferences } = usePreferences();
   const { width: windowWidth } = useWindowDimensions();
   const isReady = useDeferredRender();
+  const toRgba = (hex: string, alpha: number) => {
+    const normalized = hex.replace("#", "");
+    const value =
+      normalized.length === 3
+        ? normalized
+            .split("")
+            .map((channel) => channel + channel)
+            .join("")
+        : normalized;
+    if (value.length !== 6) return hex;
+    const red = parseInt(value.slice(0, 2), 16);
+    const green = parseInt(value.slice(2, 4), 16);
+    const blue = parseInt(value.slice(4, 6), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  };
   const linkifyText = (text: string) =>
     text.replace(
       /(^|\s)((?:https?:\/\/|www\.)[^\s<]+[^\s<\.)])/g,
@@ -209,6 +230,31 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     return "";
   };
 
+  // Inline code pill styles are self-contained to avoid inherited markdown styles.
+  const inlineCodeStyles = useMemo(() => {
+    const background = toRgba(colors.text, 0.08);
+    const border = toRgba(colors.text, 0.18);
+    return StyleSheet.create({
+      pill: {
+        backgroundColor: background,
+        borderColor: border,
+        borderWidth: 0.7,
+        borderRadius: 6,
+        paddingHorizontal: 1,
+        paddingVertical: 1,
+        alignSelf: "flex-start",
+        justifyContent: "center",
+      },
+      text: {
+        color: colors.tint,
+        fontFamily: "SpaceMono",
+        fontSize: 12,
+        lineHeight: 15,
+        includeFontPadding: false,
+      },
+    });
+  }, [colors.text, colors.tint]);
+
   const renderCodeBlock = (node: {
     key?: string;
     content?: string;
@@ -358,7 +404,9 @@ export function MarkdownText({ children }: MarkdownTextProps) {
             },
           ]}
         >
-          {children}
+          <InlineCodeContext.Provider value={{ scope: "blockquote" }}>
+            {children}
+          </InlineCodeContext.Provider>
         </View>
       );
     }
@@ -384,26 +432,235 @@ export function MarkdownText({ children }: MarkdownTextProps) {
         <Text style={[styles.calloutTitle, { color: palette.title }]}>
           {type.charAt(0).toUpperCase() + type.slice(1)}
         </Text>
-        <View style={styles.calloutContent}>{cleanedChildren}</View>
+        <View style={styles.calloutContent}>
+          <InlineCodeContext.Provider value={{ scope: "callout" }}>
+            {cleanedChildren}
+          </InlineCodeContext.Provider>
+        </View>
+      </View>
+    );
+  };
+
+  const inlineCodeOffsets: Record<string, number> = {
+    body: 8,
+    paragraph: 1,
+    heading1: 7,
+    heading2: 8,
+    heading3: 8,
+    heading4: 7,
+    heading5: 9,
+    heading6: 10,
+    blockquote: 7.5,
+    callout: 7.5,
+  };
+  const tableTypes = new Set(["table", "thead", "tbody", "tr", "th", "td"]);
+  const blockquoteTypes = new Set(["blockquote"]);
+  const headerTypes = new Set([
+    "heading1",
+    "heading2",
+    "heading3",
+    "heading4",
+    "heading5",
+    "heading6",
+  ]);
+
+  const InlineCodePill = ({
+    content,
+    parentTypes,
+    parentType,
+    nodeParentType,
+    nodeGrandParentType,
+  }: {
+    content: string;
+    parentTypes: Array<{ type?: string }>;
+    parentType: string;
+    nodeParentType?: string;
+    nodeGrandParentType?: string;
+  }) => {
+    const { scope } = React.useContext(InlineCodeContext);
+    const headerType =
+      parentTypes.find((item) => headerTypes.has(item.type ?? ""))?.type ??
+      (nodeParentType && headerTypes.has(nodeParentType)
+        ? nodeParentType
+        : undefined) ??
+      (nodeGrandParentType && headerTypes.has(nodeGrandParentType)
+        ? nodeGrandParentType
+        : undefined);
+    const isInTable =
+      parentTypes.some((item) => tableTypes.has(item.type ?? "")) ||
+      tableTypes.has(parentType) ||
+      (nodeParentType ? tableTypes.has(nodeParentType) : false) ||
+      (nodeGrandParentType ? tableTypes.has(nodeGrandParentType) : false);
+    const isInBlockquote =
+      parentTypes.some((item) => blockquoteTypes.has(item.type ?? "")) ||
+      blockquoteTypes.has(parentType) ||
+      (nodeParentType ? blockquoteTypes.has(nodeParentType) : false) ||
+      (nodeGrandParentType ? blockquoteTypes.has(nodeGrandParentType) : false);
+    const scopedOffset =
+      scope === "callout"
+        ? inlineCodeOffsets.callout
+        : scope === "blockquote"
+          ? inlineCodeOffsets.blockquote
+          : null;
+    const translateY = isInTable
+      ? 0
+      : scopedOffset !== null
+        ? scopedOffset
+        : headerType
+          ? (inlineCodeOffsets[headerType] ?? inlineCodeOffsets.body)
+          : isInBlockquote
+            ? inlineCodeOffsets.blockquote
+            : (inlineCodeOffsets[parentType] ?? inlineCodeOffsets.body);
+    const translateStyle = translateY ? { transform: [{ translateY }] } : null;
+    return (
+      <View style={[inlineCodeStyles.pill, translateStyle]}>
+        <Text style={inlineCodeStyles.text}>{`\u00A0${content}\u00A0`}</Text>
+      </View>
+    );
+  };
+
+  const renderInlineCode = (
+    node: { key?: string; content?: string },
+    _children: React.ReactNode[] = [],
+    parent?: { type?: string } | Array<{ type?: string }>,
+  ) => {
+    const content = node.content ?? getCodeContent(node);
+    const parentTypes = Array.isArray(parent) ? parent : parent ? [parent] : [];
+    const parentType = parentTypes[0]?.type ?? "body";
+    const nodeParentType = (node as any)?.parent?.type as string | undefined;
+    const nodeGrandParentType = (node as any)?.parent?.parent?.type as
+      | string
+      | undefined;
+    return (
+      <InlineCodePill
+        key={node.key}
+        content={content}
+        parentTypes={parentTypes}
+        parentType={parentType}
+        nodeParentType={nodeParentType}
+        nodeGrandParentType={nodeGrandParentType}
+      />
+    );
+  };
+
+  const renderText = (
+    node: { key?: string; content?: string },
+    _children: React.ReactNode[] = [],
+    parent?: { type?: string } | Array<{ type?: string }>,
+    styles?: any,
+    inheritedStyles: any = {},
+  ) => {
+    const content = node.content ?? "";
+    const hasCheckbox = /[☑☐]/.test(content);
+
+    if (!hasCheckbox || !styles) {
+      return (
+        <Text key={node.key} style={[inheritedStyles, styles?.text]}>
+          {content}
+        </Text>
+      );
+    }
+    const parts = content.split(/([☑☐])/g);
+
+    return (
+      <Text key={node.key} style={[inheritedStyles, styles.text]}>
+        {parts.map((part, index) => {
+          if (part === "☑" || part === "☐") {
+            const markerColor = part === "☑" ? colors.tint : colors.muted;
+            return (
+              <Text
+                key={`${node.key}-chk-${index}`}
+                style={{ color: markerColor }}
+              >
+                {part}
+              </Text>
+            );
+          }
+          return part;
+        })}
+      </Text>
+    );
+  };
+
+  const renderStrikethrough = (
+    node: { key?: string },
+    children: React.ReactNode[] = [],
+    _parent?: { type?: string } | Array<{ type?: string }>,
+    styles?: any,
+    inheritedStyles: any = {},
+  ) => (
+    <Text key={node.key} style={[inheritedStyles, styles?.s]}>
+      {children}
+    </Text>
+  );
+
+  const renderListItem = (
+    node: { key?: string; index?: number; markup?: string },
+    children: React.ReactNode[] = [],
+    parent?:
+      | { type?: string; attributes?: any }
+      | Array<{ type?: string; attributes?: any }>,
+    mdStyles?: any,
+    inheritedStyles: any = {},
+  ) => {
+    const parents = Array.isArray(parent) ? parent : parent ? [parent] : [];
+    const isBullet = parents.some((item) => item.type === "bullet_list");
+    const isOrdered = parents.some((item) => item.type === "ordered_list");
+
+    if (isBullet && mdStyles) {
+      return (
+        <View key={node.key} style={mdStyles._VIEW_SAFE_list_item}>
+          <View
+            style={[
+              styles.bulletMarker,
+              {
+                backgroundColor: colors.tint,
+                borderColor: colors.border,
+              },
+            ]}
+          />
+          <View style={mdStyles._VIEW_SAFE_bullet_list_content}>
+            {children}
+          </View>
+        </View>
+      );
+    }
+
+    if (isOrdered && mdStyles) {
+      const orderedListIndex = parents.findIndex(
+        (item) => item.type === "ordered_list",
+      );
+      const orderedList = parents[orderedListIndex] as
+        | { attributes?: { start?: number } }
+        | undefined;
+      const listItemNumber = orderedList?.attributes?.start
+        ? orderedList.attributes.start + (node.index ?? 0)
+        : (node.index ?? 0) + 1;
+      return (
+        <View key={node.key} style={mdStyles._VIEW_SAFE_list_item}>
+          <Text style={[inheritedStyles, mdStyles.ordered_list_icon]}>
+            {listItemNumber}
+            {node.markup}
+          </Text>
+          <View style={mdStyles._VIEW_SAFE_ordered_list_content}>
+            {children}
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View key={node.key} style={mdStyles?._VIEW_SAFE_list_item}>
+        {children}
       </View>
     );
   };
 
   const markdownRules = {
-    code_inline: (node: { key?: string; content?: string }) => (
-      <Text
-        key={node.key}
-        style={[
-          styles.inlineCode,
-          {
-            color: colors.background,
-            backgroundColor: colors.tint,
-          },
-        ]}
-      >
-        {`\u00A0${node.content}\u00A0`}
-      </Text>
-    ),
+    code_inline: renderInlineCode,
+    text: renderText,
+    s: renderStrikethrough,
+    list_item: renderListItem,
     code_block: renderCodeBlock,
     fence: renderCodeBlock,
     image: renderImage,
@@ -425,6 +682,8 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     ordered_list: { paddingLeft: 12 },
     list_item: { marginBottom: 4 },
     task_list_item: { marginBottom: 4 },
+    bullet_list_icon: { color: colors.tint },
+    ordered_list_icon: { color: colors.tint },
     checkbox: {
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -448,14 +707,16 @@ export function MarkdownText({ children }: MarkdownTextProps) {
       paddingHorizontal: 8,
       paddingVertical: 6,
     },
-    image: {
-      borderRadius: 10,
-      marginVertical: 8,
-    },
     link: { color: colors.tint },
+    marginTop: 1,
+    borderColor: colors.border,
     em: { fontStyle: "italic" },
     strong: { fontWeight: "700" },
-    s: { textDecorationLine: "line-through" },
+    s: {
+      textDecorationLine: "line-through",
+      textDecorationStyle: "solid",
+      textDecorationColor: colors.text,
+    },
   } as const;
 
   const summaryMarkdownStyle = {
@@ -464,7 +725,11 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     link: { color: colors.tint },
     em: { fontStyle: "italic" },
     strong: { fontWeight: "700" },
-    s: { textDecorationLine: "line-through" },
+    s: {
+      textDecorationLine: "line-through",
+      textDecorationStyle: "solid",
+      textDecorationColor: colors.text,
+    },
   } as const;
 
   const renderMarkdownSegments = (text: string, keyPrefix: string) => {
@@ -645,17 +910,20 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     paddingTop: 20,
     paddingHorizontal: 20,
-    paddingBottom: 0,
+    paddingBottom: 1,
     paddingVertical: 0,
   },
-  inlineCode: {
+  inlineCodePill: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 1,
+    paddingVertical: 1,
+    alignSelf: "flex-start",
+  },
+  inlineCodeText: {
     fontFamily: "SpaceMono",
-    fontSize: 13,
-    lineHeight: 16,
-    borderRadius: 2,
-    paddingHorizontal: 0.5,
-    paddingVertical: 0.5,
-    overflow: "hidden",
+    fontSize: 12,
+    lineHeight: 15,
     includeFontPadding: false,
   },
   imageLink: {
@@ -666,5 +934,14 @@ const styles = StyleSheet.create({
   },
   image: {
     borderRadius: 10,
+  },
+  bulletMarker: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    borderWidth: 0.5,
+    marginLeft: 10,
+    marginRight: 10,
+    marginTop: 6,
   },
 });
