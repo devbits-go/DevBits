@@ -23,6 +23,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import {
   createPost,
   getProjectsByBuilderId,
@@ -43,6 +44,7 @@ export default function CreateByteScreen() {
   const bottom = useBottomTabOverflow();
   const reveal = React.useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
+  const { scrollY, onScroll } = useTopBlurScroll();
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [content, setContent] = useState("");
@@ -182,10 +184,12 @@ export default function CreateByteScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <ScrollView
+            <Animated.ScrollView
               ref={scrollRef}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              onScroll={onScroll}
+              scrollEventThrottle={16}
               contentContainerStyle={[
                 styles.content,
                 {
@@ -370,11 +374,11 @@ export default function CreateByteScreen() {
                   </View>
                 )}
               </Animated.View>
-            </ScrollView>
+            </Animated.ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }

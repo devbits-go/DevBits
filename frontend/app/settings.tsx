@@ -3,12 +3,10 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   Switch,
   StyleSheet,
   TextInput,
@@ -23,6 +21,7 @@ import {
 import { useRouter } from "expo-router";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
+import { FadeInImage } from "@/components/FadeInImage";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import {
@@ -33,6 +32,7 @@ import {
 } from "@/services/api";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import * as ImagePicker from "expo-image-picker";
 
 export default function SettingsScreen() {
@@ -43,7 +43,8 @@ export default function SettingsScreen() {
   const { preferences, updatePreferences } = usePreferences();
   const motion = useMotionConfig();
   const reveal = React.useRef(new Animated.Value(0)).current;
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<Animated.ScrollView>(null);
+  const { scrollY, onScroll } = useTopBlurScroll();
   const [picture, setPicture] = useState(user?.picture ?? "");
   const [pendingPicture, setPendingPicture] = useState<{
     uri: string;
@@ -284,10 +285,12 @@ export default function SettingsScreen() {
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.screen}>
-              <ScrollView
+              <Animated.ScrollView
                 ref={scrollRef}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
+                onScroll={onScroll}
+                scrollEventThrottle={16}
                 contentContainerStyle={[
                   styles.content,
                   {
@@ -336,7 +339,7 @@ export default function SettingsScreen() {
                         ]}
                       >
                         {picture ? (
-                          <Image
+                          <FadeInImage
                             source={{ uri: resolvedPicture }}
                             style={styles.avatarImage}
                           />
@@ -857,12 +860,12 @@ export default function SettingsScreen() {
                     </View>
                   </View>
                 </Animated.View>
-              </ScrollView>
+              </Animated.ScrollView>
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }

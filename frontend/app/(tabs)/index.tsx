@@ -35,6 +35,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { StatPill } from "@/components/StatPill";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { subscribeToPostEvents } from "@/services/postEvents";
 import {
   applyProjectEvent,
@@ -59,6 +60,7 @@ export default function HomeScreen() {
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
+  const { scrollY, onScroll } = useTopBlurScroll();
   const revealValues = useRef([
     new Animated.Value(0),
     new Animated.Value(0),
@@ -259,8 +261,10 @@ export default function HomeScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={[]}>
-        <ScrollView
+        <Animated.ScrollView
           contentInsetAdjustmentBehavior="never"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -384,9 +388,9 @@ export default function HomeScreen() {
               </View>
             )}
           </Animated.View>
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
       <CreatePost />
     </View>
   );
@@ -404,7 +408,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     gap: 20,
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     paddingTop: 0,
   },
   loadingState: {

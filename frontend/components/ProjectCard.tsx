@@ -7,6 +7,7 @@ import { TagChip } from "@/components/TagChip";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
+import { LazyFadeIn } from "@/components/LazyFadeIn";
 import { isProjectLiked, likeProject, unlikeProject } from "@/services/api";
 import {
   emitProjectStats,
@@ -41,9 +42,11 @@ export function ProjectCard({
   const [isSaved, setIsSaved] = useState(Boolean(saved));
   const [isSaving, setIsSaving] = useState(false);
   const [saveCount, setSaveCount] = useState(project.saves ?? 0);
+  const likeMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
   const pendingEmitRef = useRef<{
     likes?: number;
     saves?: number;
+    isLiked?: boolean;
   } | null>(null);
   const likeScale = useRef(new Animated.Value(1)).current;
 
@@ -72,6 +75,14 @@ export function ProjectCard({
       try {
         const status = await isProjectLiked(user.username, project.id);
         if (isMounted) {
+          const mutation = likeMutationRef.current;
+          if (
+            mutation &&
+            mutation.value === status.status &&
+            Date.now() - mutation.ts < 2000
+          ) {
+            return;
+          }
           setIsLiked(status.status);
         }
       } catch {
@@ -91,26 +102,31 @@ export function ProjectCard({
       return;
     }
     setIsUpdating(true);
+    const nextLiked = !isLiked;
+    const nextLikes = Math.max(0, likeCount + (nextLiked ? 1 : -1));
+    likeMutationRef.current = { value: nextLiked, ts: Date.now() };
+    setIsLiked(nextLiked);
+    setLikeCount(nextLikes);
+    pendingEmitRef.current = {
+      ...(pendingEmitRef.current ?? {}),
+      likes: nextLikes,
+      isLiked: nextLiked,
+    };
     try {
-      if (isLiked) {
-        await unlikeProject(user.username, project.id);
-        setIsLiked(false);
-        const nextLikes = Math.max(0, likeCount - 1);
-        setLikeCount(nextLikes);
-        pendingEmitRef.current = {
-          ...(pendingEmitRef.current ?? {}),
-          likes: nextLikes,
-        };
-      } else {
+      if (nextLiked) {
         await likeProject(user.username, project.id);
-        setIsLiked(true);
-        const nextLikes = likeCount + 1;
-        setLikeCount(nextLikes);
-        pendingEmitRef.current = {
-          ...(pendingEmitRef.current ?? {}),
-          likes: nextLikes,
-        };
+      } else {
+        await unlikeProject(user.username, project.id);
       }
+    } catch {
+      const rollbackLikes = likeCount;
+      setIsLiked(isLiked);
+      setLikeCount(rollbackLikes);
+      pendingEmitRef.current = {
+        ...(pendingEmitRef.current ?? {}),
+        likes: rollbackLikes,
+        isLiked,
+      };
     } finally {
       setIsUpdating(false);
     }
@@ -121,19 +137,25 @@ export function ProjectCard({
       return;
     }
     setIsSaving(true);
+    const nextSaved = !isSaved;
+    const nextCount = Math.max(0, saveCount + (nextSaved ? 1 : -1));
+    setIsSaved(nextSaved);
+    setSaveCount(nextCount);
+    pendingEmitRef.current = {
+      ...(pendingEmitRef.current ?? {}),
+      saves: nextCount,
+    };
     try {
-      const nextSaved = !isSaved;
-      const nextCount = Math.max(0, saveCount + (nextSaved ? 1 : -1));
       await toggleSave(project.id);
-      setIsSaved(nextSaved);
-      setSaveCount(nextCount);
-      pendingEmitRef.current = {
-        ...(pendingEmitRef.current ?? {}),
-        saves: nextCount,
-      };
       onSavedChange?.(nextSaved);
     } catch {
-      setIsSaved(isStreamSaved(project.id));
+      const fallbackSaved = isStreamSaved(project.id);
+      setIsSaved(fallbackSaved);
+      setSaveCount(saveCount);
+      pendingEmitRef.current = {
+        ...(pendingEmitRef.current ?? {}),
+        saves: saveCount,
+      };
     } finally {
       setIsSaving(false);
     }
@@ -185,104 +207,106 @@ export function ProjectCard({
   }, [likeCount, project.id, saveCount]);
 
   return (
-    <Pressable
-      onPress={() =>
-        router.push({
-          pathname: "/stream/[projectId]",
-          params: { projectId: String(project.id) },
-        })
-      }
-      style={[
-        styles.card,
-        variant === "compact" && styles.cardCompact,
-        variant === "full" && styles.cardFull,
-        { backgroundColor: colors.surface, borderColor: colors.border },
-      ]}
-    >
-      <View style={styles.headerRow}>
-        <View>
-          <ThemedText type="defaultSemiBold" style={styles.name}>
-            {project.name}
-          </ThemedText>
-          <ThemedText type="caption" style={{ color: colors.muted }}>
-            {project.stage.toUpperCase()} · {project.contributors} builders
-          </ThemedText>
+    <LazyFadeIn visible>
+      <Pressable
+        onPress={() =>
+          router.push({
+            pathname: "/stream/[projectId]",
+            params: { projectId: String(project.id) },
+          })
+        }
+        style={[
+          styles.card,
+          variant === "compact" && styles.cardCompact,
+          variant === "full" && styles.cardFull,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <View style={styles.headerRow}>
+          <View>
+            <ThemedText type="defaultSemiBold" style={styles.name}>
+              {project.name}
+            </ThemedText>
+            <ThemedText type="caption" style={{ color: colors.muted }}>
+              {project.stage.toUpperCase()} · {project.contributors} builders
+            </ThemedText>
+          </View>
+          <View style={[styles.stageDot, { backgroundColor: colors.tint }]} />
         </View>
-        <View style={[styles.stageDot, { backgroundColor: colors.tint }]} />
-      </View>
-      <ThemedText type="default" style={styles.summary}>
-        {project.summary}
-      </ThemedText>
-      <View style={styles.tagRow}>
-        {isCreator ? (
-          <TagChip label="Creator" tone="accent" />
-        ) : isBuilder ? (
-          <TagChip label="Builder" />
-        ) : null}
-        {project.tags.map((tag) => (
-          <TagChip key={tag} label={tag} />
-        ))}
-      </View>
-      <View style={styles.metaRow}>
-        <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+        <ThemedText type="default" style={styles.summary}>
+          {project.summary}
+        </ThemedText>
+        <View style={styles.tagRow}>
+          {isCreator ? (
+            <TagChip label="Creator" tone="accent" />
+          ) : isBuilder ? (
+            <TagChip label="Builder" />
+          ) : null}
+          {project.tags.map((tag) => (
+            <TagChip key={tag} label={tag} />
+          ))}
+        </View>
+        <View style={styles.metaRow}>
+          <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.metaItem,
+                isLiked && {
+                  shadowColor: colors.tint,
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  shadowOffset: { width: 0, height: 0 },
+                  elevation: 2,
+                },
+                pressed && styles.metaPressed,
+              ]}
+              onPress={handleLikeToggle}
+            >
+              <Feather
+                name="heart"
+                size={14}
+                color={isLiked ? colors.tint : colors.muted}
+              />
+              <ThemedText
+                type="caption"
+                style={{ color: isLiked ? colors.tint : colors.muted }}
+              >
+                {likeCount}
+              </ThemedText>
+            </Pressable>
+          </Animated.View>
           <Pressable
             style={({ pressed }) => [
               styles.metaItem,
-              isLiked && {
-                shadowColor: colors.tint,
-                shadowOpacity: 0.35,
-                shadowRadius: 6,
-                shadowOffset: { width: 0, height: 0 },
-                elevation: 2,
-              },
               pressed && styles.metaPressed,
             ]}
-            onPress={handleLikeToggle}
+            onPress={handleSaveToggle}
+            disabled={false}
           >
             <Feather
-              name="heart"
+              name="bookmark"
               size={14}
-              color={isLiked ? colors.tint : colors.muted}
+              color={isSaved ? colors.tint : colors.muted}
             />
             <ThemedText
               type="caption"
-              style={{ color: isLiked ? colors.tint : colors.muted }}
+              style={{ color: isSaved ? colors.tint : colors.muted }}
             >
-              {likeCount}
+              {saveCount}
             </ThemedText>
           </Pressable>
-        </Animated.View>
-        <Pressable
-          style={({ pressed }) => [
-            styles.metaItem,
-            pressed && styles.metaPressed,
-          ]}
-          onPress={handleSaveToggle}
-          disabled={false}
-        >
-          <Feather
-            name="bookmark"
-            size={14}
-            color={isSaved ? colors.tint : colors.muted}
-          />
-          <ThemedText
-            type="caption"
-            style={{ color: isSaved ? colors.tint : colors.muted }}
-          >
-            {saveCount}
-          </ThemedText>
-        </Pressable>
-        <View style={styles.metaItem}>
-          <Feather name="clock" size={14} color={colors.muted} />
-          <ThemedText type="caption" style={{ color: colors.muted }}>
-            {new Date(project.updated_on).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            })}
-          </ThemedText>
+          <View style={styles.metaItem}>
+            <Feather name="clock" size={14} color={colors.muted} />
+            <ThemedText type="caption" style={{ color: colors.muted }}>
+              {new Date(project.updated_on).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })}
+            </ThemedText>
+          </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+    </LazyFadeIn>
   );
 }
 

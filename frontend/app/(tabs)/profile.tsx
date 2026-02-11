@@ -27,6 +27,7 @@ import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   clearApiCache,
@@ -96,6 +97,7 @@ export default function ProfileScreen() {
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
   const hasLoadedRef = useRef(false);
+  const { scrollY, onScroll } = useTopBlurScroll();
 
   const filteredFollowerUsers = React.useMemo(() => {
     const trimmed = followersQuery.trim().toLowerCase();
@@ -503,8 +505,10 @@ export default function ProfileScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={[]}>
-        <ScrollView
+        <Animated.ScrollView
           contentInsetAdjustmentBehavior="never"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -780,9 +784,9 @@ export default function ProfileScreen() {
               </View>
             )}
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
       <Modal
         visible={isFollowersOpen}
         transparent
@@ -920,7 +924,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   container: {
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
     gap: 20,
     paddingTop: 0,
   },

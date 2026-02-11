@@ -8,7 +8,6 @@ import React, {
 import {
   ActivityIndicator,
   Animated,
-  Image,
   Keyboard,
   Pressable,
   RefreshControl,
@@ -25,6 +24,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { FadeInImage } from "@/components/FadeInImage";
 import { UiPerson } from "@/constants/Types";
 import {
   clearApiCache,
@@ -50,6 +50,7 @@ import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeToPostEvents } from "@/services/postEvents";
 
@@ -90,6 +91,7 @@ export default function ExploreScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const { scrollY, onScroll } = useTopBlurScroll();
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -450,10 +452,12 @@ export default function ExploreScreen() {
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={[]}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView
+          <Animated.ScrollView
             contentInsetAdjustmentBehavior="never"
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
+            onScroll={onScroll}
+            scrollEventThrottle={16}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -536,6 +540,7 @@ export default function ExploreScreen() {
                 })}
               </View>
             </ScrollView>
+
             {showSearchResults ? (
               <View>
                 <SectionHeader title="Search results" />
@@ -579,7 +584,7 @@ export default function ExploreScreen() {
                                     ]}
                                   >
                                     {person.picture ? (
-                                      <Image
+                                      <FadeInImage
                                         source={{ uri: person.picture }}
                                         style={styles.personAvatarImage}
                                       />
@@ -780,7 +785,7 @@ export default function ExploreScreen() {
                               ]}
                             >
                               {person.picture ? (
-                                <Image
+                                <FadeInImage
                                   source={{ uri: person.picture }}
                                   style={styles.personAvatarImage}
                                 />
@@ -876,10 +881,10 @@ export default function ExploreScreen() {
                 )}
               </View>
             ) : null}
-          </ScrollView>
+          </Animated.ScrollView>
         </TouchableWithoutFeedback>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }
@@ -895,7 +900,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   container: {
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
     gap: 20,
     paddingTop: 0,
   },

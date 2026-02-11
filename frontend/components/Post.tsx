@@ -3,14 +3,16 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Image,
   Pressable,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { UiPost } from "@/constants/Types";
+import { FadeInImage } from "@/components/FadeInImage";
+import { LazyFadeIn } from "@/components/LazyFadeIn";
 import { ThemedText } from "@/components/ThemedText";
 import { TagChip } from "@/components/TagChip";
 import { MarkdownText } from "@/components/MarkdownText";
@@ -95,7 +97,7 @@ export function Post({
   const colors = useAppColors();
   const router = useRouter();
   const { user } = useAuth();
-  const { isSaved, toggleSave } = useSaved();
+  const { isSaved, savedPostIds, toggleSave } = useSaved();
   const [likeCount, setLikeCount] = useState(likes);
   const [saveCount, setSaveCount] = useState(saves);
   const [commentCount, setCommentCount] = useState(comments);
@@ -112,6 +114,17 @@ export function Post({
   const [isDeleting, setIsDeleting] = useState(false);
   const likeScale = useRef(new Animated.Value(1)).current;
   const resolvedUserPicture = resolveMediaUrl(userPicture);
+  const previewCharLimit = 420;
+  const likeMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
+  const saveMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
+  const [isSavedLocal, setIsSavedLocal] = useState(isSaved(id));
+  const previewContent = useMemo(() => {
+    if (localContent.length <= previewCharLimit) {
+      return localContent;
+    }
+    return localContent.slice(0, previewCharLimit).trimEnd();
+  }, [localContent, previewCharLimit]);
+  const isTruncated = localContent.length > previewCharLimit;
 
   const initials = useMemo(() => {
     return username
@@ -150,6 +163,10 @@ export function Post({
   }, [content, isEditing, media]);
 
   useEffect(() => {
+    setIsSavedLocal(isSaved(id));
+  }, [id, isSaved, savedPostIds]);
+
+  useEffect(() => {
     setLikeCount(likes);
   }, [likes]);
 
@@ -178,6 +195,14 @@ export function Post({
         setCommentCount(event.comments);
       }
       if (typeof event.isLiked === "boolean") {
+        const pending = likeMutationRef.current;
+        if (pending && Date.now() - pending.ts < 1500) {
+          if (event.isLiked === pending.value) {
+            likeMutationRef.current = null;
+          } else {
+            return;
+          }
+        }
         setIsLiked(event.isLiked);
       }
     });
@@ -196,7 +221,10 @@ export function Post({
         ]);
         const safeComments = Array.isArray(commentList) ? commentList : [];
         if (isMounted) {
-          setIsLiked(likeStatus.status);
+          const pending = likeMutationRef.current;
+          if (!pending || Date.now() - pending.ts >= 1500) {
+            setIsLiked(likeStatus.status);
+          }
           setCommentCount(safeComments.length);
         }
       } catch {
@@ -218,21 +246,27 @@ export function Post({
     }
 
     setIsLikeUpdating(true);
+    const prevLiked = isLiked;
+    const prevLikes = likeCount;
     try {
-      if (isLiked) {
-        await unlikePost(user.username, id);
-        const nextLikes = Math.max(0, likeCount - 1);
-        setIsLiked(false);
-        setLikeCount(nextLikes);
-        emitPostStats(id, { likes: nextLikes, isLiked: false });
-      } else {
+      const nextLiked = !prevLiked;
+      const nextLikes = Math.max(0, prevLikes + (nextLiked ? 1 : -1));
+      setIsLiked(nextLiked);
+      setLikeCount(nextLikes);
+      emitPostStats(id, { likes: nextLikes, isLiked: nextLiked });
+      likeMutationRef.current = { value: nextLiked, ts: Date.now() };
+
+      if (nextLiked) {
         await likePost(user.username, id);
-        const nextLikes = likeCount + 1;
-        setIsLiked(true);
-        setLikeCount(nextLikes);
-        emitPostStats(id, { likes: nextLikes, isLiked: true });
+      } else {
+        await unlikePost(user.username, id);
       }
+    } catch {
+      setIsLiked(prevLiked);
+      setLikeCount(prevLikes);
+      emitPostStats(id, { likes: prevLikes, isLiked: prevLiked });
     } finally {
+      likeMutationRef.current = null;
       setIsLikeUpdating(false);
     }
   };
@@ -241,12 +275,21 @@ export function Post({
     if (isSaving) {
       return;
     }
-    const wasSaved = isSaved(id);
+    const wasSaved = isSavedLocal;
+    const prevCount = saveCount;
+    const nextSaved = !wasSaved;
+    const nextCount = Math.max(0, saveCount + (nextSaved ? 1 : -1));
     setIsSaving(true);
     try {
+      setSaveCount(nextCount);
+      setIsSavedLocal(nextSaved);
+      saveMutationRef.current = { value: nextSaved, ts: Date.now() };
       await toggleSave(id);
-      setSaveCount((prev) => Math.max(0, prev + (wasSaved ? -1 : 1)));
+    } catch {
+      setSaveCount(prevCount);
+      setIsSavedLocal(wasSaved);
     } finally {
+      saveMutationRef.current = null;
       setIsSaving(false);
     }
   };
@@ -259,12 +302,12 @@ export function Post({
     Animated.sequence([
       Animated.timing(likeScale, {
         toValue: 1.12,
-        duration: 140,
+        duration: 90,
         useNativeDriver: true,
       }),
       Animated.timing(likeScale, {
         toValue: 1,
-        duration: 160,
+        duration: 110,
         useNativeDriver: true,
       }),
     ]).start();
@@ -384,8 +427,16 @@ export function Post({
     ]);
   };
 
+  const handleOpenPost = () => {
+    router.push({
+      pathname: "/post/[postId]",
+      params: { postId: String(id) },
+    });
+  };
+
   return (
-    <View
+    <LazyFadeIn
+      visible
       style={[
         styles.card,
         { backgroundColor: colors.surface, borderColor: colors.border },
@@ -394,7 +445,7 @@ export function Post({
       <View style={styles.header}>
         <Pressable style={styles.headerMeta} onPress={handleOpenProfile}>
           {resolvedUserPicture ? (
-            <Image
+            <FadeInImage
               source={{ uri: resolvedUserPicture }}
               style={styles.avatar}
             />
@@ -418,18 +469,6 @@ export function Post({
         </Pressable>
         <View style={styles.headerActions}>
           <TagChip label={projectStage} tone="accent" />
-          {canEdit && !isEditing ? (
-            <Pressable
-              onPress={handleStartEdit}
-              style={({ pressed }) => [
-                styles.iconButton,
-                pressed && styles.iconButtonPressed,
-              ]}
-              disabled={isUpdating}
-            >
-              <Feather name="edit-3" size={14} color={colors.muted} />
-            </Pressable>
-          ) : null}
         </View>
       </View>
       {isEditing ? (
@@ -536,7 +575,23 @@ export function Post({
           </View>
         </View>
       ) : (
-        <MarkdownText>{localContent}</MarkdownText>
+        <Pressable onPress={handleOpenPost}>
+          <View
+            style={[
+              styles.contentWrapper,
+              isTruncated ? styles.contentClamped : null,
+            ]}
+          >
+            <MarkdownText>{previewContent}</MarkdownText>
+            {isTruncated ? (
+              <LinearGradient
+                pointerEvents="none"
+                colors={["transparent", colors.surface]}
+                style={styles.contentFade}
+              />
+            ) : null}
+          </View>
+        </Pressable>
       )}
       <MediaGallery media={localMedia} />
       <View style={styles.tagRow}>
@@ -557,21 +612,16 @@ export function Post({
         <PostAction
           icon="message-circle"
           label={commentCount}
-          onPress={() =>
-            router.push({
-              pathname: "/post/[postId]",
-              params: { postId: String(id) },
-            })
-          }
+          onPress={handleOpenPost}
         />
         <PostAction
           icon="bookmark"
           label={saveCount}
-          color={isSaved(id) ? colors.tint : colors.muted}
+          color={isSavedLocal ? colors.tint : colors.muted}
           onPress={handleToggleSave}
         />
       </View>
-    </View>
+    </LazyFadeIn>
   );
 }
 
@@ -701,5 +751,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 6,
+  },
+  contentWrapper: {
+    position: "relative",
+  },
+  contentClamped: {
+    maxHeight: 180,
+    overflow: "hidden",
+  },
+  contentFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 32,
   },
 });

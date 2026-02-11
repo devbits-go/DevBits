@@ -1,10 +1,13 @@
 import React from "react";
-import { Image, Modal, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { WebView } from "react-native-webview";
 import * as Linking from "expo-linking";
+import { FadeInImage } from "@/components/FadeInImage";
+import { LazyFadeIn } from "@/components/LazyFadeIn";
 import { ThemedText } from "@/components/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useDeferredRender } from "@/hooks/useDeferredRender";
 
 type MediaGalleryProps = {
   media?: string[];
@@ -50,6 +53,7 @@ import { resolveMediaUrl } from "@/services/api";
 
 export function MediaGallery({ media }: MediaGalleryProps) {
   const colors = useAppColors();
+  const isReady = useDeferredRender();
   const [expandedImage, setExpandedImage] = React.useState<string | null>(null);
   if (!media?.length) {
     return null;
@@ -63,26 +67,37 @@ export function MediaGallery({ media }: MediaGalleryProps) {
     <View style={styles.container}>
       {normalizedMedia.map((item) => {
         if (isVideo(item)) {
-          return <VideoItem key={item} source={item} />;
+          return (
+            <LazyFadeIn key={item} visible={isReady}>
+              {isReady ? <VideoItem source={item} /> : null}
+            </LazyFadeIn>
+          );
         }
 
         if (isSvg(item)) {
           const html = `<!doctype html><html><body style="margin:0;padding:0;background:transparent"><img src="${item}" style="max-width:100%;height:auto;" /></body></html>`;
           return (
-            <WebView
-              key={item}
-              originWhitelist={["*"]}
-              source={{ html }}
-              style={[styles.media, styles.svg]}
-              containerStyle={styles.svgContainer}
-            />
+            <LazyFadeIn key={item} visible={isReady}>
+              {isReady ? (
+                <WebView
+                  originWhitelist={["*"]}
+                  source={{ html }}
+                  style={[styles.media, styles.svg]}
+                  containerStyle={styles.svgContainer}
+                />
+              ) : null}
+            </LazyFadeIn>
           );
         }
 
         if (isImage(item)) {
           return (
             <Pressable key={item} onPress={() => setExpandedImage(item)}>
-              <Image source={{ uri: item }} style={styles.media} />
+              <LazyFadeIn visible={isReady}>
+                {isReady ? (
+                  <FadeInImage source={{ uri: item }} style={styles.media} />
+                ) : null}
+              </LazyFadeIn>
             </Pressable>
           );
         }
@@ -110,7 +125,7 @@ export function MediaGallery({ media }: MediaGalleryProps) {
           onPress={() => setExpandedImage(null)}
         >
           {expandedImage ? (
-            <Image
+            <FadeInImage
               source={{ uri: expandedImage }}
               style={styles.modalImage}
               resizeMode="contain"

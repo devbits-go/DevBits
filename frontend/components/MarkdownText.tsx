@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Markdown from "react-native-markdown-display";
 import * as Linking from "expo-linking";
 import {
@@ -11,7 +11,10 @@ import {
   View,
 } from "react-native";
 import { Collapsible } from "@/components/Collapsible";
+import { FadeInImage } from "@/components/FadeInImage";
+import { LazyFadeIn } from "@/components/LazyFadeIn";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
 type MarkdownTextProps = {
@@ -22,6 +25,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   const colors = useAppColors();
   const { preferences } = usePreferences();
   const { width: windowWidth } = useWindowDimensions();
+  const isReady = useDeferredRender();
   const linkifyText = (text: string) =>
     text.replace(
       /(^|\s)((?:https?:\/\/|www\.)[^\s<]+[^\s<\.)])/g,
@@ -508,10 +512,17 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     });
   };
 
+  const markdownNodes = useMemo(() => {
+    if (!isReady) {
+      return null;
+    }
+    return renderMarkdownSegments(children, "root");
+  }, [children, colors, isReady, preferences.linkOpenMode, windowWidth]);
+
   return (
-    <View style={styles.markdownStack}>
-      {renderMarkdownSegments(children, "root")}
-    </View>
+    <LazyFadeIn visible={isReady} style={styles.markdownStack}>
+      {markdownNodes}
+    </LazyFadeIn>
   );
 }
 
@@ -551,6 +562,7 @@ const calloutPalette = {
 
 function MarkdownImage({ src, maxWidth }: MarkdownImageProps) {
   const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
+  const isReady = useDeferredRender();
 
   useEffect(() => {
     let active = true;
@@ -572,11 +584,18 @@ function MarkdownImage({ src, maxWidth }: MarkdownImageProps) {
   }, [src]);
 
   return (
-    <Image
-      source={{ uri: src }}
-      resizeMode="contain"
-      style={[styles.image, { width: maxWidth, maxWidth: "100%", aspectRatio }]}
-    />
+    <LazyFadeIn visible={isReady}>
+      {isReady ? (
+        <FadeInImage
+          source={{ uri: src }}
+          resizeMode="contain"
+          style={[
+            styles.image,
+            { width: maxWidth, maxWidth: "100%", aspectRatio },
+          ]}
+        />
+      ) : null}
+    </LazyFadeIn>
   );
 }
 

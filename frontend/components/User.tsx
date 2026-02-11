@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Alert, Image, Modal, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Modal, Pressable, StyleSheet, View } from "react-native";
 import * as Linking from "expo-linking";
+import { FadeInImage } from "@/components/FadeInImage";
 import { ThemedText } from "@/components/ThemedText";
 import { MarkdownText } from "@/components/MarkdownText";
 import { UserProps } from "@/constants/Types";
@@ -67,7 +68,10 @@ export default function User({
             onPress={() => setIsImageOpen(true)}
             style={styles.avatarButton}
           >
-            <Image source={{ uri: resolvedPicture }} style={styles.avatar} />
+            <FadeInImage
+              source={{ uri: resolvedPicture }}
+              style={styles.avatar}
+            />
           </Pressable>
         ) : (
           <View
@@ -118,7 +122,7 @@ export default function User({
         >
           <View style={styles.viewerCard}>
             {hasPicture ? (
-              <Image
+              <FadeInImage
                 source={{ uri: resolvedPicture }}
                 style={styles.viewerImage}
                 resizeMode="contain"

@@ -58,24 +58,24 @@ export function SavedProvider({ children }: { children: React.ReactNode }) {
 
   const toggleSave = async (postId: number) => {
     const isAlreadySaved = savedPostIds.includes(postId);
+    const nextIds = isAlreadySaved
+      ? savedPostIds.filter((id) => id !== postId)
+      : [...savedPostIds, postId];
+    setSavedPostIds(nextIds);
     if (user?.username) {
-      if (isAlreadySaved) {
-        await unsavePost(user.username, postId);
-        setSavedPostIds((prev) => prev.filter((id) => id !== postId));
-      } else {
-        await savePost(user.username, postId);
-        setSavedPostIds((prev) => [...prev, postId]);
+      try {
+        if (isAlreadySaved) {
+          await unsavePost(user.username, postId);
+        } else {
+          await savePost(user.username, postId);
+        }
+      } catch {
+        setSavedPostIds(savedPostIds);
       }
       return;
     }
 
-    setSavedPostIds((prev) => {
-      const next = prev.includes(postId)
-        ? prev.filter((id) => id !== postId)
-        : [...prev, postId];
-      SecureStore.setItemAsync(SAVED_KEY, JSON.stringify(next));
-      return next;
-    });
+    SecureStore.setItemAsync(SAVED_KEY, JSON.stringify(nextIds));
   };
 
   const value = useMemo(

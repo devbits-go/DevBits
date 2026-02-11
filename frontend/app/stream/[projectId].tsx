@@ -12,8 +12,10 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -35,18 +37,22 @@ import { Post } from "@/components/Post";
 import { TagChip } from "@/components/TagChip";
 import { ThemedText } from "@/components/ThemedText";
 import { MarkdownText } from "@/components/MarkdownText";
+import Markdown from "react-native-markdown-display";
 import { MediaGallery } from "@/components/MediaGallery";
 import { TopBlur } from "@/components/TopBlur";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 import { emitProjectStats } from "@/services/projectEvents";
 
 const ensureUrlScheme = (url: string) =>
   /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
+
+const toOneLine = (value: string) => value.replace(/\s+/g, " ").trim();
 
 export default function StreamDetailScreen() {
   const colors = useAppColors();
@@ -69,8 +75,65 @@ export default function StreamDetailScreen() {
   const bottom = useBottomTabOverflow();
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0)).current;
+  const { scrollY, onScroll } = useTopBlurScroll();
   const prevSavedRef = useRef(false);
   const hasInitializedSaveRef = useRef(false);
+
+  const inlineMarkdownRules = {
+    paragraph: (node: { key?: string }, children: React.ReactNode[]) => (
+      <Text
+        key={node.key}
+        style={[styles.inlineTitleText, { color: colors.text }]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        {children}
+      </Text>
+    ),
+    text: (node: { content?: string }) => node.content,
+    strong: (node: { key?: string }, children: React.ReactNode[]) => (
+      <Text key={node.key} style={styles.inlineStrong}>
+        {children}
+      </Text>
+    ),
+    em: (node: { key?: string }, children: React.ReactNode[]) => (
+      <Text key={node.key} style={styles.inlineEm}>
+        {children}
+      </Text>
+    ),
+    s: (node: { key?: string }, children: React.ReactNode[]) => (
+      <Text key={node.key} style={styles.inlineStrike}>
+        {children}
+      </Text>
+    ),
+    code_inline: (node: { key?: string; content?: string }) => (
+      <Text
+        key={node.key}
+        style={[
+          styles.inlineCode,
+          { backgroundColor: colors.tint, color: colors.background },
+        ]}
+      >
+        {` ${node.content} `}
+      </Text>
+    ),
+    link: (node: { key?: string; attributes?: any }, children: any) => (
+      <Text
+        key={node.key}
+        style={[styles.inlineLink, { color: colors.tint }]}
+        onPress={() =>
+          void Linking.openURL(ensureUrlScheme(node.attributes?.href ?? ""))
+        }
+      >
+        {children}
+      </Text>
+    ),
+  } as const;
+
+  const inlineMarkdownStyle = {
+    body: { marginTop: 0, marginBottom: 0 },
+    paragraph: { marginTop: 0, marginBottom: 0 },
+  } as const;
 
   const projectIdNumber = useMemo(() => Number(projectId), [projectId]);
   const isCreator = useMemo(
@@ -233,8 +296,10 @@ export default function StreamDetailScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={[]}>
-        <ScrollView
+        <Animated.ScrollView
           contentInsetAdjustmentBehavior="never"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -274,9 +339,12 @@ export default function StreamDetailScreen() {
             ) : project ? (
               <View style={styles.streamCard}>
                 <View style={styles.headerBlock}>
-                  <ThemedText type="display" style={styles.title}>
-                    {project.name}
-                  </ThemedText>
+                  <Markdown
+                    rules={inlineMarkdownRules}
+                    style={inlineMarkdownStyle}
+                  >
+                    {toOneLine(project.name)}
+                  </Markdown>
                   {createdLabel || creatorName ? (
                     <View style={styles.metaRow}>
                       {createdLabel ? (
@@ -335,6 +403,38 @@ export default function StreamDetailScreen() {
                         </ThemedText>
                       </Pressable>
                     ) : null}
+                    {isCreator || isBuilder ? (
+                      <Pressable
+                        onPress={() =>
+                          router.push({
+                            pathname: "/manage-streams",
+                            params: { editId: String(projectIdNumber) },
+                          })
+                        }
+                        style={({ pressed }) => [
+                          styles.saveButton,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: colors.surfaceAlt,
+                          },
+                          pressed && styles.saveButtonPressed,
+                        ]}
+                      >
+                        <View style={styles.saveButtonContent}>
+                          <Feather
+                            name="edit-2"
+                            size={14}
+                            color={colors.muted}
+                          />
+                          <ThemedText
+                            type="caption"
+                            style={{ color: colors.muted }}
+                          >
+                            Edit
+                          </ThemedText>
+                        </View>
+                      </Pressable>
+                    ) : null}
                     <Pressable
                       onPress={handleToggleSave}
                       style={({ pressed }) => [
@@ -347,19 +447,49 @@ export default function StreamDetailScreen() {
                       ]}
                       disabled={isSaving}
                     >
-                      <ThemedText
-                        type="caption"
-                        style={{ color: isSaved ? colors.tint : colors.muted }}
-                      >
-                        {saveCount}
-                      </ThemedText>
+                      <View style={styles.saveButtonContent}>
+                        <Feather
+                          name="bookmark"
+                          size={14}
+                          color={isSaved ? colors.tint : colors.muted}
+                        />
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: isSaved ? colors.tint : colors.muted,
+                          }}
+                        >
+                          {saveCount}
+                        </ThemedText>
+                      </View>
                     </Pressable>
                   </View>
                 </View>
 
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  {project.description}
-                </ThemedText>
+                <Markdown
+                  rules={{
+                    ...inlineMarkdownRules,
+                    paragraph: (
+                      node: { key?: string },
+                      children: React.ReactNode[],
+                    ) => (
+                      <Text
+                        key={node.key}
+                        style={[
+                          styles.inlineSummaryText,
+                          { color: colors.muted },
+                        ]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {children}
+                      </Text>
+                    ),
+                  }}
+                  style={inlineMarkdownStyle}
+                >
+                  {toOneLine(project.description)}
+                </Markdown>
 
                 {project.about_md ? (
                   <MarkdownText>{project.about_md}</MarkdownText>
@@ -411,9 +541,9 @@ export default function StreamDetailScreen() {
               </ThemedText>
             </View>
           )}
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
-      <TopBlur />
+      <TopBlur scrollY={scrollY} />
     </View>
   );
 }
@@ -426,7 +556,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
     gap: 16,
     paddingTop: 0,
   },
@@ -468,6 +599,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderColor: "transparent",
   },
+  saveButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   saveButtonPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.98 }],
@@ -475,6 +611,35 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     lineHeight: 28,
+  },
+  inlineTitleText: {
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: "700",
+    fontFamily: "SpaceMono",
+  },
+  inlineSummaryText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: "SpaceMono",
+  },
+  inlineStrong: {
+    fontWeight: "700",
+  },
+  inlineEm: {
+    fontStyle: "italic",
+  },
+  inlineStrike: {
+    textDecorationLine: "line-through",
+  },
+  inlineCode: {
+    fontFamily: "SpaceMono",
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  inlineLink: {
+    textDecorationLine: "underline",
   },
   linkList: {
     gap: 6,
