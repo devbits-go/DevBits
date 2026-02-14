@@ -24,6 +24,5 @@ echo "Starting frontend..."
   npm run frontend
 ) &
 
-# Keep the script alive so the background processes don't orphan immediately
-# or wait for them to finish
+# Keep the script running until all background processes finish
 wait
