@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Markdown from "react-native-markdown-display";
 import * as Linking from "expo-linking";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Pressable,
@@ -10,6 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { WebView } from "react-native-webview";
 import { Collapsible } from "@/components/Collapsible";
 import { FadeInImage } from "@/components/FadeInImage";
 import { LazyFadeIn } from "@/components/LazyFadeIn";
@@ -19,6 +21,68 @@ import { usePreferences } from "@/contexts/PreferencesContext";
 
 type MarkdownTextProps = {
   children: string;
+};
+
+const normalizeImageSourceUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const source = trimmed
+    .replace(/^<+|>+$/g, "")
+    .replace(/&amp;/g, "&")
+    .trim();
+
+  const withScheme = source.startsWith("//")
+    ? `https:${source}`
+    : source.startsWith("www.")
+      ? `https://${source}`
+      : source;
+
+  try {
+    const parsed = new URL(withScheme);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return "";
+    }
+
+    if (parsed.hostname !== "github.com") {
+      return parsed.toString();
+    }
+
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const blobIndex = segments.indexOf("blob");
+    const rawIndex = segments.indexOf("raw");
+
+    if (segments.length >= 5 && blobIndex === 2) {
+      const owner = segments[0];
+      const repo = segments[1];
+      const branch = segments[3];
+      const assetPath = segments.slice(4).join("/");
+      if (owner && repo && branch && assetPath) {
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${assetPath}`;
+      }
+    }
+
+    if (segments.length >= 5 && rawIndex === 2) {
+      const owner = segments[0];
+      const repo = segments[1];
+      const branch = segments[3];
+      const assetPath = segments.slice(4).join("/");
+      if (owner && repo && branch && assetPath) {
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${assetPath}`;
+      }
+    }
+
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+};
+
+const isSvgUrl = (value: string) => {
+  const clean = value.split("?")[0].split("#")[0].toLowerCase();
+  return clean.endsWith(".svg");
 };
 
 type InlineCodeScope = "callout" | "blockquote" | null;
@@ -286,7 +350,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   };
 
   const renderImage = (node: { key?: string; attributes?: any }) => {
-    const src = node.attributes?.src ?? "";
+    const src = normalizeImageSourceUrl(node.attributes?.src ?? "");
     if (!src) {
       return null;
     }
@@ -826,10 +890,18 @@ const calloutPalette = {
 } as const;
 
 function MarkdownImage({ src, maxWidth }: MarkdownImageProps) {
+  const colors = useAppColors();
   const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
+  const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
+  const [isSvgLoaded, setIsSvgLoaded] = useState(false);
   const isReady = useDeferredRender();
+  const isSvg = useMemo(() => isSvgUrl(src), [src]);
 
   useEffect(() => {
+    if (isSvg) {
+      setAspectRatio(16 / 9);
+      return;
+    }
     let active = true;
     Image.getSize(
       src,
@@ -846,19 +918,88 @@ function MarkdownImage({ src, maxWidth }: MarkdownImageProps) {
     return () => {
       active = false;
     };
-  }, [src]);
+  }, [isSvg, src]);
+
+  useEffect(() => {
+    if (!isSvg) {
+      setSvgMarkup(null);
+      return;
+    }
+
+    let active = true;
+    setSvgMarkup(null);
+    setIsSvgLoaded(false);
+
+    void fetch(src)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to load SVG");
+        }
+        return response.text();
+      })
+      .then((text) => {
+        if (!active) {
+          return;
+        }
+        setSvgMarkup(text);
+      })
+      .catch(() => {
+        if (active) {
+          setSvgMarkup(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isSvg, src]);
+
+  const svgHtml = useMemo(() => {
+    const content = svgMarkup
+      ? svgMarkup
+      : `<img src="${src.replace(/"/g, "&quot;")}" style="max-width:100%;height:auto;" />`;
+    return `<!doctype html><html><body style="margin:0;padding:0;background:transparent;display:flex;align-items:center;justify-content:center;">${content}</body></html>`;
+  }, [src, svgMarkup]);
 
   return (
     <LazyFadeIn visible={isReady}>
       {isReady ? (
-        <FadeInImage
-          source={{ uri: src }}
-          resizeMode="contain"
-          style={[
-            styles.image,
-            { width: maxWidth, maxWidth: "100%", aspectRatio },
-          ]}
-        />
+        isSvg ? (
+          <View
+            style={[
+              styles.image,
+              styles.svgImage,
+              styles.svgImageContainer,
+              {
+                width: maxWidth,
+                maxWidth: "100%",
+                backgroundColor: colors.surfaceAlt,
+              },
+            ]}
+          >
+            <WebView
+              originWhitelist={["*"]}
+              source={{ html: svgHtml }}
+              style={[styles.svgWebView, !isSvgLoaded && styles.hidden]}
+              scrollEnabled={false}
+              onLoadEnd={() => setIsSvgLoaded(true)}
+            />
+            {!isSvgLoaded ? (
+              <View style={styles.svgLoadingOverlay}>
+                <ActivityIndicator size="small" color={colors.muted} />
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <FadeInImage
+            source={{ uri: src }}
+            resizeMode="contain"
+            style={[
+              styles.image,
+              { width: maxWidth, maxWidth: "100%", aspectRatio },
+            ]}
+          />
+        )
       ) : null}
     </LazyFadeIn>
   );
@@ -934,6 +1075,27 @@ const styles = StyleSheet.create({
   },
   image: {
     borderRadius: 10,
+  },
+  svgImage: {
+    height: 220,
+    backgroundColor: "transparent",
+  },
+  svgWebView: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "transparent",
+  },
+  svgImageContainer: {
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  svgLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hidden: {
+    opacity: 0,
   },
   bulletMarker: {
     width: 7,

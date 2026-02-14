@@ -66,10 +66,10 @@ export function MyHeader() {
           ]}
           onPress={() => {
             Haptics.selectionAsync();
-            router.push("/(tabs)/explore");
+            router.push("/terminal");
           }}
         >
-          <Feather name="search" color={colors.tint} size={18} />
+          <Feather name="terminal" color={colors.tint} size={18} />
         </Pressable>
       </View>
     </View>

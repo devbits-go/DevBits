@@ -44,6 +44,8 @@ export default function NotificationsScreen() {
 
   const getNotificationTitle = (type: string) => {
     switch (type) {
+      case "direct_message":
+        return "New message";
       case "builder_added":
         return "Builder invite";
       case "comment_post":
@@ -62,6 +64,8 @@ export default function NotificationsScreen() {
   const getNotificationBody = (item: { type: string; actor_name: string }) => {
     const actor = item.actor_name || "Someone";
     switch (item.type) {
+      case "direct_message":
+        return `${actor} sent you a message.`;
       case "builder_added":
         return `${actor} added you as a builder.`;
       case "comment_post":
@@ -79,6 +83,13 @@ export default function NotificationsScreen() {
 
   const handleOpen = async (item: any) => {
     await markRead(item.id);
+    if (item.type === "direct_message" && item.actor_name) {
+      router.push({
+        pathname: "/terminal",
+        params: { chat: item.actor_name },
+      });
+      return;
+    }
     if (item.type === "follow_user" && item.actor_name) {
       router.push({
         pathname: "/user/[username]",

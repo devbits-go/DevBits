@@ -6,6 +6,7 @@ import {
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
@@ -74,6 +75,71 @@ function RootLayoutNav() {
       router.replace("/(tabs)");
     }
   }, [isLoading, loaded, segments, router, user]);
+
+  useEffect(() => {
+    const openFromPayload = (payload: Record<string, any>) => {
+      const type = String(payload?.type ?? "").toLowerCase();
+      const actorName = String(payload?.actor_name ?? "").trim();
+      const asNumber = (value: unknown) => {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          return value;
+        }
+        if (typeof value === "string" && value.trim()) {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      };
+
+      if (type === "direct_message" && actorName) {
+        router.push({ pathname: "/terminal", params: { chat: actorName } });
+        return;
+      }
+
+      if (type === "follow_user" && actorName) {
+        router.push({
+          pathname: "/user/[username]",
+          params: { username: actorName },
+        });
+        return;
+      }
+
+      const projectId = asNumber(payload?.project_id);
+      if ((type === "save_project" || type === "builder_added") && projectId) {
+        router.push({
+          pathname: "/stream/[projectId]",
+          params: { projectId: String(projectId) },
+        });
+        return;
+      }
+
+      const postId = asNumber(payload?.post_id);
+      if ((type === "save_post" || type === "comment_post") && postId) {
+        router.push({
+          pathname: "/post/[postId]",
+          params: { postId: String(postId) },
+        });
+      }
+    };
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = (response?.notification?.request?.content?.data ??
+          {}) as Record<string, any>;
+        openFromPayload(data);
+      },
+    );
+
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      const data = (response?.notification?.request?.content?.data ??
+        {}) as Record<string, any>;
+      if (Object.keys(data).length) {
+        openFromPayload(data);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [router]);
 
   // Render null if fonts are not loaded
   if (!loaded) {

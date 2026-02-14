@@ -1,5 +1,11 @@
 import React from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { WebView } from "react-native-webview";
 import * as Linking from "expo-linking";
@@ -35,6 +41,11 @@ type VideoItemProps = {
   source: string;
 };
 
+type SvgItemProps = {
+  source: string;
+  isReady: boolean;
+};
+
 function VideoItem({ source }: VideoItemProps) {
   const player = useVideoPlayer(source, (instance) => {
     instance.loop = true;
@@ -50,6 +61,75 @@ function VideoItem({ source }: VideoItemProps) {
   );
 }
 import { resolveMediaUrl } from "@/services/api";
+
+function SvgItem({ source, isReady }: SvgItemProps) {
+  const colors = useAppColors();
+  const [svgMarkup, setSvgMarkup] = React.useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    let active = true;
+    setSvgMarkup(null);
+    setIsLoaded(false);
+
+    void fetch(source)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to load SVG");
+        }
+        return response.text();
+      })
+      .then((text) => {
+        if (active) {
+          setSvgMarkup(text);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSvgMarkup(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [source]);
+
+  const html = React.useMemo(() => {
+    const content = svgMarkup
+      ? svgMarkup
+      : `<img src="${source}" style="max-width:100%;height:auto;" />`;
+    return `<!doctype html><html><body style="margin:0;padding:0;background:transparent;display:flex;align-items:center;justify-content:center">${content}</body></html>`;
+  }, [source, svgMarkup]);
+
+  return (
+    <LazyFadeIn visible={isReady}>
+      {isReady ? (
+        <View
+          style={[
+            styles.media,
+            styles.svg,
+            styles.svgContainer,
+            { backgroundColor: colors.surfaceAlt },
+          ]}
+        >
+          <WebView
+            originWhitelist={["*"]}
+            source={{ html }}
+            style={[styles.svgWebView, !isLoaded && styles.hidden]}
+            scrollEnabled={false}
+            onLoadEnd={() => setIsLoaded(true)}
+          />
+          {!isLoaded ? (
+            <View style={styles.svgLoadingOverlay}>
+              <ActivityIndicator size="small" color={colors.muted} />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </LazyFadeIn>
+  );
+}
 
 export function MediaGallery({ media }: MediaGalleryProps) {
   const colors = useAppColors();
@@ -75,19 +155,7 @@ export function MediaGallery({ media }: MediaGalleryProps) {
         }
 
         if (isSvg(item)) {
-          const html = `<!doctype html><html><body style="margin:0;padding:0;background:transparent"><img src="${item}" style="max-width:100%;height:auto;" /></body></html>`;
-          return (
-            <LazyFadeIn key={item} visible={isReady}>
-              {isReady ? (
-                <WebView
-                  originWhitelist={["*"]}
-                  source={{ html }}
-                  style={[styles.media, styles.svg]}
-                  containerStyle={styles.svgContainer}
-                />
-              ) : null}
-            </LazyFadeIn>
-          );
+          return <SvgItem key={item} source={item} isReady={isReady} />;
         }
 
         if (isImage(item)) {
@@ -157,6 +225,19 @@ const styles = StyleSheet.create({
   svgContainer: {
     borderRadius: 12,
     overflow: "hidden",
+  },
+  svgWebView: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "transparent",
+  },
+  svgLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hidden: {
+    opacity: 0,
   },
   linkCard: {
     borderRadius: 10,

@@ -69,6 +69,9 @@ func ensureSqliteSchema() error {
 		if err := ensurePostCommentSchema(); err != nil {
 			return err
 		}
+		if err := ensureDirectMessageSchema(); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -88,7 +91,7 @@ func ensureSqliteSchema() error {
 	if err := ensurePostCommentSchema(); err != nil {
 		return err
 	}
-	if err := ensurePostCommentSchema(); err != nil {
+	if err := ensureDirectMessageSchema(); err != nil {
 		return err
 	}
 
@@ -173,6 +176,32 @@ func ensurePostCommentSchema() error {
 		if _, err := DB.Exec("UPDATE Comments SET media = '[]' WHERE media IS NULL;"); err != nil {
 			return fmt.Errorf("failed to backfill comments media: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func ensureDirectMessageSchema() error {
+	if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS DirectMessages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		sender_id INTEGER NOT NULL,
+		recipient_id INTEGER NOT NULL,
+		content TEXT NOT NULL,
+		creation_date TIMESTAMP NOT NULL,
+		FOREIGN KEY (sender_id) REFERENCES Users(id) ON DELETE CASCADE,
+		FOREIGN KEY (recipient_id) REFERENCES Users(id) ON DELETE CASCADE
+	);`); err != nil {
+		return fmt.Errorf("failed to create DirectMessages table: %w", err)
+	}
+
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_direct_messages_sender ON DirectMessages(sender_id);"); err != nil {
+		return fmt.Errorf("failed to create direct messages sender index: %w", err)
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_direct_messages_recipient ON DirectMessages(recipient_id);"); err != nil {
+		return fmt.Errorf("failed to create direct messages recipient index: %w", err)
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_direct_messages_created ON DirectMessages(creation_date);"); err != nil {
+		return fmt.Errorf("failed to create direct messages created index: %w", err)
 	}
 
 	return nil

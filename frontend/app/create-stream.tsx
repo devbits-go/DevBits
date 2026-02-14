@@ -28,6 +28,7 @@ import { useMotionConfig } from "@/hooks/useMotionConfig";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { MediaGallery } from "@/components/MediaGallery";
+import { MarkdownText } from "@/components/MarkdownText";
 
 const statusOptions = [
   { label: "Alpha", value: 0 },
@@ -242,7 +243,7 @@ export default function CreateStreamScreen() {
                     <TextInput
                       value={description}
                       onChangeText={setDescription}
-                      placeholder="What are you building?"
+                      placeholder="What are you building? (markdown supported)"
                       placeholderTextColor={colors.muted}
                       onFocus={handleInputFocus}
                       multiline
@@ -252,6 +253,26 @@ export default function CreateStreamScreen() {
                       ]}
                     />
                   </View>
+
+                  {description.trim() ? (
+                    <View
+                      style={[
+                        styles.previewRow,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.surface,
+                        },
+                      ]}
+                    >
+                      <ThemedText
+                        type="caption"
+                        style={[styles.previewLabel, { color: colors.muted }]}
+                      >
+                        Preview
+                      </ThemedText>
+                      <MarkdownText>{description}</MarkdownText>
+                    </View>
+                  ) : null}
 
                   <View
                     style={[
@@ -446,6 +467,15 @@ const styles = StyleSheet.create({
   input: {
     fontFamily: "SpaceMono",
     fontSize: 15,
+  },
+  previewRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  previewLabel: {
+    marginBottom: 6,
   },
   button: {
     borderRadius: 12,
