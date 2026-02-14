@@ -172,6 +172,16 @@ export interface ApiNotification {
     read_at?: string | null;
 }
 
+export interface ApiDirectMessage {
+    id: number;
+    sender_id: number;
+    recipient_id: number;
+    sender_name: string;
+    recipient_name: string;
+    content: string;
+    created_at: string;
+}
+
 export interface UiPost {
     id: number;
     username: string;

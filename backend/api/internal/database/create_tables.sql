@@ -17,6 +17,7 @@ DROP TABLE IF EXISTS Comments;
 DROP TABLE IF EXISTS CommentLikes;
 
 DROP TABLE IF EXISTS PostSaves;
+DROP TABLE IF EXISTS DirectMessages;
 DROP TABLE IF EXISTS Notifications;
 DROP TABLE IF EXISTS UserPushTokens;
 
@@ -148,6 +149,17 @@ CREATE TABLE PostSaves (
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
 );
 
+-- Direct Messages
+CREATE TABLE DirectMessages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL,
+    recipient_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    creation_date TIMESTAMP NOT NULL,
+    FOREIGN KEY (sender_id) REFERENCES Users(id) ON DELETE CASCADE,
+    FOREIGN KEY (recipient_id) REFERENCES Users(id) ON DELETE CASCADE
+);
+
 -- Notifications
 CREATE TABLE Notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -224,6 +236,9 @@ CREATE INDEX IF NOT EXISTS idx_post_likes_user ON PostLikes(user_id);
 CREATE INDEX IF NOT EXISTS idx_comment_likes_user ON CommentLikes(user_id);
 
 CREATE INDEX IF NOT EXISTS idx_post_saves_user ON PostSaves(user_id);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_sender ON DirectMessages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_recipient ON DirectMessages(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_created ON DirectMessages(creation_date DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON Notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON Notifications(read_at);
 CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON UserPushTokens(user_id);

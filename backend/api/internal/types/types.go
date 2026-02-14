@@ -95,6 +95,16 @@ type PushToken struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type DirectMessage struct {
+	ID            int64     `json:"id"`
+	SenderID      int64     `json:"sender_id"`
+	RecipientID   int64     `json:"recipient_id"`
+	SenderName    string    `json:"sender_name"`
+	RecipientName string    `json:"recipient_name"`
+	Content       string    `json:"content"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 // we can implement this type...
 type NullableInt64 struct {
 	sql.NullInt64

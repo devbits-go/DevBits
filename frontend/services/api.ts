@@ -5,6 +5,7 @@ import {
   ApiProject,
   ApiUser,
   ApiComment,
+  ApiDirectMessage,
   ApiNotification,
   AuthLoginRequest,
   AuthRegisterRequest,
@@ -400,6 +401,36 @@ export const clearNotifications = () =>
   request<{ message: string }>("/notifications", {
     method: "DELETE",
   });
+
+export const getDirectChatPeers = async (username: string) => {
+  const response = await request<{ message?: string; peers?: string[] }>(
+    `/messages/${username}/peers`,
+  );
+  return response?.peers ?? [];
+};
+
+export const getDirectMessages = (
+  username: string,
+  other: string,
+  start = 0,
+  count = 100,
+) =>
+  request<ApiDirectMessage[]>(
+    `/messages/${username}/with/${other}?start=${start}&count=${count}`,
+  );
+
+export const createDirectMessage = (
+  username: string,
+  other: string,
+  content: string,
+) =>
+  request<{ message: string; direct_message: ApiDirectMessage }>(
+    `/messages/${username}/with/${other}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    },
+  );
 
 export const uploadMedia = async (file: {
   uri: string;

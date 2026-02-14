@@ -27,10 +27,13 @@ import { ApiProject } from "@/constants/Types";
 import {
   clearApiCache,
   getPostsByProjectId,
+  isProjectLiked,
+  likeProject,
   getProjectBuilders,
   getProjectById,
   getUserById,
   removeProjectBuilder,
+  unlikeProject,
 } from "@/services/api";
 import { mapPostToUi } from "@/services/mappers";
 import { Post } from "@/components/Post";
@@ -71,6 +74,9 @@ export default function StreamDetailScreen() {
   const [isSaved, setIsSaved] = useState(false);
   const [saveCount, setSaveCount] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [isLiking, setIsLiking] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const bottom = useBottomTabOverflow();
   const motion = useMotionConfig();
@@ -168,11 +174,17 @@ export default function StreamDetailScreen() {
         if (showLoader) {
           setIsLoading(true);
         }
-        const [projectData, projectPosts, builderList] = await Promise.all([
-          getProjectById(projectIdNumber),
-          getPostsByProjectId(projectIdNumber),
-          getProjectBuilders(projectIdNumber).catch(() => []),
-        ]);
+        const [projectData, projectPosts, builderList, likeStatus] =
+          await Promise.all([
+            getProjectById(projectIdNumber),
+            getPostsByProjectId(projectIdNumber),
+            getProjectBuilders(projectIdNumber).catch(() => []),
+            user?.username
+              ? isProjectLiked(user.username, projectIdNumber).catch(() => ({
+                  status: false,
+                }))
+              : Promise.resolve({ status: false }),
+          ]);
         const ownerUser = await getUserById(projectData.owner).catch(
           () => null,
         );
@@ -188,6 +200,7 @@ export default function StreamDetailScreen() {
         setPosts(uiPosts);
         setBuilders(Array.isArray(builderList) ? builderList : []);
         setCreatorName(ownerUser?.username ?? `user-${projectData.owner}`);
+        setIsLiked(likeStatus.status);
         setHasError(false);
       } catch {
         setProject(null);
@@ -201,7 +214,7 @@ export default function StreamDetailScreen() {
         }
       }
     },
-    [projectIdNumber],
+    [projectIdNumber, user?.username],
   );
 
   useEffect(() => {
@@ -238,6 +251,13 @@ export default function StreamDetailScreen() {
     setSaveCount(project.saves ?? 0);
   }, [project?.id, project?.saves]);
 
+  useEffect(() => {
+    if (!project) {
+      return;
+    }
+    setLikeCount(project.likes ?? 0);
+  }, [project?.id, project?.likes]);
+
   const handleToggleSave = async () => {
     if (!user?.username || !projectIdNumber || isSaving) {
       return;
@@ -252,6 +272,31 @@ export default function StreamDetailScreen() {
       emitProjectStats(projectIdNumber, { saves: nextCount });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleToggleLike = async () => {
+    if (!user?.username || !projectIdNumber || isLiking) {
+      return;
+    }
+    setIsLiking(true);
+    const nextLiked = !isLiked;
+    const nextCount = Math.max(0, likeCount + (nextLiked ? 1 : -1));
+    setIsLiked(nextLiked);
+    setLikeCount(nextCount);
+    emitProjectStats(projectIdNumber, { likes: nextCount, isLiked: nextLiked });
+    try {
+      if (nextLiked) {
+        await likeProject(user.username, projectIdNumber);
+      } else {
+        await unlikeProject(user.username, projectIdNumber);
+      }
+    } catch {
+      setIsLiked(!nextLiked);
+      setLikeCount(likeCount);
+      emitProjectStats(projectIdNumber, { likes: likeCount, isLiked });
+    } finally {
+      setIsLiking(false);
     }
   };
 
@@ -382,7 +427,9 @@ export default function StreamDetailScreen() {
                     {isCreator ? (
                       <TagChip label="Creator" tone="accent" />
                     ) : null}
-                    {isBuilder ? <TagChip label="Builder" /> : null}
+                    {isBuilder ? (
+                      <TagChip label="Builder" tone="accent" />
+                    ) : null}
                   </View>
                   <View style={styles.actionRow}>
                     {isBuilder ? (
@@ -439,6 +486,34 @@ export default function StreamDetailScreen() {
                       </Pressable>
                     ) : null}
                     <Pressable
+                      onPress={handleToggleLike}
+                      style={({ pressed }) => [
+                        styles.saveButton,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceAlt,
+                        },
+                        pressed && styles.saveButtonPressed,
+                      ]}
+                      disabled={isLiking}
+                    >
+                      <View style={styles.saveButtonContent}>
+                        <Feather
+                          name="heart"
+                          size={14}
+                          color={isLiked ? colors.tint : colors.muted}
+                        />
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: isLiked ? colors.tint : colors.muted,
+                          }}
+                        >
+                          {likeCount}
+                        </ThemedText>
+                      </View>
+                    </Pressable>
+                    <Pressable
                       onPress={handleToggleSave}
                       style={({ pressed }) => [
                         styles.saveButton,
@@ -469,30 +544,7 @@ export default function StreamDetailScreen() {
                   </View>
                 </View>
 
-                <Markdown
-                  rules={{
-                    ...inlineMarkdownRules,
-                    paragraph: (
-                      node: { key?: string },
-                      children: React.ReactNode[],
-                    ) => (
-                      <Text
-                        key={node.key}
-                        style={[
-                          styles.inlineSummaryText,
-                          { color: colors.muted },
-                        ]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                      >
-                        {children}
-                      </Text>
-                    ),
-                  }}
-                  style={inlineMarkdownStyle}
-                >
-                  {toOneLine(project.description)}
-                </Markdown>
+                <MarkdownText>{project.description}</MarkdownText>
 
                 {project.about_md ? (
                   <MarkdownText>{project.about_md}</MarkdownText>
@@ -619,11 +671,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 28,
     fontWeight: "700",
-    fontFamily: "SpaceMono",
-  },
-  inlineSummaryText: {
-    fontSize: 12,
-    lineHeight: 18,
     fontFamily: "SpaceMono",
   },
   inlineStrong: {

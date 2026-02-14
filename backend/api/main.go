@@ -79,6 +79,10 @@ func main() {
 	router.POST("/users/:username/follow/:new_follow", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.FollowUser)
 	router.POST("/users/:username/unfollow/:unfollow", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.UnfollowUser)
 
+	router.GET("/messages/:username/peers", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectChatPeers)
+	router.GET("/messages/:username/with/:other", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectMessages)
+	router.POST("/messages/:username/with/:other", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.CreateDirectMessage)
+
 	router.GET("/projects/:project_id", handlers.GetProjectById)
 	router.POST("/projects", handlers.RequireAuth(), handlers.CreateProject)
 	router.PUT("/projects/:project_id", handlers.RequireAuth(), handlers.UpdateProjectInfo)

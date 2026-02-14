@@ -84,6 +84,19 @@ func GetUserIdByUsername(username string) (int, error) {
 	return userID, nil
 }
 
+// GetUserIdByUsernameInsensitive retrieves the user ID associated with the given username,
+// matching case-insensitively.
+func GetUserIdByUsernameInsensitive(username string) (int, error) {
+	query := `SELECT id FROM Users WHERE username = ? COLLATE NOCASE LIMIT 1;`
+	var userID int
+	row := DB.QueryRow(query, username)
+	err := row.Scan(&userID)
+	if err != nil {
+		return -1, fmt.Errorf("Error fetching user ID for username '%v' (case-insensitive): %v", username, err)
+	}
+	return userID, nil
+}
+
 // QueryUsername retrieves all user data for the given username.
 //
 // Parameters:

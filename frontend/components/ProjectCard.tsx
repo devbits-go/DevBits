@@ -3,6 +3,7 @@ import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { UiProject } from "@/constants/Types";
 import { ThemedText } from "@/components/ThemedText";
+import { MarkdownText } from "@/components/MarkdownText";
 import { TagChip } from "@/components/TagChip";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuth } from "@/contexts/AuthContext";
@@ -233,14 +234,14 @@ export function ProjectCard({
           </View>
           <View style={[styles.stageDot, { backgroundColor: colors.tint }]} />
         </View>
-        <ThemedText type="default" style={styles.summary}>
-          {project.summary}
-        </ThemedText>
+        <View style={styles.summary}>
+          <MarkdownText>{project.summary}</MarkdownText>
+        </View>
         <View style={styles.tagRow}>
           {isCreator ? (
             <TagChip label="Creator" tone="accent" />
           ) : isBuilder ? (
-            <TagChip label="Builder" />
+            <TagChip label="Builder" tone="accent" />
           ) : null}
           {project.tags.map((tag) => (
             <TagChip key={tag} label={tag} />
@@ -339,8 +340,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   summary: {
-    fontSize: 13,
-    lineHeight: 18,
+    minHeight: 18,
   },
   tagRow: {
     flexDirection: "row",

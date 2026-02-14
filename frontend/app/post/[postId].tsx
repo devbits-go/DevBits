@@ -37,11 +37,14 @@ import {
   getPostById,
   getProjectById,
   getUserById,
+  isPostLiked,
+  likePost,
   isCommentLiked,
   likeComment,
   updateComment,
   updatePost,
   uploadMedia,
+  unlikePost,
   unlikeComment,
 } from "@/services/api";
 import {
@@ -100,6 +103,8 @@ export default function PostDetailScreen() {
   const [isCommentMediaUploading, setIsCommentMediaUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [postLiked, setPostLiked] = useState(false);
+  const [isPostLikeUpdating, setIsPostLikeUpdating] = useState(false);
 
   const postIdNumber = useMemo(() => Number(postId), [postId]);
 
@@ -129,11 +134,17 @@ export default function PostDetailScreen() {
           setIsLoading(true);
         }
         const postData = await getPostById(postIdNumber);
-        const [postAuthor, postProject, postComments] = await Promise.all([
-          getUserById(postData.user).catch(() => null),
-          getProjectById(postData.project).catch(() => null),
-          getCommentsByPostId(postData.id),
-        ]);
+        const [postAuthor, postProject, postComments, postLikeStatus] =
+          await Promise.all([
+            getUserById(postData.user).catch(() => null),
+            getProjectById(postData.project).catch(() => null),
+            getCommentsByPostId(postData.id),
+            user?.username
+              ? isPostLiked(user.username, postData.id).catch(() => ({
+                  status: false,
+                }))
+              : Promise.resolve({ status: false }),
+          ]);
 
         const safeComments = Array.isArray(postComments) ? postComments : [];
 
@@ -159,6 +170,7 @@ export default function PostDetailScreen() {
         setAuthor(postAuthor);
         setProject(postProject);
         setComments(commentStates);
+        setPostLiked(postLikeStatus.status);
         setErrorMessage("");
       } catch {
         setErrorMessage("Unable to load post.");
@@ -222,6 +234,9 @@ export default function PostDetailScreen() {
           setPost((prev) =>
             prev ? { ...prev, likes: event.likes ?? prev.likes } : prev,
           );
+        }
+        if (typeof event.isLiked === "boolean") {
+          setPostLiked(event.isLiked);
         }
       }
       if (event.type === "deleted") {
@@ -469,6 +484,36 @@ export default function PostDetailScreen() {
         },
       },
     ]);
+  };
+
+  const handleTogglePostLike = async () => {
+    if (!post || !user?.username || isPostLikeUpdating) {
+      return;
+    }
+
+    setIsPostLikeUpdating(true);
+    const previousLiked = postLiked;
+    const previousLikes = post.likes ?? 0;
+    const nextLiked = !previousLiked;
+    const nextLikes = Math.max(0, previousLikes + (nextLiked ? 1 : -1));
+
+    setPostLiked(nextLiked);
+    setPost((prev) => (prev ? { ...prev, likes: nextLikes } : prev));
+    emitPostStats(post.id, { likes: nextLikes, isLiked: nextLiked });
+
+    try {
+      if (nextLiked) {
+        await likePost(user.username, post.id);
+      } else {
+        await unlikePost(user.username, post.id);
+      }
+    } catch {
+      setPostLiked(previousLiked);
+      setPost((prev) => (prev ? { ...prev, likes: previousLikes } : prev));
+      emitPostStats(post.id, { likes: previousLikes, isLiked: previousLiked });
+    } finally {
+      setIsPostLikeUpdating(false);
+    }
   };
 
   const handleToggleLike = async (comment: CommentState) => {
@@ -893,15 +938,125 @@ export default function PostDetailScreen() {
                         <MarkdownText>{post.content}</MarkdownText>
                       )}
                       <MediaGallery media={post.media} />
-                      <View style={styles.metaRow}>
-                        <Feather name="heart" size={14} color={colors.muted} />
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.metaRow,
+                          pressed && styles.metaPressed,
+                        ]}
+                        onPress={handleTogglePostLike}
+                        disabled={isPostLikeUpdating}
+                      >
+                        <Feather
+                          name="heart"
+                          size={14}
+                          color={postLiked ? colors.tint : colors.muted}
+                        />
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: postLiked ? colors.tint : colors.muted,
+                          }}
+                        >
+                          {post.likes} likes
+                        </ThemedText>
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.commentComposerBlock}>
+                      <View
+                        style={[
+                          styles.composer,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: colors.surface,
+                          },
+                        ]}
+                      >
+                        <TextInput
+                          value={content}
+                          onChangeText={setContent}
+                          placeholder="Add a comment"
+                          placeholderTextColor={colors.muted}
+                          style={[styles.input, { color: colors.text }]}
+                        />
+                        <Pressable
+                          onPress={handleSubmit}
+                          style={[
+                            styles.submitButton,
+                            { backgroundColor: colors.tint },
+                          ]}
+                          disabled={isSubmitting || isUploadingMedia}
+                        >
+                          {isSubmitting ? (
+                            <ActivityIndicator
+                              size="small"
+                              color={colors.accent}
+                            />
+                          ) : (
+                            <ThemedText
+                              type="caption"
+                              style={{ color: colors.accent }}
+                            >
+                              Send
+                            </ThemedText>
+                          )}
+                        </Pressable>
+                      </View>
+                      <View style={styles.commentMediaSection}>
+                        <View style={styles.commentMediaActions}>
+                          <Pressable
+                            onPress={() => handleAddCommentMedia("library")}
+                            style={[
+                              styles.mediaButton,
+                              { borderColor: colors.border },
+                            ]}
+                          >
+                            <ThemedText
+                              type="caption"
+                              style={{ color: colors.muted }}
+                            >
+                              Add photo/video
+                            </ThemedText>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleAddCommentMedia("file")}
+                            style={[
+                              styles.mediaButton,
+                              { borderColor: colors.border },
+                            ]}
+                          >
+                            <ThemedText
+                              type="caption"
+                              style={{ color: colors.muted }}
+                            >
+                              Add file
+                            </ThemedText>
+                          </Pressable>
+                        </View>
+                        {isUploadingMedia ? (
+                          <View style={styles.uploadingRow}>
+                            <ActivityIndicator
+                              size="small"
+                              color={colors.muted}
+                            />
+                            <ThemedText
+                              type="caption"
+                              style={{ color: colors.muted }}
+                            >
+                              Uploading...
+                            </ThemedText>
+                          </View>
+                        ) : null}
+                        <MediaGallery media={commentMedia} />
+                      </View>
+                      {errorMessage ? (
                         <ThemedText
                           type="caption"
                           style={{ color: colors.muted }}
                         >
-                          {post.likes} likes
+                          {errorMessage}
                         </ThemedText>
-                      </View>
+                      ) : null}
                     </View>
 
                     <View style={styles.commentSection}>
@@ -1140,103 +1295,6 @@ export default function PostDetailScreen() {
                         </View>
                       )}
                     </View>
-
-                    <View style={styles.commentComposerBlock}>
-                      <View
-                        style={[
-                          styles.composer,
-                          {
-                            borderColor: colors.border,
-                            backgroundColor: colors.surface,
-                          },
-                        ]}
-                      >
-                        <TextInput
-                          value={content}
-                          onChangeText={setContent}
-                          placeholder="Add a comment"
-                          placeholderTextColor={colors.muted}
-                          style={[styles.input, { color: colors.text }]}
-                        />
-                        <Pressable
-                          onPress={handleSubmit}
-                          style={[
-                            styles.submitButton,
-                            { backgroundColor: colors.tint },
-                          ]}
-                          disabled={isSubmitting || isUploadingMedia}
-                        >
-                          {isSubmitting ? (
-                            <ActivityIndicator
-                              size="small"
-                              color={colors.accent}
-                            />
-                          ) : (
-                            <ThemedText
-                              type="caption"
-                              style={{ color: colors.accent }}
-                            >
-                              Send
-                            </ThemedText>
-                          )}
-                        </Pressable>
-                      </View>
-                      <View style={styles.commentMediaSection}>
-                        <View style={styles.commentMediaActions}>
-                          <Pressable
-                            onPress={() => handleAddCommentMedia("library")}
-                            style={[
-                              styles.mediaButton,
-                              { borderColor: colors.border },
-                            ]}
-                          >
-                            <ThemedText
-                              type="caption"
-                              style={{ color: colors.muted }}
-                            >
-                              Add photo/video
-                            </ThemedText>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleAddCommentMedia("file")}
-                            style={[
-                              styles.mediaButton,
-                              { borderColor: colors.border },
-                            ]}
-                          >
-                            <ThemedText
-                              type="caption"
-                              style={{ color: colors.muted }}
-                            >
-                              Add file
-                            </ThemedText>
-                          </Pressable>
-                        </View>
-                        {isUploadingMedia ? (
-                          <View style={styles.uploadingRow}>
-                            <ActivityIndicator
-                              size="small"
-                              color={colors.muted}
-                            />
-                            <ThemedText
-                              type="caption"
-                              style={{ color: colors.muted }}
-                            >
-                              Uploading...
-                            </ThemedText>
-                          </View>
-                        ) : null}
-                        <MediaGallery media={commentMedia} />
-                      </View>
-                      {errorMessage ? (
-                        <ThemedText
-                          type="caption"
-                          style={{ color: colors.muted }}
-                        >
-                          {errorMessage}
-                        </ThemedText>
-                      ) : null}
-                    </View>
                   </>
                 ) : (
                   <View style={styles.emptyState}>
@@ -1314,13 +1372,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  metaPressed: {
+    opacity: 0.85,
+  },
   commentSection: {
-    gap: 16,
-    paddingTop: 4,
+    gap: 12,
+    paddingTop: 8,
   },
   commentComposerBlock: {
-    gap: 10,
-    paddingTop: 4,
+    gap: 12,
+    paddingTop: 12,
   },
   commentCard: {
     borderRadius: 12,

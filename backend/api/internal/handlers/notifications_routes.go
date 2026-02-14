@@ -172,6 +172,8 @@ func SendNotificationPush(targetID int64, notification *types.Notification, body
 		Title: "DevBits",
 		Body:  body,
 		Data: map[string]interface{}{
+			"actor_id":   notification.ActorID,
+			"actor_name": notification.ActorName,
 			"type":       notification.Type,
 			"post_id":    notification.PostID,
 			"project_id": notification.ProjectID,
