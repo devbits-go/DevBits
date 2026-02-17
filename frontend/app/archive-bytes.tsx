@@ -12,6 +12,7 @@ import {
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { Post } from "@/components/Post";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
@@ -37,7 +38,8 @@ export default function ArchiveBytesScreen() {
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<Animated.ScrollView>(null);
+  const reveal = useRef(new Animated.Value(0.08)).current;
   const { scrollY, onScroll } = useTopBlurScroll();
 
   useEffect(() => {
@@ -153,6 +155,7 @@ export default function ArchiveBytesScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <Animated.ScrollView
+          ref={scrollRef}
           contentInsetAdjustmentBehavior="never"
           onScroll={onScroll}
           scrollEventThrottle={16}
@@ -219,6 +222,11 @@ export default function ArchiveBytesScreen() {
         </Animated.ScrollView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }
@@ -232,7 +240,7 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingVertical: 16,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 16,
     paddingTop: 0,
   },

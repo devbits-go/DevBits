@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Easing,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -15,7 +17,6 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   clearApiCache,
-  getUsersFollowing,
   getPostsFeed,
   getProjectById,
   getProjectBuilders,
@@ -27,6 +28,7 @@ import { mapPostToUi, mapProjectToUi } from "@/services/mappers";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { useRequestGuard } from "@/hooks/useRequestGuard";
 import { MyHeader } from "@/components/header";
 import CreatePost from "@/components/CreatePost";
 import { Post } from "@/components/Post";
@@ -34,6 +36,7 @@ import { ProjectCard } from "@/components/ProjectCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatPill } from "@/components/StatPill";
 import { ThemedText } from "@/components/ThemedText";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { TopBlur } from "@/components/TopBlur";
 import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { subscribeToPostEvents } from "@/services/postEvents";
@@ -60,12 +63,18 @@ export default function HomeScreen() {
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
+  const requestGuard = useRequestGuard();
+  const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const revealValues = useRef([
-    new Animated.Value(0),
-    new Animated.Value(0),
-    new Animated.Value(0),
+    new Animated.Value(0.08),
+    new Animated.Value(0.08),
+    new Animated.Value(0.08),
   ]).current;
+  const homePostFetchCount = 8;
+  const homeProjectFetchCount = 8;
+  const homeVisiblePostsCount = 8;
+  const homeVisibleProjectsCount = 8;
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -73,54 +82,46 @@ export default function HomeScreen() {
       return;
     }
 
-    Animated.stagger(
-      motion.delay(120),
-      revealValues.map((value) =>
-        Animated.timing(value, {
-          toValue: 1,
-          duration: motion.duration(420),
-          useNativeDriver: true,
-        }),
-      ),
-    ).start();
+    const animations = revealValues.map((value) =>
+      Platform.OS === "android"
+        ? Animated.timing(value, {
+            toValue: 1,
+            duration: motion.duration(320),
+            easing: Easing.bezier(0.22, 1, 0.36, 1),
+            useNativeDriver: true,
+          })
+        : Animated.spring(value, {
+            toValue: 1,
+            speed: 15,
+            bounciness: 6,
+            useNativeDriver: true,
+          }),
+    );
+
+    Animated.stagger(motion.delay(90), animations).start();
   }, [motion, revealValues]);
 
   const loadFeed = useCallback(
     async (showLoader = true) => {
+      const requestId = requestGuard.beginRequest();
       try {
-        if (showLoader) {
+        if (showLoader && requestGuard.isMounted()) {
           setIsLoading(true);
         }
-        const [
-          postFeedRaw,
-          projectFeedRaw,
-          followingIdsRaw,
-          builderProjectsRaw,
-        ] = await Promise.all([
-          getPostsFeed("time", 0, 20),
-          getProjectsFeed("time", 0, 4),
-          user?.username
-            ? getUsersFollowing(user.username)
-            : Promise.resolve([]),
-          user?.id ? getProjectsByBuilderId(user.id) : Promise.resolve([]),
-        ]);
+        const [postFeedRaw, projectFeedRaw, builderProjectsRaw] =
+          await Promise.all([
+            getPostsFeed("time", 0, homePostFetchCount),
+            getProjectsFeed("time", 0, homeProjectFetchCount),
+            user?.id ? getProjectsByBuilderId(user.id) : Promise.resolve([]),
+          ]);
 
         const postFeed = Array.isArray(postFeedRaw) ? postFeedRaw : [];
         const projectFeed = Array.isArray(projectFeedRaw) ? projectFeedRaw : [];
-        const followingIds = Array.isArray(followingIdsRaw)
-          ? followingIdsRaw
-          : [];
         const builderProjects = Array.isArray(builderProjectsRaw)
           ? builderProjectsRaw
           : [];
 
-        const followingPosts = followingIds.length
-          ? postFeed.filter((post) => followingIds.includes(post.user))
-          : [];
-        const fallbackPosts = postFeed.filter(
-          (post) => !followingIds.includes(post.user),
-        );
-        const selectedPosts = followingPosts.concat(fallbackPosts).slice(0, 10);
+        const selectedPosts = postFeed.slice(0, homeVisiblePostsCount);
 
         const projectMap = new Map(
           projectFeed.map((project) => [project.id, project]),
@@ -128,7 +129,10 @@ export default function HomeScreen() {
         builderProjects.forEach((project) => {
           projectMap.set(project.id, project);
         });
-        const combinedProjects = Array.from(projectMap.values());
+        const combinedProjects = Array.from(projectMap.values()).slice(
+          0,
+          homeVisibleProjectsCount,
+        );
         const builderCounts = await Promise.all(
           combinedProjects.map((project) =>
             getProjectBuilders(project.id).catch(() => []),
@@ -162,6 +166,10 @@ export default function HomeScreen() {
           ),
         );
 
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
+
         setProjects(uiProjects);
         setPosts(uiPosts);
         setBuilderProjectIds(builderProjects.map((project) => project.id));
@@ -172,17 +180,28 @@ export default function HomeScreen() {
         );
         setHasError(false);
       } catch {
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
         setProjects([]);
         setPosts([]);
         setTags([]);
         setHasError(true);
       } finally {
-        if (showLoader) {
+        if (showLoader && requestGuard.isMounted()) {
           setIsLoading(false);
         }
       }
     },
-    [user?.id, user?.username],
+    [
+      homePostFetchCount,
+      homeProjectFetchCount,
+      homeVisiblePostsCount,
+      homeVisibleProjectsCount,
+      requestGuard,
+      user?.id,
+      user?.username,
+    ],
   );
 
   useEffect(() => {
@@ -249,9 +268,15 @@ export default function HomeScreen() {
     opacity: revealValues[index],
     transform: [
       {
+        translateY: revealValues[index].interpolate({
+          inputRange: [0, 1],
+          outputRange: [22, 0],
+        }),
+      },
+      {
         scale: revealValues[index].interpolate({
           inputRange: [0, 1],
-          outputRange: [0.985, 1],
+          outputRange: [0.97, 1],
         }),
       },
     ],
@@ -262,6 +287,7 @@ export default function HomeScreen() {
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <Animated.ScrollView
+          ref={scrollRef}
           contentInsetAdjustmentBehavior="never"
           onScroll={onScroll}
           scrollEventThrottle={16}
@@ -301,12 +327,16 @@ export default function HomeScreen() {
 
           <Animated.View style={revealStyle(1)}>
             <SectionHeader
-              title="Active streams"
+              title="Top streams today"
               actionLabel="See all"
               actionOnPress={() => router.push("/streams")}
             />
             {isLoading ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.edgeToEdgeRail}
+              >
                 <View style={styles.carouselRow}>
                   {[0, 1, 2, 3].map((key) => (
                     <View
@@ -323,7 +353,11 @@ export default function HomeScreen() {
                 </View>
               </ScrollView>
             ) : projects.length ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.edgeToEdgeRail}
+              >
                 <View style={styles.carouselRow}>
                   {projects.map((project) => (
                     <View key={project.id} style={styles.carouselCardWrap}>
@@ -350,12 +384,16 @@ export default function HomeScreen() {
 
           <Animated.View style={revealStyle(2)}>
             <SectionHeader
-              title="Fresh bytes"
+              title="Top bytes today"
               actionLabel="See all"
               actionOnPress={() => router.push("/bytes")}
             />
             {isLoading ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.edgeToEdgeRail}
+              >
                 <View style={styles.carouselRow}>
                   {[0, 1, 2].map((key) => (
                     <View
@@ -372,7 +410,11 @@ export default function HomeScreen() {
                 </View>
               </ScrollView>
             ) : posts.length ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.edgeToEdgeRail}
+              >
                 <View style={styles.carouselRow}>
                   {posts.map((post) => (
                     <View key={post.id} style={styles.carouselPostWrap}>
@@ -394,6 +436,11 @@ export default function HomeScreen() {
         </Animated.ScrollView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        bottomOffset={insets.bottom + 20}
+      />
       <CreatePost />
     </View>
   );
@@ -411,8 +458,11 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     gap: 20,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     paddingTop: 0,
+  },
+  edgeToEdgeRail: {
+    marginHorizontal: -16,
   },
   loadingState: {
     alignItems: "center",
@@ -438,7 +488,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingVertical: 4,
-    paddingRight: 20,
+    paddingHorizontal: 16,
   },
   carouselCard: {
     borderRadius: 14,

@@ -22,7 +22,7 @@ export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const reveal = useRef(new Animated.Value(0.08)).current;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);

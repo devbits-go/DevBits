@@ -12,7 +12,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -40,7 +39,7 @@ import { Post } from "@/components/Post";
 import { TagChip } from "@/components/TagChip";
 import { ThemedText } from "@/components/ThemedText";
 import { MarkdownText } from "@/components/MarkdownText";
-import Markdown from "react-native-markdown-display";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { MediaGallery } from "@/components/MediaGallery";
 import { TopBlur } from "@/components/TopBlur";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
@@ -56,6 +55,29 @@ const ensureUrlScheme = (url: string) =>
   /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
 
 const toOneLine = (value: string) => value.replace(/\s+/g, " ").trim();
+
+const StreamTitleMarkdown = React.memo(function StreamTitleMarkdown({
+  title,
+}: {
+  title: string;
+}) {
+  return <MarkdownText>{toOneLine(title)}</MarkdownText>;
+});
+
+const StreamBodyMarkdown = React.memo(function StreamBodyMarkdown({
+  description,
+  aboutMd,
+}: {
+  description: string;
+  aboutMd?: string;
+}) {
+  return (
+    <>
+      <MarkdownText>{description}</MarkdownText>
+      {aboutMd ? <MarkdownText>{aboutMd}</MarkdownText> : null}
+    </>
+  );
+});
 
 export default function StreamDetailScreen() {
   const colors = useAppColors();
@@ -80,66 +102,11 @@ export default function StreamDetailScreen() {
   const [isLeaving, setIsLeaving] = useState(false);
   const bottom = useBottomTabOverflow();
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const reveal = useRef(new Animated.Value(0.08)).current;
+  const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const prevSavedRef = useRef(false);
   const hasInitializedSaveRef = useRef(false);
-
-  const inlineMarkdownRules = {
-    paragraph: (node: { key?: string }, children: React.ReactNode[]) => (
-      <Text
-        key={node.key}
-        style={[styles.inlineTitleText, { color: colors.text }]}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-      >
-        {children}
-      </Text>
-    ),
-    text: (node: { content?: string }) => node.content,
-    strong: (node: { key?: string }, children: React.ReactNode[]) => (
-      <Text key={node.key} style={styles.inlineStrong}>
-        {children}
-      </Text>
-    ),
-    em: (node: { key?: string }, children: React.ReactNode[]) => (
-      <Text key={node.key} style={styles.inlineEm}>
-        {children}
-      </Text>
-    ),
-    s: (node: { key?: string }, children: React.ReactNode[]) => (
-      <Text key={node.key} style={styles.inlineStrike}>
-        {children}
-      </Text>
-    ),
-    code_inline: (node: { key?: string; content?: string }) => (
-      <Text
-        key={node.key}
-        style={[
-          styles.inlineCode,
-          { backgroundColor: colors.tint, color: colors.background },
-        ]}
-      >
-        {` ${node.content} `}
-      </Text>
-    ),
-    link: (node: { key?: string; attributes?: any }, children: any) => (
-      <Text
-        key={node.key}
-        style={[styles.inlineLink, { color: colors.tint }]}
-        onPress={() =>
-          void Linking.openURL(ensureUrlScheme(node.attributes?.href ?? ""))
-        }
-      >
-        {children}
-      </Text>
-    ),
-  } as const;
-
-  const inlineMarkdownStyle = {
-    body: { marginTop: 0, marginBottom: 0 },
-    paragraph: { marginTop: 0, marginBottom: 0 },
-  } as const;
 
   const projectIdNumber = useMemo(() => Number(projectId), [projectId]);
   const isCreator = useMemo(
@@ -342,6 +309,7 @@ export default function StreamDetailScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <Animated.ScrollView
+          ref={scrollRef}
           contentInsetAdjustmentBehavior="never"
           onScroll={onScroll}
           scrollEventThrottle={16}
@@ -387,12 +355,7 @@ export default function StreamDetailScreen() {
             ) : project ? (
               <View style={styles.streamCard}>
                 <View style={styles.headerBlock}>
-                  <Markdown
-                    rules={inlineMarkdownRules}
-                    style={inlineMarkdownStyle}
-                  >
-                    {toOneLine(project.name)}
-                  </Markdown>
+                  <StreamTitleMarkdown title={project.name} />
                   {createdLabel || creatorName ? (
                     <View style={styles.metaRow}>
                       {createdLabel ? (
@@ -544,11 +507,10 @@ export default function StreamDetailScreen() {
                   </View>
                 </View>
 
-                <MarkdownText>{project.description}</MarkdownText>
-
-                {project.about_md ? (
-                  <MarkdownText>{project.about_md}</MarkdownText>
-                ) : null}
+                <StreamBodyMarkdown
+                  description={project.description ?? ""}
+                  aboutMd={project.about_md}
+                />
 
                 <MediaGallery media={project.media} />
 
@@ -599,6 +561,11 @@ export default function StreamDetailScreen() {
         </Animated.ScrollView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }
@@ -612,7 +579,7 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingVertical: 16,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 16,
     paddingTop: 0,
   },
@@ -662,34 +629,6 @@ const styles = StyleSheet.create({
   saveButtonPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.98 }],
-  },
-  title: {
-    fontSize: 24,
-    lineHeight: 28,
-  },
-  inlineTitleText: {
-    fontSize: 24,
-    lineHeight: 28,
-    fontWeight: "700",
-    fontFamily: "SpaceMono",
-  },
-  inlineStrong: {
-    fontWeight: "700",
-  },
-  inlineEm: {
-    fontStyle: "italic",
-  },
-  inlineStrike: {
-    textDecorationLine: "line-through",
-  },
-  inlineCode: {
-    fontFamily: "SpaceMono",
-    borderRadius: 6,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-  },
-  inlineLink: {
-    textDecorationLine: "underline",
   },
   linkList: {
     gap: 6,

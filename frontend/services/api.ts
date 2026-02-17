@@ -18,6 +18,7 @@ import {
 
 const userCache = new Map<number, ApiUser>();
 const projectCache = new Map<number, ApiProject>();
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
 let authToken: string | null = null;
 
 export const setAuthToken = (token: string | null) => {
@@ -84,6 +85,18 @@ export const resolveMediaUrl = (value?: string | null) => {
 };
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const isGetRequest = method === "GET" && !init?.body;
+  const inFlightKey = `${authToken ?? ""}::${path}`;
+
+  if (isGetRequest) {
+    const existing = inFlightGetRequests.get(inFlightKey);
+    if (existing) {
+      return existing as Promise<T>;
+    }
+  }
+
+  const execute = async (): Promise<T> => {
   const authHeader = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -109,10 +122,41 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   } catch (error) {
     throw new Error(`Invalid JSON response: ${text}`);
   }
+  };
+
+  if (!isGetRequest) {
+    return execute();
+  }
+
+  const pending = execute().finally(() => {
+    inFlightGetRequests.delete(inFlightKey);
+  });
+  inFlightGetRequests.set(inFlightKey, pending as Promise<unknown>);
+  return pending;
 };
 
-export const getPostsFeed = (type: "time" | "likes", start = 0, count = 10) =>
+export type FeedSort = "time" | "likes" | "new" | "recent" | "popular" | "hot";
+
+export const getPostsFeed = (type: FeedSort, start = 0, count = 10) =>
   request<ApiPost[]>(`/feed/posts?type=${type}&start=${start}&count=${count}`);
+
+export const getFollowingPostsFeed = (
+  username: string,
+  start = 0,
+  count = 10,
+  sort: FeedSort = "recent",
+) =>
+  request<ApiPost[]>(
+    `/feed/posts/following/${username}?start=${start}&count=${count}&sort=${sort}`,
+  );
+
+export const getSavedPostsFeed = (
+  username: string,
+  start = 0,
+  count = 10,
+  sort: FeedSort = "recent",
+) =>
+  request<ApiPost[]>(`/feed/posts/saved/${username}?start=${start}&count=${count}&sort=${sort}`);
 
 export const registerUser = (payload: AuthRegisterRequest) =>
   request<AuthResponse>("/auth/register", {
@@ -129,10 +173,30 @@ export const loginUser = (payload: AuthLoginRequest) =>
 export const getMe = () => request<ApiUser>("/auth/me");
 
 export const getProjectsFeed = (
-  type: "time" | "likes",
+  type: FeedSort,
   start = 0,
   count = 10
 ) => request<ApiProject[]>(`/feed/projects?type=${type}&start=${start}&count=${count}`);
+
+export const getFollowingProjectsFeed = (
+  username: string,
+  start = 0,
+  count = 10,
+  sort: FeedSort = "recent",
+) =>
+  request<ApiProject[]>(
+    `/feed/projects/following/${username}?start=${start}&count=${count}&sort=${sort}`,
+  );
+
+export const getSavedProjectsFeed = (
+  username: string,
+  start = 0,
+  count = 10,
+  sort: FeedSort = "recent",
+) =>
+  request<ApiProject[]>(
+    `/feed/projects/saved/${username}?start=${start}&count=${count}&sort=${sort}`,
+  );
 
 export const getUserByUsername = (username: string) =>
   request<ApiUser>(`/users/${username}`);

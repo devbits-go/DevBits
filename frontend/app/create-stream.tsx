@@ -17,6 +17,7 @@ import {
 } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
@@ -43,7 +44,7 @@ export default function CreateStreamScreen() {
   const { user } = useAuth();
   const motion = useMotionConfig();
   const bottom = useBottomTabOverflow();
-  const reveal = React.useRef(new Animated.Value(0)).current;
+  const reveal = React.useRef(new Animated.Value(0.08)).current;
   const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const [name, setName] = useState("");
@@ -437,6 +438,11 @@ export default function CreateStreamScreen() {
         </KeyboardAvoidingView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }

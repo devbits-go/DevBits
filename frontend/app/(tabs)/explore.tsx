@@ -46,11 +46,13 @@ import { Post } from "@/components/Post";
 import { SectionHeader } from "@/components/SectionHeader";
 import { TagChip } from "@/components/TagChip";
 import { ThemedText } from "@/components/ThemedText";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
+import { useRequestGuard } from "@/hooks/useRequestGuard";
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeToPostEvents } from "@/services/postEvents";
 
@@ -90,7 +92,9 @@ export default function ExploreScreen() {
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const requestGuard = useRequestGuard();
+  const reveal = useRef(new Animated.Value(0.08)).current;
+  const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
 
   useEffect(() => {
@@ -99,17 +103,19 @@ export default function ExploreScreen() {
       return;
     }
 
-    Animated.timing(reveal, {
+    Animated.spring(reveal, {
       toValue: 1,
-      duration: motion.duration(420),
+      speed: 16,
+      bounciness: 7,
       useNativeDriver: true,
     }).start();
   }, [motion, reveal]);
 
   const loadExplore = useCallback(
     async (showLoader = true) => {
+      const requestId = requestGuard.beginRequest();
       try {
-        if (showLoader) {
+        if (showLoader && requestGuard.isMounted()) {
           setIsLoading(true);
         }
         const [projectFeedRaw, postFeedRaw, usersRaw, followingIdsRaw] =
@@ -171,6 +177,10 @@ export default function ExploreScreen() {
           picture: item.picture,
         }));
 
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
+
         setProjects(uiProjects);
         setPosts(uiPosts);
         setTags(
@@ -182,18 +192,21 @@ export default function ExploreScreen() {
         setFollowing(new Set(followingIds));
         setHasError(false);
       } catch {
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
         setProjects([]);
         setPosts([]);
         setTags([]);
         setPeople([]);
         setHasError(true);
       } finally {
-        if (showLoader) {
+        if (showLoader && requestGuard.isMounted()) {
           setIsLoading(false);
         }
       }
     },
-    [user?.username],
+    [requestGuard, user?.username],
   );
 
   useEffect(() => {
@@ -453,6 +466,7 @@ export default function ExploreScreen() {
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <Animated.ScrollView
+            ref={scrollRef}
             contentInsetAdjustmentBehavior="never"
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
@@ -478,9 +492,15 @@ export default function ExploreScreen() {
                 opacity: reveal,
                 transform: [
                   {
+                    translateY: reveal.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [18, 0],
+                    }),
+                  },
+                  {
                     scale: reveal.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [0.985, 1],
+                      outputRange: [0.97, 1],
                     }),
                   },
                 ],
@@ -512,7 +532,11 @@ export default function ExploreScreen() {
               />
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.edgeToEdgeRail}
+            >
               <View style={styles.categoryRow}>
                 {categories.map((category) => {
                   const isActive = category === activeCategory;
@@ -638,6 +662,7 @@ export default function ExploreScreen() {
                         <ScrollView
                           horizontal
                           showsHorizontalScrollIndicator={false}
+                          style={styles.edgeToEdgeRail}
                         >
                           <View style={styles.projectRow}>
                             {searchProjects.map((project) => (
@@ -686,7 +711,11 @@ export default function ExploreScreen() {
                   actionOnPress={() => router.push("/streams")}
                 />
                 {isLoading ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.edgeToEdgeRail}
+                  >
                     <View style={styles.projectRow}>
                       {[0, 1, 2].map((key) => (
                         <View
@@ -703,7 +732,11 @@ export default function ExploreScreen() {
                     </View>
                   </ScrollView>
                 ) : filteredProjects.length ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.edgeToEdgeRail}
+                  >
                     <View style={styles.projectRow}>
                       {filteredProjects.map((project) => (
                         <ProjectCard key={project.id} project={project} />
@@ -888,6 +921,11 @@ export default function ExploreScreen() {
         </TouchableWithoutFeedback>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }
@@ -904,9 +942,12 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingVertical: 16,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 20,
     paddingTop: 0,
+  },
+  edgeToEdgeRail: {
+    marginHorizontal: -16,
   },
   title: {
     fontSize: 26,
@@ -929,6 +970,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     paddingVertical: 2,
+    paddingHorizontal: 16,
   },
   categoryChip: {
     paddingVertical: 6,
@@ -940,6 +982,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingVertical: 4,
+    paddingHorizontal: 16,
   },
   skeletonStack: {
     gap: 12,

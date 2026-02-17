@@ -187,6 +187,7 @@ export interface UiPost {
     username: string;
     userPicture?: string;
     userId: number;
+    projectId: number;
     projectName: string;
     projectStage: string;
     likes: number;

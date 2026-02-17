@@ -15,7 +15,6 @@ export function MyHeader() {
   return (
     <View style={styles.container}>
       <View style={styles.brandRow}>
-        <View style={[styles.logoDot, { backgroundColor: colors.tint }]} />
         <View>
           <ThemedText type="display" style={styles.logoText}>
             DevBits
@@ -24,7 +23,7 @@ export function MyHeader() {
             type="caption"
             style={[styles.tagline, { color: colors.muted }]}
           >
-            A Pace for Devs
+            A Place for Devs
           </ThemedText>
         </View>
       </View>
@@ -87,13 +86,8 @@ const styles = StyleSheet.create({
   },
   brandRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 10,
-  },
-  logoDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
   },
   logoText: {
     fontSize: 24,

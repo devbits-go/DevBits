@@ -95,7 +95,6 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   const colors = useAppColors();
   const { preferences } = usePreferences();
   const { width: windowWidth } = useWindowDimensions();
-  const isReady = useDeferredRender();
   const toRgba = (hex: string, alpha: number) => {
     const normalized = hex.replace("#", "");
     const value =
@@ -842,14 +841,11 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   };
 
   const markdownNodes = useMemo(() => {
-    if (!isReady) {
-      return null;
-    }
     return renderMarkdownSegments(children, "root");
-  }, [children, colors, isReady, preferences.linkOpenMode, windowWidth]);
+  }, [children, colors, preferences.linkOpenMode, windowWidth]);
 
   return (
-    <LazyFadeIn visible={isReady} style={styles.markdownStack}>
+    <LazyFadeIn visible style={styles.markdownStack}>
       {markdownNodes}
     </LazyFadeIn>
   );

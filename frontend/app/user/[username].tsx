@@ -31,6 +31,7 @@ import { UserCard } from "@/components/UserCard";
 import { Post } from "@/components/Post";
 import User from "@/components/User";
 import { TopBlur } from "@/components/TopBlur";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
@@ -86,8 +87,9 @@ export default function UserProfileScreen() {
   const [followersQuery, setFollowersQuery] = useState("");
   const [followingQuery, setFollowingQuery] = useState("");
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const reveal = useRef(new Animated.Value(0.08)).current;
   const hasLoadedRef = useRef(false);
+  const scrollRef = useRef<Animated.ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
 
   const filteredFollowerUsers = useMemo(() => {
@@ -383,6 +385,7 @@ export default function UserProfileScreen() {
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <Animated.ScrollView
+          ref={scrollRef}
           contentInsetAdjustmentBehavior="never"
           onScroll={onScroll}
           scrollEventThrottle={16}
@@ -548,6 +551,11 @@ export default function UserProfileScreen() {
           </View>
         </Animated.ScrollView>
       </SafeAreaView>
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        bottomOffset={insets.bottom + 20}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+      />
       <TopBlur scrollY={scrollY} />
       <Modal
         visible={isFollowersOpen}
@@ -705,7 +713,7 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingVertical: 16,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 16,
     paddingTop: 0,
   },

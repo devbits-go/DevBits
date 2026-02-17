@@ -19,6 +19,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { ApiProject } from "@/constants/Types";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
@@ -42,7 +43,7 @@ export default function CreateByteScreen() {
   const { user } = useAuth();
   const motion = useMotionConfig();
   const bottom = useBottomTabOverflow();
-  const reveal = React.useRef(new Animated.Value(0)).current;
+  const reveal = React.useRef(new Animated.Value(0.08)).current;
   const scrollRef = useRef<ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const [projects, setProjects] = useState<ApiProject[]>([]);
@@ -379,6 +380,11 @@ export default function CreateByteScreen() {
         </KeyboardAvoidingView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }

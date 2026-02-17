@@ -14,38 +14,50 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import {
   clearApiCache,
-  getUsersFollowing,
+  FeedSort,
+  getFollowingPostsFeed,
   getPostsFeed,
   getProjectById,
+  getSavedPostsFeed,
   getUserById,
 } from "@/services/api";
 import { mapPostToUi } from "@/services/mappers";
 import { Post } from "@/components/Post";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
+import { useRequestGuard } from "@/hooks/useRequestGuard";
 import { subscribeToPostEvents } from "@/services/postEvents";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSaved } from "@/contexts/SavedContext";
 
 export default function BytesScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { savedPostIds } = useSaved();
   const [posts, setPosts] = useState([] as ReturnType<typeof mapPostToUi>[]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<"all" | "following">("all");
+  const [activeFilter, setActiveFilter] = useState<
+    "all" | "following" | "saved"
+  >("all");
+  const [activeSort, setActiveSort] = useState<
+    "recent" | "new" | "popular" | "hot"
+  >("recent");
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [pageIndex, setPageIndex] = useState(0);
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const requestGuard = useRequestGuard();
+  const reveal = useRef(new Animated.Value(0.08)).current;
+  const listRef = useRef<FlatList<ReturnType<typeof mapPostToUi>>>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
-  const followingIdsRef = useRef<number[]>([]);
   const pageSize = 20;
 
   useEffect(() => {
@@ -71,35 +83,32 @@ export default function BytesScreen() {
       nextPage?: number;
       append?: boolean;
     } = {}) => {
+      const requestId = requestGuard.beginRequest();
       try {
-        if (showLoader) {
+        if (showLoader && requestGuard.isMounted()) {
           setIsLoading(true);
         }
         const start = nextPage * pageSize;
-        const [postFeedRaw, followingIdsRaw] = await Promise.all([
-          getPostsFeed("time", start, pageSize),
+        const postFeedRaw =
           activeFilter === "following" && user?.username
-            ? followingIdsRef.current.length
-              ? Promise.resolve(followingIdsRef.current)
-              : getUsersFollowing(user.username)
-            : Promise.resolve([]),
-        ]);
+            ? await getFollowingPostsFeed(
+                user.username,
+                start,
+                pageSize,
+                activeSort,
+              )
+            : activeFilter === "saved" && user?.username
+              ? await getSavedPostsFeed(
+                  user.username,
+                  start,
+                  pageSize,
+                  activeSort,
+                )
+              : await getPostsFeed(activeSort as FeedSort, start, pageSize);
         const postFeed = Array.isArray(postFeedRaw) ? postFeedRaw : [];
-        const followingIds = Array.isArray(followingIdsRaw)
-          ? followingIdsRaw
-          : [];
-
-        if (activeFilter === "following") {
-          followingIdsRef.current = followingIds;
-        }
-
-        const visiblePosts =
-          activeFilter === "following" && followingIds.length
-            ? postFeed.filter((post) => followingIds.includes(post.user))
-            : postFeed;
 
         const uiPosts = await Promise.all(
-          visiblePosts.map(async (post) => {
+          postFeed.map(async (post) => {
             const [user, project] = await Promise.all([
               getUserById(post.user).catch(() => null),
               getProjectById(post.project).catch(() => null),
@@ -108,26 +117,32 @@ export default function BytesScreen() {
           }),
         );
 
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
+
         setPosts((prev) => (append ? prev.concat(uiPosts) : uiPosts));
         setPageIndex(nextPage);
         setHasMore(postFeed.length === pageSize);
         setHasError(false);
       } catch {
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
         if (!append) {
           setPosts([]);
         }
         setHasError(true);
       } finally {
-        if (showLoader) {
+        if (showLoader && requestGuard.isMounted()) {
           setIsLoading(false);
         }
       }
     },
-    [activeFilter, user?.username],
+    [activeFilter, activeSort, requestGuard, user?.username],
   );
 
   useEffect(() => {
-    followingIdsRef.current = [];
     setHasMore(true);
     setPageIndex(0);
     loadBytes({ nextPage: 0 });
@@ -176,7 +191,6 @@ export default function BytesScreen() {
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     clearApiCache();
-    followingIdsRef.current = [];
     setHasMore(true);
     setPageIndex(0);
     await loadBytes({ showLoader: false, nextPage: 0 });
@@ -196,17 +210,27 @@ export default function BytesScreen() {
       showLoader: false,
       nextPage: pageIndex + 1,
       append: true,
-    }).finally(() => setIsLoadingMore(false));
-  }, [hasMore, isLoading, isLoadingMore, loadBytes, pageIndex]);
+    }).finally(() => {
+      if (requestGuard.isMounted()) {
+        setIsLoadingMore(false);
+      }
+    });
+  }, [hasMore, isLoading, isLoadingMore, loadBytes, pageIndex, requestGuard]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <Animated.FlatList
+          ref={listRef}
           data={posts}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => <Post {...item} />}
+          initialNumToRender={6}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={40}
+          windowSize={8}
+          removeClippedSubviews
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           onScroll={onScroll}
@@ -247,13 +271,13 @@ export default function BytesScreen() {
                   </View>
                 </View>
                 <View style={styles.filterRow}>
-                  {["all", "following"].map((key) => {
+                  {["all", "following", "saved"].map((key) => {
                     const isActive = key === activeFilter;
                     return (
                       <Pressable
                         key={key}
                         onPress={() =>
-                          setActiveFilter(key as "all" | "following")
+                          setActiveFilter(key as "all" | "following" | "saved")
                         }
                         style={[
                           styles.filterChip,
@@ -268,10 +292,52 @@ export default function BytesScreen() {
                         <ThemedText
                           type="caption"
                           style={{
-                            color: isActive ? colors.accent : colors.muted,
+                            color: isActive ? colors.onTint : colors.muted,
                           }}
                         >
-                          {key === "all" ? "All" : "Following"}
+                          {key === "all"
+                            ? "All"
+                            : key === "following"
+                              ? "Following"
+                              : "Saved"}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.sortRow}>
+                  {[
+                    { key: "recent", label: "Recent" },
+                    { key: "new", label: "Newest" },
+                    { key: "popular", label: "Popular" },
+                    { key: "hot", label: "HOT" },
+                  ].map(({ key, label }) => {
+                    const isActive = key === activeSort;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() =>
+                          setActiveSort(
+                            key as "recent" | "new" | "popular" | "hot",
+                          )
+                        }
+                        style={[
+                          styles.sortChip,
+                          {
+                            backgroundColor: isActive
+                              ? colors.tint
+                              : colors.surfaceAlt,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: isActive ? colors.onTint : colors.muted,
+                          }}
+                        >
+                          {label}
                         </ThemedText>
                       </Pressable>
                     );
@@ -304,7 +370,9 @@ export default function BytesScreen() {
                     ? "Feed unavailable. Check the API and try again."
                     : activeFilter === "following"
                       ? "No bytes from people you follow yet."
-                      : "No bytes yet."}
+                      : activeFilter === "saved"
+                        ? "No saved bytes yet."
+                        : "No bytes yet."}
                 </ThemedText>
               </View>
             ) : null
@@ -324,12 +392,19 @@ export default function BytesScreen() {
           ]}
           removeClippedSubviews
           initialNumToRender={6}
-          maxToRenderPerBatch={6}
-          windowSize={8}
-          updateCellsBatchingPeriod={50}
+          maxToRenderPerBatch={5}
+          windowSize={5}
+          updateCellsBatchingPeriod={60}
         />
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() =>
+          listRef.current?.scrollToOffset({ offset: 0, animated: true })
+        }
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }
@@ -346,7 +421,7 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingVertical: 16,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 16,
     paddingTop: 0,
   },
@@ -365,7 +440,19 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 6,
   },
+  sortRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingTop: 8,
+    flexWrap: "wrap",
+  },
   filterChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  sortChip: {
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 10,

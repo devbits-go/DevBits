@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useColorScheme } from "@/hooks/useColorScheme";
 
 type TagChipProps = {
   label: string;
@@ -10,8 +11,35 @@ type TagChipProps = {
 
 export function TagChip({ label, tone = "default" }: TagChipProps) {
   const colors = useAppColors();
+  const theme = useColorScheme() ?? "light";
 
-  const backgroundColor = tone === "accent" ? colors.tint : colors.chip;
+  const liftHex = (hex: string, amount: number) => {
+    const normalized = hex.replace("#", "").trim();
+    const value =
+      normalized.length === 3
+        ? normalized
+            .split("")
+            .map((chunk) => `${chunk}${chunk}`)
+            .join("")
+        : normalized.padEnd(6, "0").slice(0, 6);
+
+    const mix = (channel: number) =>
+      Math.round(channel + (255 - channel) * amount)
+        .toString(16)
+        .padStart(2, "0");
+
+    const red = parseInt(value.slice(0, 2), 16);
+    const green = parseInt(value.slice(2, 4), 16);
+    const blue = parseInt(value.slice(4, 6), 16);
+    return `#${mix(red)}${mix(green)}${mix(blue)}`;
+  };
+
+  const backgroundColor =
+    tone === "accent"
+      ? colors.tint
+      : theme === "dark"
+        ? liftHex(colors.chip, 0.08)
+        : colors.chip;
   const textColor = tone === "accent" ? colors.accent : colors.chipText;
 
   return (

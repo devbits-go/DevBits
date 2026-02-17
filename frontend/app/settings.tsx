@@ -10,7 +10,7 @@ import {
   Switch,
   StyleSheet,
   TextInput,
-  TouchableWithoutFeedback,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Slider from "@react-native-community/slider";
@@ -19,6 +19,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { FadeInImage } from "@/components/FadeInImage";
@@ -37,12 +38,13 @@ import * as ImagePicker from "expo-image-picker";
 
 export default function SettingsScreen() {
   const colors = useAppColors();
+  const { fontScale, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, refreshUser, signOut } = useAuth();
   const { preferences, updatePreferences } = usePreferences();
   const motion = useMotionConfig();
-  const reveal = React.useRef(new Animated.Value(0)).current;
+  const reveal = React.useRef(new Animated.Value(0.08)).current;
   const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const [picture, setPicture] = useState(user?.picture ?? "");
@@ -67,6 +69,11 @@ export default function SettingsScreen() {
   const [accentSaturation, setAccentSaturation] = useState(0.78);
   const [accentValue, setAccentValue] = useState(0.95);
   const accentUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contentHorizontalPadding = width < 370 ? 12 : 16;
+  const inputFontSize = Math.round(15 * Math.min(1.25, Math.max(1, fontScale)));
+  const inputLineHeight = Math.round(
+    22 * Math.min(1.25, Math.max(1, fontScale)),
+  );
 
   useEffect(() => {
     if (!user) {
@@ -237,7 +244,7 @@ export default function SettingsScreen() {
       await refreshUser();
       setIsDirty(false);
       setMessage("Profile updated.");
-    } catch (error) {
+    } catch {
       setMessage("Update failed. Try again.");
     } finally {
       setIsSaving(false);
@@ -283,589 +290,648 @@ export default function SettingsScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={insets.top + 12}
         >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.screen}>
-              <Animated.ScrollView
-                ref={scrollRef}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-                onScroll={onScroll}
-                scrollEventThrottle={16}
-                contentContainerStyle={[
-                  styles.content,
-                  {
-                    paddingTop: insets.top + 8,
-                    paddingBottom: insets.bottom,
-                  },
-                ]}
-                scrollIndicatorInsets={{ bottom: insets.bottom }}
+          <View style={styles.screen}>
+            <Animated.ScrollView
+              ref={scrollRef}
+              keyboardShouldPersistTaps="always"
+              keyboardDismissMode={
+                Platform.OS === "ios" ? "interactive" : "on-drag"
+              }
+              onScroll={onScroll}
+              scrollEventThrottle={16}
+              alwaysBounceVertical
+              bounces
+              nestedScrollEnabled
+              automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+              contentInsetAdjustmentBehavior="automatic"
+              onScrollBeginDrag={Keyboard.dismiss}
+              contentContainerStyle={[
+                styles.content,
+                {
+                  paddingHorizontal: contentHorizontalPadding,
+                  paddingTop: insets.top + 8,
+                  paddingBottom: insets.bottom + 20,
+                },
+              ]}
+              scrollIndicatorInsets={{ bottom: insets.bottom + 8 }}
+            >
+              <Animated.View
+                style={{
+                  opacity: reveal,
+                  transform: [
+                    {
+                      translateY: reveal.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [12, 0],
+                      }),
+                    },
+                  ],
+                }}
               >
-                <Animated.View
-                  style={{
-                    opacity: reveal,
-                    transform: [
-                      {
-                        translateY: reveal.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [12, 0],
-                        }),
-                      },
-                    ],
-                  }}
-                >
-                  <View style={styles.header}>
-                    <ThemedText type="display">Settings</ThemedText>
-                    <ThemedText type="caption" style={{ color: colors.muted }}>
-                      Tune your profile and links.
-                    </ThemedText>
-                    {isSyncing ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={colors.muted}
-                        style={styles.syncIndicator}
-                      />
-                    ) : null}
-                  </View>
+                <View style={styles.header}>
+                  <ThemedText type="display">Settings</ThemedText>
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Tune your profile and links.
+                  </ThemedText>
+                  {isSyncing ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.muted}
+                      style={styles.syncIndicator}
+                    />
+                  ) : null}
+                </View>
 
-                  <View style={[styles.form, !hasLoaded && styles.formLoading]}>
-                    <View style={styles.avatarRow}>
-                      <View
-                        style={[
-                          styles.avatar,
-                          {
-                            backgroundColor: colors.surfaceAlt,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                      >
-                        {picture ? (
-                          <FadeInImage
-                            source={{ uri: resolvedPicture }}
-                            style={styles.avatarImage}
-                          />
-                        ) : (
-                          <ThemedText
-                            type="caption"
-                            style={{ color: colors.muted }}
-                          >
-                            Add photo
-                          </ThemedText>
-                        )}
-                      </View>
-                      <Pressable
-                        onPress={handlePickImage}
-                        style={[
-                          styles.pickButton,
-                          { borderColor: colors.border },
-                        ]}
-                      >
+                <View style={[styles.form, !hasLoaded && styles.formLoading]}>
+                  <View style={styles.avatarRow}>
+                    <View
+                      style={[
+                        styles.avatar,
+                        {
+                          backgroundColor: colors.surfaceAlt,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      {picture ? (
+                        <FadeInImage
+                          source={{ uri: resolvedPicture }}
+                          style={styles.avatarImage}
+                        />
+                      ) : (
                         <ThemedText
                           type="caption"
                           style={{ color: colors.muted }}
                         >
-                          Choose image
+                          Add photo
                         </ThemedText>
-                      </Pressable>
+                      )}
                     </View>
-                    <View
+                    <Pressable
+                      onPress={handlePickImage}
                       style={[
-                        styles.inputRow,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
+                        styles.pickButton,
+                        { borderColor: colors.border },
                       ]}
                     >
-                      <TextInput
-                        value={picture}
-                        onChangeText={(value) => {
-                          setIsDirty(true);
-                          setPicture(value);
-                          setPendingPicture(null);
-                        }}
-                        placeholder="Profile image URL"
-                        placeholderTextColor={colors.muted}
-                        onFocus={handleInputFocus}
-                        style={[styles.input, { color: colors.text }]}
-                      />
-                    </View>
-                    <View
-                      style={[
-                        styles.inputRow,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
-                      ]}
-                    >
-                      <TextInput
-                        value={bio}
-                        onChangeText={(value) => {
-                          setIsDirty(true);
-                          setBio(value);
-                        }}
-                        placeholder="Bio"
-                        placeholderTextColor={colors.muted}
-                        onFocus={handleInputFocus}
-                        multiline
-                        style={[
-                          styles.input,
-                          { color: colors.text, minHeight: 80 },
-                        ]}
-                      />
-                    </View>
-                    <View
-                      style={[
-                        styles.inputRow,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
-                      ]}
-                    >
-                      <TextInput
-                        value={website}
-                        onChangeText={(value) => {
-                          setIsDirty(true);
-                          setWebsite(value);
-                        }}
-                        placeholder="Website"
-                        placeholderTextColor={colors.muted}
-                        onFocus={handleInputFocus}
-                        style={[styles.input, { color: colors.text }]}
-                      />
-                    </View>
-                    <View
-                      style={[
-                        styles.inputRow,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
-                      ]}
-                    >
-                      <TextInput
-                        value={github}
-                        onChangeText={(value) => {
-                          setIsDirty(true);
-                          setGithub(value);
-                        }}
-                        placeholder="GitHub"
-                        placeholderTextColor={colors.muted}
-                        onFocus={handleInputFocus}
-                        style={[styles.input, { color: colors.text }]}
-                      />
-                    </View>
-                    <View
-                      style={[
-                        styles.inputRow,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
-                      ]}
-                    >
-                      <TextInput
-                        value={twitter}
-                        onChangeText={(value) => {
-                          setIsDirty(true);
-                          setTwitter(value);
-                        }}
-                        placeholder="Twitter/X"
-                        placeholderTextColor={colors.muted}
-                        onFocus={handleInputFocus}
-                        style={[styles.input, { color: colors.text }]}
-                      />
-                    </View>
-                    <View
-                      style={[
-                        styles.inputRow,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
-                      ]}
-                    >
-                      <TextInput
-                        value={linkedin}
-                        onChangeText={(value) => {
-                          setIsDirty(true);
-                          setLinkedin(value);
-                        }}
-                        placeholder="LinkedIn"
-                        placeholderTextColor={colors.muted}
-                        onFocus={handleInputFocus}
-                        style={[styles.input, { color: colors.text }]}
-                      />
-                    </View>
-                    <View
-                      style={[
-                        styles.inputRow,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
-                      ]}
-                    >
-                      <TextInput
-                        value={extraLinks}
-                        onChangeText={(value) => {
-                          setIsDirty(true);
-                          setExtraLinks(value);
-                        }}
-                        placeholder="Other links (comma separated)"
-                        placeholderTextColor={colors.muted}
-                        onFocus={handleInputFocus}
-                        style={[styles.input, { color: colors.text }]}
-                      />
-                    </View>
-
-                    {message ? (
                       <ThemedText
                         type="caption"
                         style={{ color: colors.muted }}
                       >
-                        {message}
+                        Choose image
                       </ThemedText>
-                    ) : null}
+                    </Pressable>
+                  </View>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                      },
+                    ]}
+                  >
+                    <TextInput
+                      value={picture}
+                      onChangeText={(value) => {
+                        setIsDirty(true);
+                        setPicture(value);
+                        setPendingPicture(null);
+                      }}
+                      placeholder="Profile image URL"
+                      placeholderTextColor={colors.muted}
+                      onFocus={handleInputFocus}
+                      allowFontScaling
+                      maxFontSizeMultiplier={1.25}
+                      style={[
+                        styles.input,
+                        {
+                          color: colors.text,
+                          fontSize: inputFontSize,
+                          lineHeight: inputLineHeight,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                      },
+                    ]}
+                  >
+                    <TextInput
+                      value={bio}
+                      onChangeText={(value) => {
+                        setIsDirty(true);
+                        setBio(value);
+                      }}
+                      placeholder="Bio"
+                      placeholderTextColor={colors.muted}
+                      onFocus={handleInputFocus}
+                      textAlignVertical="top"
+                      multiline
+                      allowFontScaling
+                      maxFontSizeMultiplier={1.25}
+                      style={[
+                        styles.input,
+                        {
+                          color: colors.text,
+                          minHeight: Math.max(80, inputLineHeight * 4),
+                          fontSize: inputFontSize,
+                          lineHeight: inputLineHeight,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                      },
+                    ]}
+                  >
+                    <TextInput
+                      value={website}
+                      onChangeText={(value) => {
+                        setIsDirty(true);
+                        setWebsite(value);
+                      }}
+                      placeholder="Website"
+                      placeholderTextColor={colors.muted}
+                      onFocus={handleInputFocus}
+                      allowFontScaling
+                      maxFontSizeMultiplier={1.25}
+                      style={[
+                        styles.input,
+                        {
+                          color: colors.text,
+                          fontSize: inputFontSize,
+                          lineHeight: inputLineHeight,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                      },
+                    ]}
+                  >
+                    <TextInput
+                      value={github}
+                      onChangeText={(value) => {
+                        setIsDirty(true);
+                        setGithub(value);
+                      }}
+                      placeholder="GitHub"
+                      placeholderTextColor={colors.muted}
+                      onFocus={handleInputFocus}
+                      allowFontScaling
+                      maxFontSizeMultiplier={1.25}
+                      style={[
+                        styles.input,
+                        {
+                          color: colors.text,
+                          fontSize: inputFontSize,
+                          lineHeight: inputLineHeight,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                      },
+                    ]}
+                  >
+                    <TextInput
+                      value={twitter}
+                      onChangeText={(value) => {
+                        setIsDirty(true);
+                        setTwitter(value);
+                      }}
+                      placeholder="Twitter/X"
+                      placeholderTextColor={colors.muted}
+                      onFocus={handleInputFocus}
+                      allowFontScaling
+                      maxFontSizeMultiplier={1.25}
+                      style={[
+                        styles.input,
+                        {
+                          color: colors.text,
+                          fontSize: inputFontSize,
+                          lineHeight: inputLineHeight,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                      },
+                    ]}
+                  >
+                    <TextInput
+                      value={linkedin}
+                      onChangeText={(value) => {
+                        setIsDirty(true);
+                        setLinkedin(value);
+                      }}
+                      placeholder="LinkedIn"
+                      placeholderTextColor={colors.muted}
+                      onFocus={handleInputFocus}
+                      allowFontScaling
+                      maxFontSizeMultiplier={1.25}
+                      style={[
+                        styles.input,
+                        {
+                          color: colors.text,
+                          fontSize: inputFontSize,
+                          lineHeight: inputLineHeight,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                      },
+                    ]}
+                  >
+                    <TextInput
+                      value={extraLinks}
+                      onChangeText={(value) => {
+                        setIsDirty(true);
+                        setExtraLinks(value);
+                      }}
+                      placeholder="Other links (comma separated)"
+                      placeholderTextColor={colors.muted}
+                      onFocus={handleInputFocus}
+                      allowFontScaling
+                      maxFontSizeMultiplier={1.25}
+                      style={[
+                        styles.input,
+                        {
+                          color: colors.text,
+                          fontSize: inputFontSize,
+                          lineHeight: inputLineHeight,
+                        },
+                      ]}
+                    />
+                  </View>
 
+                  {message ? (
+                    <ThemedText type="caption" style={{ color: colors.muted }}>
+                      {message}
+                    </ThemedText>
+                  ) : null}
+
+                  <Pressable
+                    onPress={handleSave}
+                    style={[styles.button, { backgroundColor: colors.tint }]}
+                  >
+                    {isSaving ? (
+                      <ActivityIndicator size="small" color={colors.accent} />
+                    ) : (
+                      <ThemedText
+                        type="defaultSemiBold"
+                        style={{ color: colors.accent }}
+                      >
+                        Save changes
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                  <View style={styles.section}>
+                    <ThemedText type="subtitle">Site settings</ThemedText>
+                    <View style={styles.toggleRow}>
+                      <ThemedText type="default">Background refresh</ThemedText>
+                      <Switch
+                        value={preferences.backgroundRefreshEnabled}
+                        onValueChange={(value) =>
+                          updatePreferences({
+                            backgroundRefreshEnabled: value,
+                          })
+                        }
+                        trackColor={{
+                          false: colors.surfaceAlt,
+                          true: colors.tint,
+                        }}
+                        thumbColor={colors.accent}
+                      />
+                    </View>
+                    <View style={styles.toggleRow}>
+                      <ThemedText type="default">
+                        Prompt for link scheme
+                      </ThemedText>
+                      <Switch
+                        value={preferences.linkOpenMode === "promptScheme"}
+                        onValueChange={(value) =>
+                          updatePreferences({
+                            linkOpenMode: value ? "promptScheme" : "asTyped",
+                          })
+                        }
+                        trackColor={{
+                          false: colors.surfaceAlt,
+                          true: colors.tint,
+                        }}
+                        thumbColor={colors.accent}
+                      />
+                    </View>
+                    <View style={styles.toggleRow}>
+                      <ThemedText type="default">Refresh interval</ThemedText>
+                      <View style={styles.intervalRow}>
+                        {intervalOptions.map((option) => {
+                          const isActive =
+                            preferences.refreshIntervalMs === option.value;
+                          return (
+                            <Pressable
+                              key={option.value}
+                              onPress={() =>
+                                updatePreferences({
+                                  refreshIntervalMs: option.value,
+                                })
+                              }
+                              disabled={!preferences.backgroundRefreshEnabled}
+                              style={[
+                                styles.intervalChip,
+                                {
+                                  borderColor: colors.border,
+                                  backgroundColor: isActive
+                                    ? colors.tint
+                                    : colors.surfaceAlt,
+                                  opacity: preferences.backgroundRefreshEnabled
+                                    ? 1
+                                    : 0.5,
+                                },
+                              ]}
+                            >
+                              <ThemedText
+                                type="caption"
+                                style={{
+                                  color: isActive
+                                    ? colors.accent
+                                    : colors.muted,
+                                }}
+                              >
+                                {option.label}
+                              </ThemedText>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText type="subtitle">Personalization</ThemedText>
+                    <View style={styles.toggleRow}>
+                      <ThemedText type="default">
+                        Zen mode (reduce motion)
+                      </ThemedText>
+                      <Switch
+                        value={preferences.zenMode}
+                        onValueChange={(value) =>
+                          updatePreferences({ zenMode: value })
+                        }
+                        trackColor={{
+                          false: colors.surfaceAlt,
+                          true: colors.tint,
+                        }}
+                        thumbColor={colors.accent}
+                      />
+                    </View>
+                    <View style={styles.toggleRow}>
+                      <ThemedText type="default">Compact layout</ThemedText>
+                      <Switch
+                        value={preferences.compactMode}
+                        onValueChange={(value) =>
+                          updatePreferences({ compactMode: value })
+                        }
+                        trackColor={{
+                          false: colors.surfaceAlt,
+                          true: colors.tint,
+                        }}
+                        thumbColor={colors.accent}
+                      />
+                    </View>
+                    <View style={styles.accentRow}>
+                      <ThemedText type="default">Accent color</ThemedText>
+                      <View style={styles.accentPicker}>
+                        <View
+                          style={[
+                            styles.accentPreview,
+                            {
+                              backgroundColor: accentPreview,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                        />
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          {accentPreview.toUpperCase()}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.sliderGroup}>
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Hue
+                        </ThemedText>
+                        <Slider
+                          value={accentHue}
+                          minimumValue={0}
+                          maximumValue={360}
+                          step={1}
+                          onValueChange={(value) => {
+                            setAccentHue(value);
+                            scheduleAccentUpdate(
+                              hsvToHex(value, accentSaturation, accentValue),
+                            );
+                          }}
+                          onSlidingComplete={(value) =>
+                            scheduleAccentUpdate(
+                              hsvToHex(value, accentSaturation, accentValue),
+                              true,
+                            )
+                          }
+                          minimumTrackTintColor={accentPreview}
+                          maximumTrackTintColor={colors.surfaceAlt}
+                          thumbTintColor={colors.tint}
+                          style={styles.slider}
+                        />
+                      </View>
+                      <View style={styles.sliderGroup}>
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Saturation
+                        </ThemedText>
+                        <Slider
+                          value={accentSaturation}
+                          minimumValue={0}
+                          maximumValue={1}
+                          step={0.01}
+                          onValueChange={(value) => {
+                            setAccentSaturation(value);
+                            scheduleAccentUpdate(
+                              hsvToHex(accentHue, value, accentValue),
+                            );
+                          }}
+                          onSlidingComplete={(value) =>
+                            scheduleAccentUpdate(
+                              hsvToHex(accentHue, value, accentValue),
+                              true,
+                            )
+                          }
+                          minimumTrackTintColor={accentPreview}
+                          maximumTrackTintColor={colors.surfaceAlt}
+                          thumbTintColor={colors.tint}
+                          style={styles.slider}
+                        />
+                      </View>
+                      <View style={styles.sliderGroup}>
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Brightness
+                        </ThemedText>
+                        <Slider
+                          value={accentValue}
+                          minimumValue={0}
+                          maximumValue={1}
+                          step={0.01}
+                          onValueChange={(value) => {
+                            setAccentValue(value);
+                            scheduleAccentUpdate(
+                              hsvToHex(accentHue, accentSaturation, value),
+                            );
+                          }}
+                          onSlidingComplete={(value) =>
+                            scheduleAccentUpdate(
+                              hsvToHex(accentHue, accentSaturation, value),
+                              true,
+                            )
+                          }
+                          minimumTrackTintColor={accentPreview}
+                          maximumTrackTintColor={colors.surfaceAlt}
+                          thumbTintColor={colors.tint}
+                          style={styles.slider}
+                        />
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText type="subtitle">Profile</ThemedText>
+                    <ThemedText type="caption" style={{ color: colors.muted }}>
+                      View your public profile.
+                    </ThemedText>
                     <Pressable
-                      onPress={handleSave}
-                      style={[styles.button, { backgroundColor: colors.tint }]}
+                      onPress={() => {
+                        if (!user?.username) {
+                          return;
+                        }
+                        router.push({
+                          pathname: "/user/[username]",
+                          params: { username: user.username },
+                        });
+                      }}
+                      style={[
+                        styles.secondaryButton,
+                        { borderColor: colors.border },
+                      ]}
+                      disabled={!user?.username}
                     >
-                      {isSaving ? (
-                        <ActivityIndicator size="small" color={colors.accent} />
+                      <ThemedText
+                        type="defaultSemiBold"
+                        style={{ color: colors.muted }}
+                      >
+                        View public profile
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText type="subtitle">Account</ThemedText>
+                    <Pressable
+                      onPress={signOut}
+                      style={[
+                        styles.secondaryButton,
+                        { borderColor: colors.border },
+                      ]}
+                    >
+                      <ThemedText
+                        type="defaultSemiBold"
+                        style={{ color: colors.muted }}
+                      >
+                        Sign out
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText type="subtitle">Danger zone</ThemedText>
+                    <ThemedText type="caption" style={{ color: colors.muted }}>
+                      Deleting your account removes your streams, bytes, and
+                      history.
+                    </ThemedText>
+                    <Pressable
+                      onPress={handleDeleteAccount}
+                      style={[
+                        styles.dangerButton,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceAlt,
+                        },
+                      ]}
+                      disabled={isDeletingAccount}
+                    >
+                      {isDeletingAccount ? (
+                        <ActivityIndicator size="small" color={colors.muted} />
                       ) : (
                         <ThemedText
                           type="defaultSemiBold"
-                          style={{ color: colors.accent }}
+                          style={{ color: colors.muted }}
                         >
-                          Save changes
+                          Delete account
                         </ThemedText>
                       )}
                     </Pressable>
-                    <View style={styles.section}>
-                      <ThemedText type="subtitle">Site settings</ThemedText>
-                      <View style={styles.toggleRow}>
-                        <ThemedText type="default">
-                          Background refresh
-                        </ThemedText>
-                        <Switch
-                          value={preferences.backgroundRefreshEnabled}
-                          onValueChange={(value) =>
-                            updatePreferences({
-                              backgroundRefreshEnabled: value,
-                            })
-                          }
-                          trackColor={{
-                            false: colors.surfaceAlt,
-                            true: colors.tint,
-                          }}
-                          thumbColor={colors.accent}
-                        />
-                      </View>
-                      <View style={styles.toggleRow}>
-                        <ThemedText type="default">
-                          Prompt for link scheme
-                        </ThemedText>
-                        <Switch
-                          value={preferences.linkOpenMode === "promptScheme"}
-                          onValueChange={(value) =>
-                            updatePreferences({
-                              linkOpenMode: value ? "promptScheme" : "asTyped",
-                            })
-                          }
-                          trackColor={{
-                            false: colors.surfaceAlt,
-                            true: colors.tint,
-                          }}
-                          thumbColor={colors.accent}
-                        />
-                      </View>
-                      <View style={styles.toggleRow}>
-                        <ThemedText type="default">Refresh interval</ThemedText>
-                        <View style={styles.intervalRow}>
-                          {intervalOptions.map((option) => {
-                            const isActive =
-                              preferences.refreshIntervalMs === option.value;
-                            return (
-                              <Pressable
-                                key={option.value}
-                                onPress={() =>
-                                  updatePreferences({
-                                    refreshIntervalMs: option.value,
-                                  })
-                                }
-                                disabled={!preferences.backgroundRefreshEnabled}
-                                style={[
-                                  styles.intervalChip,
-                                  {
-                                    borderColor: colors.border,
-                                    backgroundColor: isActive
-                                      ? colors.tint
-                                      : colors.surfaceAlt,
-                                    opacity:
-                                      preferences.backgroundRefreshEnabled
-                                        ? 1
-                                        : 0.5,
-                                  },
-                                ]}
-                              >
-                                <ThemedText
-                                  type="caption"
-                                  style={{
-                                    color: isActive
-                                      ? colors.accent
-                                      : colors.muted,
-                                  }}
-                                >
-                                  {option.label}
-                                </ThemedText>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={styles.section}>
-                      <ThemedText type="subtitle">Personalization</ThemedText>
-                      <View style={styles.toggleRow}>
-                        <ThemedText type="default">
-                          Zen mode (reduce motion)
-                        </ThemedText>
-                        <Switch
-                          value={preferences.zenMode}
-                          onValueChange={(value) =>
-                            updatePreferences({ zenMode: value })
-                          }
-                          trackColor={{
-                            false: colors.surfaceAlt,
-                            true: colors.tint,
-                          }}
-                          thumbColor={colors.accent}
-                        />
-                      </View>
-                      <View style={styles.toggleRow}>
-                        <ThemedText type="default">Compact layout</ThemedText>
-                        <Switch
-                          value={preferences.compactMode}
-                          onValueChange={(value) =>
-                            updatePreferences({ compactMode: value })
-                          }
-                          trackColor={{
-                            false: colors.surfaceAlt,
-                            true: colors.tint,
-                          }}
-                          thumbColor={colors.accent}
-                        />
-                      </View>
-                      <View style={styles.accentRow}>
-                        <ThemedText type="default">Accent color</ThemedText>
-                        <View style={styles.accentPicker}>
-                          <View
-                            style={[
-                              styles.accentPreview,
-                              {
-                                backgroundColor: accentPreview,
-                                borderColor: colors.border,
-                              },
-                            ]}
-                          />
-                          <ThemedText
-                            type="caption"
-                            style={{ color: colors.muted }}
-                          >
-                            {accentPreview.toUpperCase()}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.sliderGroup}>
-                          <ThemedText
-                            type="caption"
-                            style={{ color: colors.muted }}
-                          >
-                            Hue
-                          </ThemedText>
-                          <Slider
-                            value={accentHue}
-                            minimumValue={0}
-                            maximumValue={360}
-                            step={1}
-                            onValueChange={(value) => {
-                              setAccentHue(value);
-                              scheduleAccentUpdate(
-                                hsvToHex(value, accentSaturation, accentValue),
-                              );
-                            }}
-                            onSlidingComplete={(value) =>
-                              scheduleAccentUpdate(
-                                hsvToHex(value, accentSaturation, accentValue),
-                                true,
-                              )
-                            }
-                            minimumTrackTintColor={accentPreview}
-                            maximumTrackTintColor={colors.surfaceAlt}
-                            thumbTintColor={colors.tint}
-                            style={styles.slider}
-                          />
-                        </View>
-                        <View style={styles.sliderGroup}>
-                          <ThemedText
-                            type="caption"
-                            style={{ color: colors.muted }}
-                          >
-                            Saturation
-                          </ThemedText>
-                          <Slider
-                            value={accentSaturation}
-                            minimumValue={0}
-                            maximumValue={1}
-                            step={0.01}
-                            onValueChange={(value) => {
-                              setAccentSaturation(value);
-                              scheduleAccentUpdate(
-                                hsvToHex(accentHue, value, accentValue),
-                              );
-                            }}
-                            onSlidingComplete={(value) =>
-                              scheduleAccentUpdate(
-                                hsvToHex(accentHue, value, accentValue),
-                                true,
-                              )
-                            }
-                            minimumTrackTintColor={accentPreview}
-                            maximumTrackTintColor={colors.surfaceAlt}
-                            thumbTintColor={colors.tint}
-                            style={styles.slider}
-                          />
-                        </View>
-                        <View style={styles.sliderGroup}>
-                          <ThemedText
-                            type="caption"
-                            style={{ color: colors.muted }}
-                          >
-                            Brightness
-                          </ThemedText>
-                          <Slider
-                            value={accentValue}
-                            minimumValue={0}
-                            maximumValue={1}
-                            step={0.01}
-                            onValueChange={(value) => {
-                              setAccentValue(value);
-                              scheduleAccentUpdate(
-                                hsvToHex(accentHue, accentSaturation, value),
-                              );
-                            }}
-                            onSlidingComplete={(value) =>
-                              scheduleAccentUpdate(
-                                hsvToHex(accentHue, accentSaturation, value),
-                                true,
-                              )
-                            }
-                            minimumTrackTintColor={accentPreview}
-                            maximumTrackTintColor={colors.surfaceAlt}
-                            thumbTintColor={colors.tint}
-                            style={styles.slider}
-                          />
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={styles.section}>
-                      <ThemedText type="subtitle">Profile</ThemedText>
-                      <ThemedText
-                        type="caption"
-                        style={{ color: colors.muted }}
-                      >
-                        View your public profile.
-                      </ThemedText>
-                      <Pressable
-                        onPress={() => {
-                          if (!user?.username) {
-                            return;
-                          }
-                          router.push({
-                            pathname: "/user/[username]",
-                            params: { username: user.username },
-                          });
-                        }}
-                        style={[
-                          styles.secondaryButton,
-                          { borderColor: colors.border },
-                        ]}
-                        disabled={!user?.username}
-                      >
-                        <ThemedText
-                          type="defaultSemiBold"
-                          style={{ color: colors.muted }}
-                        >
-                          View public profile
-                        </ThemedText>
-                      </Pressable>
-                    </View>
-
-                    <View style={styles.section}>
-                      <ThemedText type="subtitle">Account</ThemedText>
-                      <Pressable
-                        onPress={signOut}
-                        style={[
-                          styles.secondaryButton,
-                          { borderColor: colors.border },
-                        ]}
-                      >
-                        <ThemedText
-                          type="defaultSemiBold"
-                          style={{ color: colors.muted }}
-                        >
-                          Sign out
-                        </ThemedText>
-                      </Pressable>
-                    </View>
-
-                    <View style={styles.section}>
-                      <ThemedText type="subtitle">Danger zone</ThemedText>
-                      <ThemedText
-                        type="caption"
-                        style={{ color: colors.muted }}
-                      >
-                        Deleting your account removes your streams, bytes, and
-                        history.
-                      </ThemedText>
-                      <Pressable
-                        onPress={handleDeleteAccount}
-                        style={[
-                          styles.dangerButton,
-                          {
-                            borderColor: colors.border,
-                            backgroundColor: colors.surfaceAlt,
-                          },
-                        ]}
-                        disabled={isDeletingAccount}
-                      >
-                        {isDeletingAccount ? (
-                          <ActivityIndicator
-                            size="small"
-                            color={colors.muted}
-                          />
-                        ) : (
-                          <ThemedText
-                            type="defaultSemiBold"
-                            style={{ color: colors.muted }}
-                          >
-                            Delete account
-                          </ThemedText>
-                        )}
-                      </Pressable>
-                    </View>
                   </View>
-                </Animated.View>
-              </Animated.ScrollView>
-            </View>
-          </TouchableWithoutFeedback>
+                </View>
+              </Animated.View>
+            </Animated.ScrollView>
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }
@@ -875,7 +941,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: 16,
     paddingBottom: 24,
     gap: 20,
   },

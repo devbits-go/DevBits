@@ -1,10 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   FlatList,
@@ -20,18 +14,23 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import {
   clearApiCache,
+  FeedSort,
+  getFollowingProjectsFeed,
   getProjectBuilders,
   getProjectsByBuilderId,
   getProjectsFeed,
+  getSavedProjectsFeed,
 } from "@/services/api";
 import { mapProjectToUi } from "@/services/mappers";
 import { ProjectCard } from "@/components/ProjectCard";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
+import { useRequestGuard } from "@/hooks/useRequestGuard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
 import {
@@ -51,15 +50,19 @@ export default function StreamsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<"all" | "saved">("all");
+  const [activeFilter, setActiveFilter] = useState<
+    "all" | "following" | "saved"
+  >("all");
+  const [activeSort, setActiveSort] = useState<
+    "recent" | "new" | "popular" | "hot"
+  >("recent");
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [pageIndex, setPageIndex] = useState(0);
-  const [builderProjects, setBuilderProjects] = useState(
-    [] as ReturnType<typeof mapProjectToUi>[],
-  );
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const requestGuard = useRequestGuard();
+  const reveal = useRef(new Animated.Value(0.08)).current;
+  const listRef = useRef<FlatList<ReturnType<typeof mapProjectToUi>>>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const pageSize = 24;
 
@@ -86,13 +89,26 @@ export default function StreamsScreen() {
       nextPage?: number;
       append?: boolean;
     } = {}) => {
+      const requestId = requestGuard.beginRequest();
       try {
-        if (showLoader) {
+        if (showLoader && requestGuard.isMounted()) {
           setIsLoading(true);
         }
         const start = nextPage * pageSize;
+        const projectFeedPromise =
+          activeFilter === "following" && user?.username
+            ? getFollowingProjectsFeed(
+                user.username,
+                start,
+                pageSize,
+                activeSort,
+              )
+            : activeFilter === "saved" && user?.username
+              ? getSavedProjectsFeed(user.username, start, pageSize, activeSort)
+              : getProjectsFeed(activeSort as FeedSort, start, pageSize);
+
         const [projectFeedRaw, builderProjectsRaw] = await Promise.all([
-          getProjectsFeed("time", start, pageSize),
+          projectFeedPromise,
           nextPage === 0 && user?.id
             ? getProjectsByBuilderId(user.id)
             : Promise.resolve([]),
@@ -110,21 +126,11 @@ export default function StreamsScreen() {
         const uiProjects = projectFeed.map((project, index) =>
           mapProjectToUi(project, builderCounts[index]?.length ?? 0),
         );
-        const builderUi = builderProjects.length
-          ? await Promise.all(
-              builderProjects.map(async (project) => {
-                const builders = await getProjectBuilders(project.id).catch(
-                  () => [],
-                );
-                return mapProjectToUi(project, builders.length ?? 0);
-              }),
-            )
-          : [];
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
 
         setProjects((prev) => (append ? prev.concat(uiProjects) : uiProjects));
-        if (nextPage === 0) {
-          setBuilderProjects(builderUi);
-        }
         if (nextPage === 0) {
           setBuilderProjectIds(builderIds);
         }
@@ -132,33 +138,21 @@ export default function StreamsScreen() {
         setHasMore(projectFeed.length === pageSize);
         setHasError(false);
       } catch {
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
         if (!append) {
           setProjects([]);
         }
         setHasError(true);
       } finally {
-        if (showLoader) {
+        if (showLoader && requestGuard.isMounted()) {
           setIsLoading(false);
         }
       }
     },
-    [user?.id],
+    [activeFilter, activeSort, requestGuard, user?.id, user?.username],
   );
-  const combinedProjects = useMemo(() => {
-    const combinedMap = new Map<number, ReturnType<typeof mapProjectToUi>>();
-    projects.forEach((project) => combinedMap.set(project.id, project));
-    builderProjects.forEach((project) => combinedMap.set(project.id, project));
-    return Array.from(combinedMap.values());
-  }, [builderProjects, projects]);
-
-  const visibleProjects = useMemo(() => {
-    if (activeFilter !== "saved") {
-      return combinedProjects;
-    }
-    return combinedProjects.filter((project) =>
-      savedProjectIds.includes(project.id),
-    );
-  }, [activeFilter, combinedProjects, savedProjectIds]);
 
   useEffect(() => {
     setHasMore(true);
@@ -201,15 +195,20 @@ export default function StreamsScreen() {
       showLoader: false,
       nextPage: pageIndex + 1,
       append: true,
-    }).finally(() => setIsLoadingMore(false));
-  }, [hasMore, isLoading, isLoadingMore, loadStreams, pageIndex]);
+    }).finally(() => {
+      if (requestGuard.isMounted()) {
+        setIsLoadingMore(false);
+      }
+    });
+  }, [hasMore, isLoading, isLoadingMore, loadStreams, pageIndex, requestGuard]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <Animated.FlatList
-          data={visibleProjects}
+          ref={listRef}
+          data={projects}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => (
             <ProjectCard
@@ -220,6 +219,11 @@ export default function StreamsScreen() {
               onSavedChange={() => undefined}
             />
           )}
+          initialNumToRender={6}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={40}
+          windowSize={8}
+          removeClippedSubviews
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           onScroll={onScroll}
@@ -260,12 +264,14 @@ export default function StreamsScreen() {
                   </View>
                 </View>
                 <View style={styles.filterRow}>
-                  {["all", "saved"].map((key) => {
+                  {["all", "following", "saved"].map((key) => {
                     const isActive = key === activeFilter;
                     return (
                       <Pressable
                         key={key}
-                        onPress={() => setActiveFilter(key as "all" | "saved")}
+                        onPress={() =>
+                          setActiveFilter(key as "all" | "following" | "saved")
+                        }
                         style={[
                           styles.filterChip,
                           {
@@ -279,10 +285,52 @@ export default function StreamsScreen() {
                         <ThemedText
                           type="caption"
                           style={{
-                            color: isActive ? colors.accent : colors.muted,
+                            color: isActive ? colors.onTint : colors.muted,
                           }}
                         >
-                          {key === "all" ? "All" : "Saved"}
+                          {key === "all"
+                            ? "All"
+                            : key === "following"
+                              ? "Following"
+                              : "Saved"}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.sortRow}>
+                  {[
+                    { key: "recent", label: "Recent" },
+                    { key: "new", label: "Newest" },
+                    { key: "popular", label: "Popular" },
+                    { key: "hot", label: "HOT" },
+                  ].map(({ key, label }) => {
+                    const isActive = key === activeSort;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() =>
+                          setActiveSort(
+                            key as "recent" | "new" | "popular" | "hot",
+                          )
+                        }
+                        style={[
+                          styles.sortChip,
+                          {
+                            backgroundColor: isActive
+                              ? colors.tint
+                              : colors.surfaceAlt,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: isActive ? colors.onTint : colors.muted,
+                          }}
+                        >
+                          {label}
                         </ThemedText>
                       </Pressable>
                     );
@@ -315,7 +363,9 @@ export default function StreamsScreen() {
                     ? "Streams unavailable. Check the API and try again."
                     : activeFilter === "saved"
                       ? "No saved streams yet."
-                      : "No streams yet."}
+                      : activeFilter === "following"
+                        ? "No following streams yet."
+                        : "No streams yet."}
                 </ThemedText>
               </View>
             ) : null
@@ -335,12 +385,19 @@ export default function StreamsScreen() {
           ]}
           removeClippedSubviews
           initialNumToRender={6}
-          maxToRenderPerBatch={6}
-          windowSize={8}
-          updateCellsBatchingPeriod={50}
+          maxToRenderPerBatch={5}
+          windowSize={5}
+          updateCellsBatchingPeriod={60}
         />
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() =>
+          listRef.current?.scrollToOffset({ offset: 0, animated: true })
+        }
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }
@@ -357,7 +414,7 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingVertical: 16,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 16,
     paddingTop: 0,
   },
@@ -376,7 +433,19 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 6,
   },
+  sortRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingTop: 8,
+    flexWrap: "wrap",
+  },
   filterChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  sortChip: {
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 10,

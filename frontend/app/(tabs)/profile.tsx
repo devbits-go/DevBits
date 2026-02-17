@@ -23,6 +23,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { UserCard } from "@/components/UserCard";
 import { Post } from "@/components/Post";
 import User from "@/components/User";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { TopBlur } from "@/components/TopBlur";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -95,8 +96,9 @@ export default function ProfileScreen() {
   const [followersQuery, setFollowersQuery] = useState("");
   const [followingQuery, setFollowingQuery] = useState("");
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const reveal = useRef(new Animated.Value(0.08)).current;
   const hasLoadedRef = useRef(false);
+  const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
 
   const filteredFollowerUsers = React.useMemo(() => {
@@ -125,9 +127,10 @@ export default function ProfileScreen() {
       return;
     }
 
-    Animated.timing(reveal, {
+    Animated.spring(reveal, {
       toValue: 1,
-      duration: motion.duration(420),
+      speed: 16,
+      bounciness: 7,
       useNativeDriver: true,
     }).start();
   }, [motion, reveal]);
@@ -506,6 +509,7 @@ export default function ProfileScreen() {
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <Animated.ScrollView
+          ref={scrollRef}
           contentInsetAdjustmentBehavior="never"
           onScroll={onScroll}
           scrollEventThrottle={16}
@@ -529,9 +533,15 @@ export default function ProfileScreen() {
               opacity: reveal,
               transform: [
                 {
+                  translateY: reveal.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [18, 0],
+                  }),
+                },
+                {
                   scale: reveal.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0.985, 1],
+                    outputRange: [0.97, 1],
                   }),
                 },
               ],
@@ -655,7 +665,11 @@ export default function ProfileScreen() {
                 ))}
               </View>
             ) : projects.length ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.edgeToEdgeRail}
+              >
                 <View style={styles.projectRow}>
                   {projects.map((project) => (
                     <ProjectCard
@@ -697,7 +711,11 @@ export default function ProfileScreen() {
                 ))}
               </View>
             ) : savedStreams.length ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.edgeToEdgeRail}
+              >
                 <View style={styles.projectRow}>
                   {savedStreams.map((project) => (
                     <ProjectCard
@@ -790,6 +808,11 @@ export default function ProfileScreen() {
         </Animated.ScrollView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        bottomOffset={insets.bottom + 20}
+      />
       <Modal
         visible={isFollowersOpen}
         transparent
@@ -928,9 +951,12 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingVertical: 16,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 20,
     paddingTop: 0,
+  },
+  edgeToEdgeRail: {
+    marginHorizontal: -16,
   },
   title: {
     fontSize: 26,
@@ -998,7 +1024,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingVertical: 4,
-    paddingRight: 20,
+    paddingHorizontal: 16,
   },
   modalBackdrop: {
     flex: 1,

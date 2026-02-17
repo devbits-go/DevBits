@@ -82,6 +82,7 @@ func main() {
 	router.GET("/messages/:username/peers", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectChatPeers)
 	router.GET("/messages/:username/with/:other", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectMessages)
 	router.POST("/messages/:username/with/:other", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.CreateDirectMessage)
+	router.GET("/messages/:username/stream", handlers.StreamDirectMessages)
 
 	router.GET("/projects/:project_id", handlers.GetProjectById)
 	router.POST("/projects", handlers.RequireAuth(), handlers.CreateProject)
@@ -140,6 +141,10 @@ func main() {
 
 	router.GET("/feed/posts", handlers.GetPostsFeed)
 	router.GET("/feed/projects", handlers.GetProjectsFeed)
+	router.GET("/feed/posts/following/:username", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetFollowingPostsFeed)
+	router.GET("/feed/posts/saved/:username", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetSavedPostsFeed)
+	router.GET("/feed/projects/following/:username", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetFollowingProjectsFeed)
+	router.GET("/feed/projects/saved/:username", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetSavedProjectsFeed)
 
 	router.POST("/notifications/push-token", handlers.RequireAuth(), handlers.RegisterPushToken)
 	router.GET("/notifications", handlers.RequireAuth(), handlers.GetNotifications)

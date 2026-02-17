@@ -40,6 +40,8 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 
+type PostProps = UiPost;
+
 type PostActionProps = {
   icon: string;
   label: string | number;
@@ -82,6 +84,7 @@ function PostAction({ icon, label, onPress, color, glow }: PostActionProps) {
 export function Post({
   id,
   username,
+  projectId,
   projectName,
   projectStage,
   likes,
@@ -93,7 +96,7 @@ export function Post({
   tags,
   userPicture,
   userId,
-}: UiPost) {
+}: PostProps) {
   const colors = useAppColors();
   const router = useRouter();
   const { user } = useAuth();
@@ -114,7 +117,8 @@ export function Post({
   const [isDeleting, setIsDeleting] = useState(false);
   const likeScale = useRef(new Animated.Value(1)).current;
   const resolvedUserPicture = resolveMediaUrl(userPicture);
-  const previewCharLimit = 420;
+  const longContentThreshold = 520;
+  const previewCharLimit = 220;
   const likeMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
   const saveMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
   const [isSavedLocal, setIsSavedLocal] = useState(isSaved(id));
@@ -125,6 +129,8 @@ export function Post({
     return localContent.slice(0, previewCharLimit).trimEnd();
   }, [localContent, previewCharLimit]);
   const isTruncated = localContent.length > previewCharLimit;
+  const isLongContent = localContent.length > longContentThreshold;
+  const renderedContent = isLongContent ? previewContent : localContent;
 
   const initials = useMemo(() => {
     return username
@@ -139,6 +145,10 @@ export function Post({
     hour: "numeric",
     minute: "2-digit",
   });
+  const dateLabel = new Date(created_on).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 
   const canEdit = !!user?.id && userId === user.id;
   const handleOpenProfile = () => {
@@ -146,6 +156,16 @@ export function Post({
       return;
     }
     router.push({ pathname: "/user/[username]", params: { username } });
+  };
+
+  const handleOpenStream = () => {
+    if (!projectId) {
+      return;
+    }
+    router.push({
+      pathname: "/stream/[projectId]",
+      params: { projectId: String(projectId) },
+    });
   };
 
   const getMediaLabel = (url: string) => {
@@ -443,7 +463,7 @@ export function Post({
       ]}
     >
       <View style={styles.header}>
-        <Pressable style={styles.headerMeta} onPress={handleOpenProfile}>
+        <View style={styles.headerMeta}>
           {resolvedUserPicture ? (
             <FadeInImage
               source={{ uri: resolvedUserPicture }}
@@ -459,14 +479,24 @@ export function Post({
             </View>
           )}
           <View style={styles.headerInfo}>
-            <ThemedText type="defaultSemiBold" style={styles.username}>
-              {username}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: colors.muted }}>
-              {projectName} · {timeLabel}
-            </ThemedText>
+            <Pressable
+              onPress={handleOpenProfile}
+              style={styles.profileTapTarget}
+            >
+              <ThemedText type="defaultSemiBold" style={styles.username}>
+                {username}
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={handleOpenStream}
+              style={styles.streamTapTarget}
+            >
+              <ThemedText type="caption" style={{ color: colors.tint }}>
+                {projectName}
+              </ThemedText>
+            </Pressable>
           </View>
-        </Pressable>
+        </View>
         <View style={styles.headerActions}>
           <TagChip label={projectStage} tone="accent" />
         </View>
@@ -579,11 +609,11 @@ export function Post({
           <View
             style={[
               styles.contentWrapper,
-              isTruncated ? styles.contentClamped : null,
+              isLongContent && isTruncated ? styles.contentClamped : null,
             ]}
           >
-            <MarkdownText>{previewContent}</MarkdownText>
-            {isTruncated ? (
+            <MarkdownText>{renderedContent}</MarkdownText>
+            {isLongContent && isTruncated ? (
               <LinearGradient
                 pointerEvents="none"
                 colors={["transparent", colors.surface]}
@@ -591,35 +621,47 @@ export function Post({
               />
             ) : null}
           </View>
+          {isLongContent ? (
+            <ThemedText type="caption" style={{ color: colors.muted }}>
+              Long byte preview · tap to open full byte
+            </ThemedText>
+          ) : null}
         </Pressable>
       )}
-      <MediaGallery media={localMedia} />
-      <View style={styles.tagRow}>
-        {tags.map((tag) => (
-          <TagChip key={tag} label={tag} />
-        ))}
-      </View>
-      <View style={styles.footer}>
-        <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-          <PostAction
-            icon="heart"
-            label={likeCount}
-            onPress={handleToggleLike}
-            color={isLiked ? colors.tint : colors.muted}
-            glow={isLiked}
-          />
-        </Animated.View>
-        <PostAction
-          icon="message-circle"
-          label={commentCount}
-          onPress={handleOpenPost}
-        />
-        <PostAction
-          icon="bookmark"
-          label={saveCount}
-          color={isSavedLocal ? colors.tint : colors.muted}
-          onPress={handleToggleSave}
-        />
+      <View style={styles.detailsBlock}>
+        <MediaGallery media={localMedia} />
+        <View style={styles.tagRow}>
+          {tags.map((tag) => (
+            <TagChip key={tag} label={tag} />
+          ))}
+        </View>
+        <View style={styles.footer}>
+          <View style={styles.footerActionsRow}>
+            <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+              <PostAction
+                icon="heart"
+                label={likeCount}
+                onPress={handleToggleLike}
+                color={isLiked ? colors.tint : colors.muted}
+                glow={isLiked}
+              />
+            </Animated.View>
+            <PostAction
+              icon="message-circle"
+              label={commentCount}
+              onPress={handleOpenPost}
+            />
+            <PostAction
+              icon="bookmark"
+              label={saveCount}
+              color={isSavedLocal ? colors.tint : colors.muted}
+              onPress={handleToggleSave}
+            />
+          </View>
+          <ThemedText type="caption" style={{ color: colors.muted }}>
+            {dateLabel} · {timeLabel}
+          </ThemedText>
+        </View>
       </View>
     </LazyFadeIn>
   );
@@ -627,11 +669,13 @@ export function Post({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 10,
     borderWidth: 1,
-    gap: 12,
+    gap: 10,
+    minHeight: 172,
   },
   header: {
     flexDirection: "row",
@@ -657,6 +701,19 @@ const styles = StyleSheet.create({
   headerInfo: {
     flex: 1,
   },
+  profileTapTarget: {
+    alignSelf: "flex-start",
+    paddingVertical: 2,
+    paddingRight: 8,
+  },
+  streamTapTarget: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+    paddingRight: 10,
+    marginTop: 1,
+  },
   avatar: {
     width: 36,
     height: 36,
@@ -675,7 +732,13 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 6,
   },
+  detailsBlock: {
+    gap: 8,
+  },
   footer: {
+    gap: 4,
+  },
+  footerActionsRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -754,9 +817,10 @@ const styles = StyleSheet.create({
   },
   contentWrapper: {
     position: "relative",
+    minHeight: 56,
   },
   contentClamped: {
-    maxHeight: 180,
+    maxHeight: 148,
     overflow: "hidden",
   },
   contentFade: {

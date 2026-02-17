@@ -49,6 +49,11 @@ export function ProjectCard({
     saves?: number;
     isLiked?: boolean;
   } | null>(null);
+  const summaryCharLimit = 220;
+  const summaryText =
+    project.summary.length > summaryCharLimit
+      ? `${project.summary.slice(0, summaryCharLimit).trimEnd()}…`
+      : project.summary;
   const likeScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -235,7 +240,7 @@ export function ProjectCard({
           <View style={[styles.stageDot, { backgroundColor: colors.tint }]} />
         </View>
         <View style={styles.summary}>
-          <MarkdownText>{project.summary}</MarkdownText>
+          <MarkdownText>{summaryText}</MarkdownText>
         </View>
         <View style={styles.tagRow}>
           {isCreator ? (
@@ -303,6 +308,11 @@ export function ProjectCard({
                 month: "short",
                 day: "numeric",
               })}
+              {" · "}
+              {new Date(project.updated_on).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
             </ThemedText>
           </View>
         </View>
@@ -315,16 +325,20 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 14,
     borderWidth: 1,
-    padding: 14,
-    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    gap: 8,
+    minHeight: 156,
   },
   cardCompact: {
     minWidth: 220,
     maxWidth: 260,
+    minHeight: 168,
   },
   cardFull: {
     width: "100%",
     alignSelf: "stretch",
+    minHeight: 168,
   },
   headerRow: {
     flexDirection: "row",
@@ -340,7 +354,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   summary: {
-    minHeight: 18,
+    minHeight: 44,
   },
   tagRow: {
     flexDirection: "row",
@@ -349,7 +363,8 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: "row",
-    gap: 16,
+    gap: 12,
+    flexWrap: "wrap",
   },
   metaItem: {
     flexDirection: "row",

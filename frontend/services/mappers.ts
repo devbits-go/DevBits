@@ -30,6 +30,7 @@ export const mapPostToUi = (
     username: user?.username ?? `user-${post.user}`,
     userPicture: user?.picture ?? undefined,
     userId: post.user,
+    projectId: post.project,
     projectName: project?.name ?? `Project ${post.project}`,
     projectStage:
       project?.status === 2 ? "launch" : project?.status === 1 ? "beta" : "alpha",

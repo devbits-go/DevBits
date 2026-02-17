@@ -17,8 +17,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ThemedText } from "@/components/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNotifications } from "@/contexts/NotificationsContext";
 import { ApiDirectMessage } from "@/constants/Types";
 import {
+  API_BASE_URL,
   createDirectMessage,
   getAllUsers,
   getDirectChatPeers,
@@ -34,9 +36,15 @@ type TerminalLine = {
 };
 
 type ChatEntry = {
+  id: number;
   author: "me" | "them";
   text: string;
   timestamp: string;
+};
+
+type DirectMessageStreamEvent = {
+  type: "direct_message";
+  direct_message: ApiDirectMessage;
 };
 
 type TerminalSuggestion = {
@@ -66,10 +74,28 @@ const mapMessageToChatEntry = (
   const myName = normalizeUsername(me);
   const sender = normalizeUsername(message.sender_name);
   return {
+    id: message.id,
     author: sender === myName ? "me" : "them",
     text: message.content,
     timestamp: formatTime(message.created_at),
   };
+};
+
+const getPeerForMessage = (me: string, message: ApiDirectMessage) => {
+  const myName = normalizeUsername(me);
+  const sender = normalizeUsername(message.sender_name);
+  const recipient = normalizeUsername(message.recipient_name);
+  return sender === myName ? recipient : sender;
+};
+
+const getWebSocketBaseUrl = (baseUrl: string) => {
+  if (baseUrl.startsWith("https://")) {
+    return `wss://${baseUrl.slice("https://".length)}`;
+  }
+  if (baseUrl.startsWith("http://")) {
+    return `ws://${baseUrl.slice("http://".length)}`;
+  }
+  return baseUrl;
 };
 
 const parseApiErrorMessage = (error: unknown, fallback: string) => {
@@ -102,10 +128,19 @@ export default function TerminalScreen() {
   const colors = useAppColors();
   const router = useRouter();
   const params = useLocalSearchParams<{ chat?: string | string[] }>();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+  const { showInAppBanner } = useNotifications();
   const insets = useSafeAreaInsets();
   const outputRef = useRef<ScrollView>(null);
   const autoOpenedChatRef = useRef<string | null>(null);
+  const activeChatRef = useRef<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const seenMessageIdsRef = useRef<Set<number>>(new Set());
+  const spamWindowByPeerRef = useRef<Record<string, number[]>>({});
+  const spamCooldownByPeerRef = useRef<Record<string, number>>({});
   const [input, setInput] = useState("");
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [chatThreads, setChatThreads] = useState<Record<string, ChatEntry[]>>(
@@ -296,19 +331,68 @@ export default function TerminalScreen() {
     });
   };
 
+  const notifyIncomingMessage = (peer: string, text: string) => {
+    const now = Date.now();
+    const windowMs = 5000;
+    const spamThreshold = 10;
+    const spamCooldownMs = 15000;
+    const spamBannerHoldMs = 4000;
+
+    const existing = spamWindowByPeerRef.current[peer] ?? [];
+    const recent = existing.filter((timestamp) => now - timestamp <= windowMs);
+    recent.push(now);
+    spamWindowByPeerRef.current[peer] = recent;
+
+    const lastSpam = spamCooldownByPeerRef.current[peer] ?? 0;
+    if (recent.length >= spamThreshold && now - lastSpam > spamCooldownMs) {
+      spamCooldownByPeerRef.current[peer] = now;
+      showInAppBanner({
+        title: "Spam detected",
+        body: `@${peer} is spamming you — Stack overflow: inbox hit 10 msgs in 5s.`,
+        payload: { type: "direct_message", actor_name: peer },
+        incrementUnread: true,
+      });
+      return;
+    }
+
+    if (now - lastSpam < spamBannerHoldMs) {
+      return;
+    }
+
+    showInAppBanner({
+      title: "New message",
+      body: `@${peer}: ${text}`,
+      payload: { type: "direct_message", actor_name: peer },
+      incrementUnread: true,
+    });
+  };
+
   const appendChatEntries = (username: string, entries: ChatEntry[]) => {
     const normalizedUser = normalizeUsername(username);
     if (!normalizedUser || entries.length === 0) {
-      return;
+      return [] as ChatEntry[];
+    }
+
+    const uniqueEntries = entries.filter((entry) => {
+      if (seenMessageIdsRef.current.has(entry.id)) {
+        return false;
+      }
+      seenMessageIdsRef.current.add(entry.id);
+      return true;
+    });
+    if (!uniqueEntries.length) {
+      return [] as ChatEntry[];
     }
 
     setChatThreads((prev) => {
       const existing = prev[normalizedUser] ?? [];
       return {
         ...prev,
-        [normalizedUser]: [...existing, ...entries],
+        [normalizedUser]: [...existing, ...uniqueEntries],
       };
     });
+
+    return uniqueEntries;
   };
 
   const renderChatHistory = (username: string, entries?: ChatEntry[]) => {
@@ -352,6 +436,10 @@ export default function TerminalScreen() {
       const mapped = messages.map((message) =>
         mapMessageToChatEntry(user.username ?? "", message),
       );
+      const historyIds = messages.map((message) => message.id);
+      for (const messageID of historyIds) {
+        seenMessageIdsRef.current.add(messageID);
+      }
       setChatThreads((prev) => ({
         ...prev,
         [normalizedUser]: mapped,
@@ -372,10 +460,10 @@ export default function TerminalScreen() {
       return;
     }
     setActiveChat(target);
-    await loadChatHistory(target);
     appendLines([
       { type: "out", text: `Chat mode: @${target} (type /exit to leave)` },
     ]);
+    await loadChatHistory(target);
   };
 
   const handleSendChatMessage = async (targetUser: string, message: string) => {
@@ -384,6 +472,15 @@ export default function TerminalScreen() {
     if (!normalizedUser || !trimmedMessage || !user?.username) {
       return;
     }
+
+    const optimisticTimestamp = formatTime(new Date().toISOString());
+    appendLines([
+      {
+        type: "out",
+        chatRole: "me",
+        text: `[${optimisticTimestamp}] you: ${trimmedMessage}`,
+      },
+    ]);
 
     try {
       const response = await createDirectMessage(
@@ -394,13 +491,6 @@ export default function TerminalScreen() {
       const created = response.direct_message;
       const entry = mapMessageToChatEntry(user.username, created);
       appendChatEntries(normalizedUser, [entry]);
-      appendLines([
-        {
-          type: "out",
-          chatRole: "me",
-          text: `[${entry.timestamp}] you: ${entry.text}`,
-        },
-      ]);
       setChatPeers((prev) =>
         prev.includes(normalizedUser) ? prev : [...prev, normalizedUser].sort(),
       );
@@ -435,7 +525,7 @@ export default function TerminalScreen() {
         return;
       }
 
-      await handleSendChatMessage(activeChat, trimmed);
+      void handleSendChatMessage(activeChat, trimmed);
       return;
     }
 
@@ -563,8 +653,17 @@ export default function TerminalScreen() {
         return;
       }
       const normalizedTarget = normalizeUsername(target);
-      await openChatSession(normalizedTarget);
-      await handleSendChatMessage(normalizedTarget, message);
+      if (activeChat !== normalizedTarget) {
+        setActiveChat(normalizedTarget);
+        appendLines([
+          {
+            type: "out",
+            text: `Chat mode: @${normalizedTarget} (type /exit to leave)`,
+          },
+        ]);
+        void loadChatHistory(normalizedTarget);
+      }
+      void handleSendChatMessage(normalizedTarget, message);
       return;
     }
 
@@ -592,6 +691,10 @@ export default function TerminalScreen() {
   }, [lines]);
 
   useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
+  useEffect(() => {
     const rawParam = params.chat;
     const chatParam = Array.isArray(rawParam)
       ? (rawParam[0] ?? "")
@@ -608,6 +711,177 @@ export default function TerminalScreen() {
     autoOpenedChatRef.current = target;
     void openChatSession(target);
   }, [params.chat, user?.username]);
+
+  useEffect(() => {
+    if (!user?.username || !token) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+    let reconnectAttempt = 0;
+
+    const connect = () => {
+      if (cancelled || !user.username || !token) {
+        return;
+      }
+
+      const wsBase = getWebSocketBaseUrl(API_BASE_URL);
+      const url = `${wsBase}/messages/${encodeURIComponent(user.username)}/stream?token=${encodeURIComponent(token)}`;
+      const socket = new WebSocket(url);
+      wsRef.current = socket;
+
+      socket.onopen = () => {
+        reconnectAttempt = 0;
+      };
+
+      socket.onmessage = (event) => {
+        const raw = typeof event.data === "string" ? event.data : "";
+        if (!raw) {
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(raw) as DirectMessageStreamEvent;
+          if (payload.type !== "direct_message" || !payload.direct_message) {
+            return;
+          }
+          if (!user.username) {
+            return;
+          }
+
+          const message = payload.direct_message;
+          const normalizedMe = normalizeUsername(user.username);
+          const sender = normalizeUsername(message.sender_name);
+          const recipient = normalizeUsername(message.recipient_name);
+          if (sender !== normalizedMe && recipient !== normalizedMe) {
+            return;
+          }
+
+          const peer = getPeerForMessage(user.username, message);
+          if (!peer) {
+            return;
+          }
+
+          const entry = mapMessageToChatEntry(user.username, message);
+          const appended = appendChatEntries(peer, [entry]);
+          if (!appended.length) {
+            return;
+          }
+          setChatPeers((prev) =>
+            prev.includes(peer) ? prev : [...prev, peer].sort(),
+          );
+
+          if (entry.author === "them") {
+            notifyIncomingMessage(peer, entry.text);
+          }
+
+          if (activeChatRef.current === peer && entry.author === "them") {
+            appendLines([
+              {
+                type: "out",
+                chatRole: entry.author,
+                text: `[${entry.timestamp}] @${peer}: ${entry.text}`,
+              },
+            ]);
+            return;
+          }
+
+          if (entry.author === "them") {
+            appendLines([
+              {
+                type: "out",
+                text: `New message from @${peer}: ${entry.text}`,
+              },
+            ]);
+          }
+        } catch {
+          // Ignore malformed stream payloads.
+        }
+      };
+
+      socket.onclose = () => {
+        wsRef.current = null;
+        if (cancelled) {
+          return;
+        }
+
+        reconnectAttempt += 1;
+        const backoffMs = Math.min(1000 * reconnectAttempt, 5000);
+        reconnectTimeoutRef.current = setTimeout(connect, backoffMs);
+      };
+
+      socket.onerror = () => {
+        socket.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [token, user?.username]);
+
+  useEffect(() => {
+    if (!activeChat || !user?.username) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      void getDirectMessages(user.username, activeChat, 0, 200)
+        .then((messages) => {
+          const incoming = messages
+            .filter((message) => !seenMessageIdsRef.current.has(message.id))
+            .map((message) => mapMessageToChatEntry(user.username, message));
+          if (!incoming.length) {
+            return;
+          }
+
+          const appended = appendChatEntries(activeChat, incoming);
+          if (!appended.length) {
+            return;
+          }
+          appended
+            .filter((entry) => entry.author === "them")
+            .forEach((entry) => {
+              notifyIncomingMessage(activeChat, entry.text);
+            });
+          appendLines(
+            appended.map((entry) => ({
+              type: "out" as const,
+              chatRole: entry.author,
+              text:
+                entry.author === "me"
+                  ? `[${entry.timestamp}] you: ${entry.text}`
+                  : `[${entry.timestamp}] @${activeChat}: ${entry.text}`,
+            })),
+          );
+        })
+        .catch(() => {
+          // Keep terminal responsive when refresh fails.
+        });
+    }, 3000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [activeChat, user?.username]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>

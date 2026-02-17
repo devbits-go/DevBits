@@ -58,7 +58,9 @@ import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { MarkdownText } from "@/components/MarkdownText";
 import { MediaGallery } from "@/components/MediaGallery";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSaved } from "@/contexts/SavedContext";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
@@ -72,14 +74,31 @@ type CommentState = {
   liked: boolean;
 };
 
+const PostBody = React.memo(function PostBody({
+  content,
+  media,
+}: {
+  content: string;
+  media?: string[];
+}) {
+  return (
+    <>
+      <MarkdownText>{content}</MarkdownText>
+      <MediaGallery media={media} />
+    </>
+  );
+});
+
 export default function PostDetailScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { postId } = useLocalSearchParams<{ postId?: string }>();
   const { user } = useAuth();
+  const { isSaved, savedPostIds, toggleSave } = useSaved();
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const reveal = useRef(new Animated.Value(0.08)).current;
+  const scrollRef = useRef<Animated.ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const [post, setPost] = useState<ApiPost | null>(null);
   const [project, setProject] = useState<ApiProject | null>(null);
@@ -105,8 +124,36 @@ export default function PostDetailScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [postLiked, setPostLiked] = useState(false);
   const [isPostLikeUpdating, setIsPostLikeUpdating] = useState(false);
+  const [postLikeCount, setPostLikeCount] = useState(0);
+  const [postSaveCount, setPostSaveCount] = useState(0);
+  const [postSaved, setPostSaved] = useState(false);
+  const [isPostSaveUpdating, setIsPostSaveUpdating] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   const postIdNumber = useMemo(() => Number(postId), [postId]);
+
+  const hasPendingInteraction =
+    isSubmitting ||
+    isUploadingMedia ||
+    isPostLikeUpdating ||
+    isPostSaveUpdating ||
+    isEditingPost ||
+    isKeyboardVisible ||
+    !!content.trim();
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -166,11 +213,26 @@ export default function PostDetailScreen() {
           }),
         );
 
-        setPost(postData);
+        setPost((prev) => {
+          if (
+            prev &&
+            prev.id === postData.id &&
+            prev.content === postData.content &&
+            prev.user === postData.user &&
+            prev.project === postData.project &&
+            JSON.stringify(prev.media ?? []) ===
+              JSON.stringify(postData.media ?? [])
+          ) {
+            return prev;
+          }
+          return postData;
+        });
         setAuthor(postAuthor);
         setProject(postProject);
         setComments(commentStates);
         setPostLiked(postLikeStatus.status);
+        setPostLikeCount(postData.likes ?? 0);
+        setPostSaveCount(postData.saves ?? 0);
         setErrorMessage("");
       } catch {
         setErrorMessage("Unable to load post.");
@@ -208,7 +270,15 @@ export default function PostDetailScreen() {
     setIsRefreshing(false);
   }, [loadPost]);
 
-  useAutoRefresh(() => loadPost(false), { focusRefresh: false });
+  useAutoRefresh(
+    () => {
+      if (hasPendingInteraction) {
+        return;
+      }
+      return loadPost(false);
+    },
+    { focusRefresh: false },
+  );
 
   useEffect(() => {
     if (!post?.id) {
@@ -231,9 +301,7 @@ export default function PostDetailScreen() {
       }
       if (event.type === "stats") {
         if (typeof event.likes === "number") {
-          setPost((prev) =>
-            prev ? { ...prev, likes: event.likes ?? prev.likes } : prev,
-          );
+          setPostLikeCount(event.likes);
         }
         if (typeof event.isLiked === "boolean") {
           setPostLiked(event.isLiked);
@@ -245,12 +313,30 @@ export default function PostDetailScreen() {
     });
   }, [post?.id, router]);
 
+  useEffect(() => {
+    if (!post?.id) {
+      setPostSaved(false);
+      return;
+    }
+    setPostSaved(isSaved(post.id));
+  }, [isSaved, post?.id, savedPostIds]);
+
   const canEditPost = !!user?.id && !!post && post.user === user.id;
   const handleOpenProfile = (username?: string | null) => {
     if (!username) {
       return;
     }
     router.push({ pathname: "/user/[username]", params: { username } });
+  };
+
+  const handleOpenStream = () => {
+    if (!project?.id) {
+      return;
+    }
+    router.push({
+      pathname: "/stream/[projectId]",
+      params: { projectId: String(project.id) },
+    });
   };
 
   const getMediaLabel = (url: string) => {
@@ -493,12 +579,12 @@ export default function PostDetailScreen() {
 
     setIsPostLikeUpdating(true);
     const previousLiked = postLiked;
-    const previousLikes = post.likes ?? 0;
+    const previousLikes = postLikeCount;
     const nextLiked = !previousLiked;
     const nextLikes = Math.max(0, previousLikes + (nextLiked ? 1 : -1));
 
     setPostLiked(nextLiked);
-    setPost((prev) => (prev ? { ...prev, likes: nextLikes } : prev));
+    setPostLikeCount(nextLikes);
     emitPostStats(post.id, { likes: nextLikes, isLiked: nextLiked });
 
     try {
@@ -509,10 +595,32 @@ export default function PostDetailScreen() {
       }
     } catch {
       setPostLiked(previousLiked);
-      setPost((prev) => (prev ? { ...prev, likes: previousLikes } : prev));
+      setPostLikeCount(previousLikes);
       emitPostStats(post.id, { likes: previousLikes, isLiked: previousLiked });
     } finally {
       setIsPostLikeUpdating(false);
+    }
+  };
+
+  const handleTogglePostSave = async () => {
+    if (!post || isPostSaveUpdating) {
+      return;
+    }
+    setIsPostSaveUpdating(true);
+    const previousSaved = postSaved;
+    const previousSaves = postSaveCount;
+    const nextSaved = !previousSaved;
+    const nextSaves = Math.max(0, previousSaves + (nextSaved ? 1 : -1));
+
+    setPostSaved(nextSaved);
+    setPostSaveCount(nextSaves);
+    try {
+      await toggleSave(post.id);
+    } catch {
+      setPostSaved(previousSaved);
+      setPostSaveCount(previousSaves);
+    } finally {
+      setIsPostSaveUpdating(false);
     }
   };
 
@@ -693,6 +801,7 @@ export default function PostDetailScreen() {
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <Animated.ScrollView
+              ref={scrollRef}
               contentInsetAdjustmentBehavior="never"
               onScroll={onScroll}
               scrollEventThrottle={16}
@@ -748,19 +857,27 @@ export default function PostDetailScreen() {
                       ]}
                     >
                       <View style={styles.postHeader}>
-                        <Pressable
-                          onPress={() => handleOpenProfile(author?.username)}
-                        >
-                          <ThemedText type="defaultSemiBold">
-                            {author?.username ?? "Unknown"}
-                          </ThemedText>
-                          <ThemedText
-                            type="caption"
-                            style={{ color: colors.muted }}
+                        <View style={styles.postHeaderIdentity}>
+                          <Pressable
+                            onPress={() => handleOpenProfile(author?.username)}
+                            style={styles.profileTapTarget}
                           >
-                            {project?.name ?? "Project"}
-                          </ThemedText>
-                        </Pressable>
+                            <ThemedText type="defaultSemiBold">
+                              {author?.username ?? "Unknown"}
+                            </ThemedText>
+                          </Pressable>
+                          <Pressable
+                            onPress={handleOpenStream}
+                            style={styles.streamTapTarget}
+                          >
+                            <ThemedText
+                              type="caption"
+                              style={{ color: colors.tint }}
+                            >
+                              {project?.name ?? "Project"}
+                            </ThemedText>
+                          </Pressable>
+                        </View>
                         <View style={styles.postHeaderActions}>
                           {project?.status !== undefined ? (
                             <TagChip
@@ -935,9 +1052,8 @@ export default function PostDetailScreen() {
                           </View>
                         </View>
                       ) : (
-                        <MarkdownText>{post.content}</MarkdownText>
+                        <PostBody content={post.content} media={post.media} />
                       )}
-                      <MediaGallery media={post.media} />
                       <Pressable
                         style={({ pressed }) => [
                           styles.metaRow,
@@ -957,7 +1073,29 @@ export default function PostDetailScreen() {
                             color: postLiked ? colors.tint : colors.muted,
                           }}
                         >
-                          {post.likes} likes
+                          {postLikeCount} likes
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.metaRow,
+                          pressed && styles.metaPressed,
+                        ]}
+                        onPress={handleTogglePostSave}
+                        disabled={isPostSaveUpdating}
+                      >
+                        <Feather
+                          name="bookmark"
+                          size={14}
+                          color={postSaved ? colors.tint : colors.muted}
+                        />
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: postSaved ? colors.tint : colors.muted,
+                          }}
+                        >
+                          {postSaveCount} saves
                         </ThemedText>
                       </Pressable>
                     </View>
@@ -1308,6 +1446,11 @@ export default function PostDetailScreen() {
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        bottomOffset={insets.bottom + 20}
+        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+      />
       <TopBlur scrollY={scrollY} />
     </View>
   );
@@ -1322,7 +1465,7 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingVertical: 16,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 16,
     paddingTop: 0,
   },
@@ -1345,6 +1488,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  postHeaderIdentity: {
+    gap: 2,
+  },
+  profileTapTarget: {
+    alignSelf: "flex-start",
+    paddingVertical: 2,
+    paddingRight: 8,
+  },
+  streamTapTarget: {
+    alignSelf: "flex-start",
+    paddingVertical: 6,
+    paddingRight: 10,
   },
   postHeaderActions: {
     flexDirection: "row",

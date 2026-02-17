@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
+  FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -12,6 +12,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -24,10 +25,20 @@ export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const motion = useMotionConfig();
-  const reveal = useRef(new Animated.Value(0)).current;
+  const reveal = useRef(new Animated.Value(0.08)).current;
+  const listRef = useRef<FlatList<any>>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
-  const { notifications, isLoading, refresh, markRead, remove, clearAll } =
-    useNotifications();
+  const {
+    notifications,
+    isLoading,
+    isLoadingMore,
+    hasMore,
+    refresh,
+    loadMore,
+    markRead,
+    remove,
+    clearAll,
+  } = useNotifications();
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -121,9 +132,57 @@ export default function NotificationsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.screen} edges={["top"]}>
-        <Animated.ScrollView
+        <Animated.FlatList
+          ref={listRef}
+          data={notifications}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item }) => (
+            <View
+              style={[
+                styles.card,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                  opacity: item.read_at ? 0.6 : 1,
+                },
+              ]}
+            >
+              <View style={styles.cardHeader}>
+                <ThemedText type="defaultSemiBold">
+                  {getNotificationTitle(item.type)}
+                </ThemedText>
+                <Pressable
+                  onPress={() => remove(item.id)}
+                  style={[styles.deleteButton, { borderColor: colors.border }]}
+                >
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Delete
+                  </ThemedText>
+                </Pressable>
+              </View>
+              <Pressable onPress={() => void handleOpen(item)}>
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  {getNotificationBody(item)}
+                </ThemedText>
+                <ThemedText type="caption" style={{ color: colors.muted }}>
+                  {new Date(item.created_at).toLocaleString()}
+                </ThemedText>
+              </Pressable>
+            </View>
+          )}
           onScroll={onScroll}
           scrollEventThrottle={16}
+          onEndReached={() => {
+            if (hasMore && !isLoadingMore) {
+              void loadMore();
+            }
+          }}
+          onEndReachedThreshold={0.45}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={40}
+          windowSize={8}
+          removeClippedSubviews
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
@@ -135,110 +194,79 @@ export default function NotificationsScreen() {
             />
           }
           contentContainerStyle={{ paddingBottom: 96 + insets.bottom }}
-        >
-          <Animated.View
-            style={[
-              styles.content,
-              {
-                paddingTop: 8,
-                opacity: reveal,
-                transform: [
-                  {
-                    translateY: reveal.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [10, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.headerRow}>
-              <View>
-                <ThemedText type="display">Notifications</ThemedText>
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  {notifications.length ? "New activity" : "Nothing new yet."}
-                </ThemedText>
-              </View>
-              {notifications.length ? (
-                <Pressable
-                  onPress={clearAll}
-                  style={[
-                    styles.clearButton,
+          ListHeaderComponent={
+            <Animated.View
+              style={[
+                styles.content,
+                {
+                  paddingTop: 8,
+                  opacity: reveal,
+                  transform: [
                     {
-                      borderColor: colors.border,
-                      backgroundColor: colors.surfaceAlt,
+                      translateY: reveal.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [10, 0],
+                      }),
                     },
-                  ]}
-                >
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.headerRow}>
+                <View>
+                  <ThemedText type="display">Notifications</ThemedText>
                   <ThemedText type="caption" style={{ color: colors.muted }}>
-                    Clear all
+                    {notifications.length ? "New activity" : "Nothing new yet."}
                   </ThemedText>
-                </Pressable>
-              ) : null}
-            </View>
-
-            {notifications.length ? (
-              <View style={styles.list}>
-                {notifications.map((item) => (
-                  <View
-                    key={item.id}
+                </View>
+                {notifications.length ? (
+                  <Pressable
+                    onPress={clearAll}
                     style={[
-                      styles.card,
+                      styles.clearButton,
                       {
-                        backgroundColor: colors.surface,
                         borderColor: colors.border,
-                        opacity: item.read_at ? 0.6 : 1,
+                        backgroundColor: colors.surfaceAlt,
                       },
                     ]}
                   >
-                    <View style={styles.cardHeader}>
-                      <ThemedText type="defaultSemiBold">
-                        {getNotificationTitle(item.type)}
-                      </ThemedText>
-                      <Pressable
-                        onPress={() => remove(item.id)}
-                        style={[
-                          styles.deleteButton,
-                          { borderColor: colors.border },
-                        ]}
-                      >
-                        <ThemedText
-                          type="caption"
-                          style={{ color: colors.muted }}
-                        >
-                          Delete
-                        </ThemedText>
-                      </Pressable>
-                    </View>
-                    <Pressable onPress={() => void handleOpen(item)}>
-                      <ThemedText
-                        type="caption"
-                        style={{ color: colors.muted }}
-                      >
-                        {getNotificationBody(item)}
-                      </ThemedText>
-                      <ThemedText
-                        type="caption"
-                        style={{ color: colors.muted }}
-                      >
-                        {new Date(item.created_at).toLocaleString()}
-                      </ThemedText>
-                    </Pressable>
-                  </View>
-                ))}
+                    <ThemedText type="caption" style={{ color: colors.muted }}>
+                      Clear all
+                    </ThemedText>
+                  </Pressable>
+                ) : null}
               </View>
-            ) : (
-              <View style={styles.emptyState}>
+              <View style={styles.list} />
+            </Animated.View>
+          }
+          ListEmptyComponent={
+            <View style={[styles.emptyState, styles.content]}>
+              <ThemedText type="caption" style={{ color: colors.muted }}>
+                You are all caught up.
+              </ThemedText>
+            </View>
+          }
+          ListFooterComponent={
+            isLoadingMore ? (
+              <View style={styles.loadingMoreState}>
                 <ThemedText type="caption" style={{ color: colors.muted }}>
-                  You are all caught up.
+                  Loading more...
                 </ThemedText>
               </View>
-            )}
-          </Animated.View>
-        </Animated.ScrollView>
+            ) : null
+          }
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          style={styles.listContainer}
+        />
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
+      <FloatingScrollTopButton
+        scrollY={scrollY}
+        onPress={() =>
+          listRef.current?.scrollToOffset({ offset: 0, animated: true })
+        }
+        bottomOffset={insets.bottom + 20}
+      />
     </View>
   );
 }
@@ -248,9 +276,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     gap: 6,
+  },
+  listContainer: {
+    flex: 1,
   },
   headerRow: {
     flexDirection: "row",
@@ -266,7 +296,11 @@ const styles = StyleSheet.create({
   },
   list: {
     marginTop: 16,
-    gap: 12,
+  },
+  loadingMoreState: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    alignItems: "center",
   },
   card: {
     borderRadius: 14,

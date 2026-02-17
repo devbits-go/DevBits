@@ -8,6 +8,8 @@ type AutoRefreshOptions = {
   skipInitialFocusRefresh?: boolean;
 };
 
+const MIN_REFRESH_INTERVAL_MS = 5000;
+
 export const useAutoRefresh = (
   onRefresh: () => Promise<void>,
   options: AutoRefreshOptions = {},
@@ -48,9 +50,13 @@ export const useAutoRefresh = (
 
       let intervalId: ReturnType<typeof setInterval> | null = null;
       if (preferences.backgroundRefreshEnabled && preferences.refreshIntervalMs > 0) {
+        const refreshInterval = Math.max(
+          preferences.refreshIntervalMs,
+          MIN_REFRESH_INTERVAL_MS,
+        );
         intervalId = setInterval(() => {
           runRefresh();
-        }, preferences.refreshIntervalMs);
+        }, refreshInterval);
       }
 
       return () => {
