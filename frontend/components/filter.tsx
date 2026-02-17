@@ -36,9 +36,10 @@ export const MyFilter: React.FC = () => {
     <View style={{ backgroundColor: "transparent" }}>
       <Pressable
         onPress={toggleModal}
-        style={[
+        style={({ pressed }) => [
           styles.filterButton,
           { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+          pressed && styles.pressed,
         ]}
       >
         <Feather name="sliders" size={14} color={colors.muted} />
@@ -66,7 +67,10 @@ export const MyFilter: React.FC = () => {
           >
             <View style={styles.panelHeader}>
               <ThemedText type="subtitle">Filter feed</ThemedText>
-              <Pressable onPress={toggleModal}>
+              <Pressable
+                onPress={toggleModal}
+                style={({ pressed }) => [pressed && styles.pressedInline]}
+              >
                 <Feather name="x" color={colors.muted} size={20} />
               </Pressable>
             </View>
@@ -97,12 +101,16 @@ export const MyFilter: React.FC = () => {
               />
             </View>
             <Pressable
-              style={[styles.applyButton, { backgroundColor: colors.tint }]}
+              style={({ pressed }) => [
+                styles.applyButton,
+                { backgroundColor: colors.tint },
+                pressed && styles.pressed,
+              ]}
               onPress={toggleModal}
             >
               <ThemedText
                 type="defaultSemiBold"
-                style={{ color: colors.accent }}
+                style={{ color: colors.onTint }}
               >
                 Apply filters
               </ThemedText>
@@ -151,5 +159,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: "center",
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
+  pressedInline: {
+    opacity: 0.75,
   },
 });

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  InteractionManager,
   Modal,
   Pressable,
   RefreshControl,
@@ -17,6 +18,7 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { ApiUser, UserProps } from "@/constants/Types";
 import { ProjectCard } from "@/components/ProjectCard";
+import { InfiniteHorizontalCycle } from "@/components/InfiniteHorizontalCycle";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatPill } from "@/components/StatPill";
 import { ThemedText } from "@/components/ThemedText";
@@ -95,10 +97,14 @@ export default function ProfileScreen() {
   const [isFollowingBusy, setIsFollowingBusy] = useState(false);
   const [followersQuery, setFollowersQuery] = useState("");
   const [followingQuery, setFollowingQuery] = useState("");
+  const [visibleProjectCount, setVisibleProjectCount] = useState(0);
+  const [visibleSavedStreamCount, setVisibleSavedStreamCount] = useState(0);
+  const [visiblePostCount, setVisiblePostCount] = useState(0);
+  const [visibleSavedPostCount, setVisibleSavedPostCount] = useState(0);
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
   const hasLoadedRef = useRef(false);
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
 
   const filteredFollowerUsers = React.useMemo(() => {
@@ -120,6 +126,111 @@ export default function ProfileScreen() {
       user.username.toLowerCase().includes(trimmed),
     );
   }, [followingUsers, followingQuery]);
+
+  const scheduleProgressiveCount = useCallback(
+    (
+      total: number,
+      setCount: React.Dispatch<React.SetStateAction<number>>,
+      config: { initial: number; step: number; delayMs: number },
+    ) => {
+      let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const initialCount = Math.min(total, config.initial);
+      setCount(initialCount);
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        if (cancelled || initialCount >= total) {
+          return;
+        }
+
+        const advance = () => {
+          if (cancelled) {
+            return;
+          }
+          setCount((prev) => {
+            const next = Math.min(total, prev + config.step);
+            if (next < total) {
+              timer = setTimeout(advance, config.delayMs);
+            }
+            return next;
+          });
+        };
+
+        timer = setTimeout(advance, config.delayMs);
+      });
+
+      return () => {
+        cancelled = true;
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        task.cancel?.();
+      };
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return scheduleProgressiveCount(projects.length, setVisibleProjectCount, {
+      initial: 4,
+      step: 2,
+      delayMs: 56,
+    });
+  }, [projects.length, scheduleProgressiveCount]);
+
+  useEffect(() => {
+    return scheduleProgressiveCount(
+      savedStreams.length,
+      setVisibleSavedStreamCount,
+      {
+        initial: 4,
+        step: 2,
+        delayMs: 56,
+      },
+    );
+  }, [savedStreams.length, scheduleProgressiveCount]);
+
+  useEffect(() => {
+    return scheduleProgressiveCount(posts.length, setVisiblePostCount, {
+      initial: 2,
+      step: 1,
+      delayMs: 72,
+    });
+  }, [posts.length, scheduleProgressiveCount]);
+
+  useEffect(() => {
+    return scheduleProgressiveCount(
+      savedPosts.length,
+      setVisibleSavedPostCount,
+      {
+        initial: 2,
+        step: 1,
+        delayMs: 72,
+      },
+    );
+  }, [savedPosts.length, scheduleProgressiveCount]);
+
+  const visibleProjects = React.useMemo(
+    () => projects.slice(0, visibleProjectCount),
+    [projects, visibleProjectCount],
+  );
+
+  const visibleSavedStreams = React.useMemo(
+    () => savedStreams.slice(0, visibleSavedStreamCount),
+    [savedStreams, visibleSavedStreamCount],
+  );
+
+  const visiblePosts = React.useMemo(
+    () => posts.slice(0, visiblePostCount),
+    [posts, visiblePostCount],
+  );
+
+  const visibleSavedPosts = React.useMemo(
+    () => savedPosts.slice(0, visibleSavedPostCount),
+    [savedPosts, visibleSavedPostCount],
+  );
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -511,6 +622,7 @@ export default function ProfileScreen() {
         <Animated.ScrollView
           ref={scrollRef}
           contentInsetAdjustmentBehavior="never"
+          removeClippedSubviews
           onScroll={onScroll}
           scrollEventThrottle={16}
           refreshControl={
@@ -643,167 +755,177 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          <View>
+          <View style={styles.sectionBlock}>
             <SectionHeader
               title="Active streams"
               actionLabel="Manage"
               actionOnPress={() => router.push("/manage-streams")}
             />
-            {isLoading ? (
-              <View style={styles.skeletonStack}>
-                {[0, 1].map((key) => (
-                  <View
-                    key={key}
-                    style={[
-                      styles.skeletonCard,
-                      {
-                        backgroundColor: colors.surfaceAlt,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-            ) : projects.length ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.edgeToEdgeRail}
-              >
-                <View style={styles.projectRow}>
-                  {projects.map((project) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      isBuilder={builderProjectIds.includes(project.id)}
+            <View style={styles.streamSectionBody}>
+              {isLoading ? (
+                <View style={styles.skeletonStack}>
+                  {[0, 1].map((key) => (
+                    <View
+                      key={key}
+                      style={[
+                        styles.skeletonCard,
+                        {
+                          backgroundColor: colors.surfaceAlt,
+                          borderColor: colors.border,
+                        },
+                      ]}
                     />
                   ))}
                 </View>
-              </ScrollView>
-            ) : (
-              <View style={styles.emptyState}>
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  No projects yet.
-                </ThemedText>
-              </View>
-            )}
+              ) : projects.length ? (
+                <View style={styles.edgeToEdgeRail}>
+                  <InfiniteHorizontalCycle
+                    data={visibleProjects}
+                    itemWidth={246}
+                    keyExtractor={(project) => String(project.id)}
+                    renderItem={(project) => (
+                      <View style={styles.projectCardSlot}>
+                        <ProjectCard
+                          project={project}
+                          isBuilder={builderProjectIds.includes(project.id)}
+                        />
+                      </View>
+                    )}
+                  />
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    No projects yet.
+                  </ThemedText>
+                </View>
+              )}
+            </View>
           </View>
 
-          <View>
+          <View style={styles.sectionBlock}>
             <SectionHeader
               title="Saved streams"
               actionLabel="Library"
               actionOnPress={() => router.push("/saved-streams")}
             />
-            {isSavedStreamsLoading ? (
-              <View style={styles.skeletonStack}>
-                {[0, 1].map((key) => (
-                  <View
-                    key={key}
-                    style={[
-                      styles.skeletonCard,
-                      {
-                        backgroundColor: colors.surfaceAlt,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-            ) : savedStreams.length ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.edgeToEdgeRail}
-              >
-                <View style={styles.projectRow}>
-                  {savedStreams.map((project) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      saved
-                      onSavedChange={(nextSaved) => {
-                        if (!nextSaved) {
-                          setSavedStreams((prev) =>
-                            prev.filter((item) => item.id !== project.id),
-                          );
-                        }
-                      }}
+            <View style={styles.streamSectionBody}>
+              {isSavedStreamsLoading ? (
+                <View style={styles.skeletonStack}>
+                  {[0, 1].map((key) => (
+                    <View
+                      key={key}
+                      style={[
+                        styles.skeletonCard,
+                        {
+                          backgroundColor: colors.surfaceAlt,
+                          borderColor: colors.border,
+                        },
+                      ]}
                     />
                   ))}
                 </View>
-              </ScrollView>
-            ) : (
-              <View style={styles.emptyState}>
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  No saved streams yet.
-                </ThemedText>
-              </View>
-            )}
+              ) : savedStreams.length ? (
+                <View style={styles.edgeToEdgeRail}>
+                  <InfiniteHorizontalCycle
+                    data={visibleSavedStreams}
+                    itemWidth={246}
+                    keyExtractor={(project) => String(project.id)}
+                    renderItem={(project) => (
+                      <View style={styles.projectCardSlot}>
+                        <ProjectCard
+                          project={project}
+                          saved
+                          onSavedChange={(nextSaved) => {
+                            if (!nextSaved) {
+                              setSavedStreams((prev) =>
+                                prev.filter((item) => item.id !== project.id),
+                              );
+                            }
+                          }}
+                        />
+                      </View>
+                    )}
+                  />
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    No saved streams yet.
+                  </ThemedText>
+                </View>
+              )}
+            </View>
           </View>
 
-          <View>
+          <View style={styles.sectionBlock}>
             <SectionHeader
               title="Recent bytes"
               actionLabel="Archive"
               actionOnPress={() => router.push("/archive-bytes")}
             />
-            {isLoading ? (
-              <View style={styles.skeletonStack}>
-                {[0, 1].map((key) => (
-                  <View
-                    key={key}
-                    style={[
-                      styles.skeletonCard,
-                      {
-                        backgroundColor: colors.surfaceAlt,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-            ) : posts.length ? (
-              posts.map((post) => <Post key={post.id} {...post} />)
-            ) : (
-              <View style={styles.emptyState}>
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  No recent posts yet.
-                </ThemedText>
-              </View>
-            )}
+            <View style={styles.postSectionBody}>
+              {isLoading ? (
+                <View style={styles.skeletonStack}>
+                  {[0, 1].map((key) => (
+                    <View
+                      key={key}
+                      style={[
+                        styles.skeletonCard,
+                        {
+                          backgroundColor: colors.surfaceAlt,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              ) : posts.length ? (
+                visiblePosts.map((post) => <Post key={post.id} {...post} />)
+              ) : (
+                <View style={styles.emptyState}>
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    No recent posts yet.
+                  </ThemedText>
+                </View>
+              )}
+            </View>
           </View>
 
-          <View>
+          <View style={styles.sectionBlock}>
             <SectionHeader
               title="Saved bytes"
               actionLabel="Library"
               actionOnPress={() => router.push("/saved-library")}
             />
-            {isSavedLoading ? (
-              <View style={styles.skeletonStack}>
-                {[0, 1].map((key) => (
-                  <View
-                    key={key}
-                    style={[
-                      styles.skeletonCard,
-                      {
-                        backgroundColor: colors.surfaceAlt,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-            ) : savedPosts.length ? (
-              savedPosts.map((post) => <Post key={post.id} {...post} />)
-            ) : (
-              <View style={styles.emptyState}>
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  No saved bytes yet.
-                </ThemedText>
-              </View>
-            )}
+            <View style={styles.postSectionBody}>
+              {isSavedLoading ? (
+                <View style={styles.skeletonStack}>
+                  {[0, 1].map((key) => (
+                    <View
+                      key={key}
+                      style={[
+                        styles.skeletonCard,
+                        {
+                          backgroundColor: colors.surfaceAlt,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              ) : savedPosts.length ? (
+                visibleSavedPosts.map((post) => (
+                  <Post key={post.id} {...post} />
+                ))
+              ) : (
+                <View style={styles.emptyState}>
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    No saved bytes yet.
+                  </ThemedText>
+                </View>
+              )}
+            </View>
           </View>
         </Animated.ScrollView>
       </SafeAreaView>
@@ -957,6 +1079,7 @@ const styles = StyleSheet.create({
   },
   edgeToEdgeRail: {
     marginHorizontal: -16,
+    overflow: "visible",
   },
   title: {
     fontSize: 26,
@@ -967,6 +1090,16 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     gap: 16,
+  },
+  sectionBlock: {
+    paddingTop: 0,
+    minHeight: 180,
+  },
+  streamSectionBody: {
+    minHeight: 190,
+  },
+  postSectionBody: {
+    minHeight: 210,
   },
   skeletonStack: {
     gap: 12,
@@ -1020,11 +1153,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  projectRow: {
-    flexDirection: "row",
-    gap: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 16,
+  projectCardSlot: {
+    width: 246,
+    minHeight: 186,
   },
   modalBackdrop: {
     flex: 1,

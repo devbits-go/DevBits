@@ -1,5 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -132,6 +139,7 @@ export default function TerminalScreen() {
   const { showInAppBanner } = useNotifications();
   const insets = useSafeAreaInsets();
   const outputRef = useRef<ScrollView>(null);
+  const outputScrollRafRef = useRef<number | null>(null);
   const autoOpenedChatRef = useRef<string | null>(null);
   const activeChatRef = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -330,6 +338,17 @@ export default function TerminalScreen() {
       return [...prev, ...mapped];
     });
   };
+
+  const scheduleOutputScroll = useCallback((animated: boolean) => {
+    if (outputScrollRafRef.current !== null) {
+      cancelAnimationFrame(outputScrollRafRef.current);
+      outputScrollRafRef.current = null;
+    }
+    outputScrollRafRef.current = requestAnimationFrame(() => {
+      outputRef.current?.scrollToEnd({ animated });
+      outputScrollRafRef.current = null;
+    });
+  }, []);
 
   const notifyIncomingMessage = (peer: string, text: string) => {
     const now = Date.now();
@@ -687,8 +706,24 @@ export default function TerminalScreen() {
   };
 
   useEffect(() => {
-    outputRef.current?.scrollToEnd({ animated: true });
-  }, [lines]);
+    scheduleOutputScroll(true);
+  }, [lines, scheduleOutputScroll]);
+
+  useEffect(() => {
+    if (!input.length) {
+      return;
+    }
+    scheduleOutputScroll(false);
+  }, [input, scheduleOutputScroll]);
+
+  useEffect(() => {
+    return () => {
+      if (outputScrollRafRef.current !== null) {
+        cancelAnimationFrame(outputScrollRafRef.current);
+        outputScrollRafRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     activeChatRef.current = activeChat;
@@ -888,7 +923,8 @@ export default function TerminalScreen() {
       <SafeAreaView style={styles.screen} edges={["top"]}>
         <KeyboardAvoidingView
           style={styles.screen}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={insets.top + 8}
         >
           <View
             style={[
@@ -912,9 +948,11 @@ export default function TerminalScreen() {
             style={styles.outputWrap}
             contentContainerStyle={styles.outputContent}
             keyboardShouldPersistTaps="handled"
-            onContentSizeChange={() =>
-              outputRef.current?.scrollToEnd({ animated: true })
+            keyboardDismissMode={
+              Platform.OS === "ios" ? "interactive" : "on-drag"
             }
+            onScrollBeginDrag={Keyboard.dismiss}
+            onContentSizeChange={() => scheduleOutputScroll(true)}
           >
             {lines.map((line) => (
               <ThemedText
@@ -985,6 +1023,7 @@ export default function TerminalScreen() {
             <TextInput
               value={input}
               onChangeText={setInput}
+              onFocus={() => scheduleOutputScroll(true)}
               onSubmitEditing={handleSubmit}
               placeholder={
                 activeChat
@@ -1004,7 +1043,7 @@ export default function TerminalScreen() {
               <Feather
                 name="corner-down-left"
                 size={14}
-                color={colors.accent}
+                color={colors.onTint}
               />
             </Pressable>
           </View>

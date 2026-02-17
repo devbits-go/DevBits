@@ -4,6 +4,7 @@ import * as Linking from "expo-linking";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   Pressable,
   StyleSheet,
@@ -18,6 +19,7 @@ import { LazyFadeIn } from "@/components/LazyFadeIn";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { useMotionConfig } from "@/hooks/useMotionConfig";
 
 type MarkdownTextProps = {
   children: string;
@@ -91,10 +93,190 @@ const InlineCodeContext = React.createContext<{ scope: InlineCodeScope }>({
   scope: null,
 });
 
+const imageAspectRatioCache = new Map<string, number>();
+
+const extractMarkdownImageUrls = (text: string) => {
+  const found = new Set<string>();
+  const markdownImageRegex = /!\[[^\]]*\]\(([^)\s]+(?:\s+"[^"]*")?)\)/g;
+  const htmlImageRegex = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+
+  let match: RegExpExecArray | null = markdownImageRegex.exec(text);
+  while (match) {
+    const raw = (match[1] ?? "").trim().split(/\s+"/)[0];
+    const normalized = normalizeImageSourceUrl(raw);
+    if (normalized) {
+      found.add(normalized);
+    }
+    match = markdownImageRegex.exec(text);
+  }
+
+  match = htmlImageRegex.exec(text);
+  while (match) {
+    const normalized = normalizeImageSourceUrl((match[1] ?? "").trim());
+    if (normalized) {
+      found.add(normalized);
+    }
+    match = htmlImageRegex.exec(text);
+  }
+
+  return Array.from(found);
+};
+
+function AnimatedMarkdownBlock({
+  children,
+  index,
+  enabled,
+  mode,
+}: {
+  children: React.ReactNode;
+  index: number;
+  enabled: boolean;
+  mode: "smooth" | "typewriter" | "wave" | "random" | "off";
+}) {
+  const opacity = React.useRef(new Animated.Value(enabled ? 0 : 1)).current;
+  const translateY = React.useRef(new Animated.Value(enabled ? 10 : 0)).current;
+  const scale = React.useRef(new Animated.Value(enabled ? 0.996 : 1)).current;
+  const hasAnimatedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!enabled) {
+      hasAnimatedRef.current = true;
+      opacity.setValue(1);
+      translateY.setValue(0);
+      scale.setValue(1);
+      return;
+    }
+
+    if (hasAnimatedRef.current) {
+      return;
+    }
+
+    const staggerSeed = mode === "random" ? (index * 37) % 5 : index;
+    const delay = Math.min(260, staggerSeed * 34);
+    const duration = mode === "typewriter" ? 300 : mode === "wave" ? 260 : 220;
+
+    opacity.setValue(0.04);
+    translateY.setValue(10);
+    scale.setValue(0.996);
+
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: duration + 30,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished) {
+        return;
+      }
+      hasAnimatedRef.current = true;
+      opacity.setValue(1);
+      translateY.setValue(0);
+      scale.setValue(1);
+    });
+  }, [enabled, index, mode, opacity, scale, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }, { scale }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
 export function MarkdownText({ children }: MarkdownTextProps) {
   const colors = useAppColors();
   const { preferences } = usePreferences();
+  const motion = useMotionConfig();
   const { width: windowWidth } = useWindowDimensions();
+  const [imageAspectRatios, setImageAspectRatios] = useState<
+    Record<string, number>
+  >({});
+  const [imageSizingReady, setImageSizingReady] = useState(false);
+  const markdownImageUrls = useMemo(
+    () => extractMarkdownImageUrls(children),
+    [children],
+  );
+  const isMarkdownReady = useDeferredRender({
+    enabled: true,
+    delayMs: motion.prefersReducedMotion ? 0 : 14,
+    deferUntilInteractions: true,
+  });
+
+  useEffect(() => {
+    let isActive = true;
+
+    const preloadImageSizes = async () => {
+      const nonSvgUrls = markdownImageUrls.filter((src) => !isSvgUrl(src));
+      if (!nonSvgUrls.length) {
+        if (isActive) {
+          setImageAspectRatios({});
+          setImageSizingReady(true);
+        }
+        return;
+      }
+
+      setImageSizingReady(false);
+
+      const entries = await Promise.all(
+        nonSvgUrls.map(
+          (src) =>
+            new Promise<[string, number]>((resolve) => {
+              const cached = imageAspectRatioCache.get(src);
+              if (typeof cached === "number" && Number.isFinite(cached)) {
+                resolve([src, cached]);
+                return;
+              }
+
+              Image.getSize(
+                src,
+                (width, height) => {
+                  const ratio =
+                    width > 0 && height > 0 ? width / height : 16 / 9;
+                  imageAspectRatioCache.set(src, ratio);
+                  resolve([src, ratio]);
+                },
+                () => {
+                  const fallback = 16 / 9;
+                  imageAspectRatioCache.set(src, fallback);
+                  resolve([src, fallback]);
+                },
+              );
+            }),
+        ),
+      );
+
+      if (!isActive) {
+        return;
+      }
+
+      setImageAspectRatios(
+        entries.reduce<Record<string, number>>((accumulator, [src, ratio]) => {
+          accumulator[src] = ratio;
+          return accumulator;
+        }, {}),
+      );
+      setImageSizingReady(true);
+    };
+
+    void preloadImageSizes();
+
+    return () => {
+      isActive = false;
+    };
+  }, [markdownImageUrls]);
   const toRgba = (hex: string, alpha: number) => {
     const normalized = hex.replace("#", "");
     const value =
@@ -354,7 +536,14 @@ export function MarkdownText({ children }: MarkdownTextProps) {
       return null;
     }
     const maxWidth = Math.min(windowWidth - 32, 520);
-    return <MarkdownImage key={node.key} src={src} maxWidth={maxWidth} />;
+    return (
+      <MarkdownImage
+        key={node.key}
+        src={src}
+        maxWidth={maxWidth}
+        initialAspectRatio={imageAspectRatios[src]}
+      />
+    );
   };
 
   const renderLink = (
@@ -771,8 +960,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
       paddingVertical: 6,
     },
     link: { color: colors.tint },
-    marginTop: 1,
-    borderColor: colors.border,
+    paragraph: { marginTop: 1 },
     em: { fontStyle: "italic" },
     strong: { fontWeight: "700" },
     s: {
@@ -795,47 +983,75 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     },
   } as const;
 
-  const renderMarkdownSegments = (text: string, keyPrefix: string) => {
+  const shouldAnimateMarkdown =
+    !motion.prefersReducedMotion && preferences.textRenderEffect !== "off";
+  const enableBlockAnimation =
+    isMarkdownReady && imageSizingReady && shouldAnimateMarkdown;
+
+  const renderMarkdownSegments = (
+    text: string,
+    keyPrefix: string,
+    depth = 0,
+  ) => {
     const normalized = normalizeDetailsTags(text);
     return parseDetailsBlocks(normalized).map((block, index) => {
       const keyBase = `${keyPrefix}-${index}`;
+      const animationIndex = depth * 10 + index;
       if (block.type === "details") {
         const summaryText = block.summary.replace(/\s+/g, " ").trim();
         return (
-          <Collapsible
-            key={`details-${keyBase}`}
-            title={
-              <Markdown
-                onLinkPress={(url) => {
-                  void openUrlSafe(url);
-                  return false;
-                }}
-                rules={markdownRules}
-                style={summaryMarkdownStyle}
-              >
-                {preprocessMarkdown(summaryText)}
-              </Markdown>
-            }
-            defaultOpen={block.open}
+          <AnimatedMarkdownBlock
+            key={`details-wrap-${keyBase}`}
+            index={animationIndex}
+            enabled={enableBlockAnimation}
+            mode={preferences.textRenderEffect}
           >
-            <View style={styles.markdownStack}>
-              {renderMarkdownSegments(block.content, `nested-${keyBase}`)}
-            </View>
-          </Collapsible>
+            <Collapsible
+              key={`details-${keyBase}`}
+              title={
+                <Markdown
+                  onLinkPress={(url) => {
+                    void openUrlSafe(url);
+                    return false;
+                  }}
+                  rules={markdownRules}
+                  style={summaryMarkdownStyle}
+                >
+                  {preprocessMarkdown(summaryText)}
+                </Markdown>
+              }
+              defaultOpen={block.open}
+            >
+              <View style={styles.markdownStack}>
+                {renderMarkdownSegments(
+                  block.content,
+                  `nested-${keyBase}`,
+                  depth + 1,
+                )}
+              </View>
+            </Collapsible>
+          </AnimatedMarkdownBlock>
         );
       }
       return (
-        <Markdown
-          key={`markdown-${keyBase}`}
-          onLinkPress={(url) => {
-            void openUrlSafe(url);
-            return false;
-          }}
-          rules={markdownRules}
-          style={markdownStyle}
+        <AnimatedMarkdownBlock
+          key={`markdown-wrap-${keyBase}`}
+          index={animationIndex}
+          enabled={enableBlockAnimation}
+          mode={preferences.textRenderEffect}
         >
-          {preprocessMarkdown(block.content)}
-        </Markdown>
+          <Markdown
+            key={`markdown-${keyBase}`}
+            onLinkPress={(url) => {
+              void openUrlSafe(url);
+              return false;
+            }}
+            rules={markdownRules}
+            style={markdownStyle}
+          >
+            {preprocessMarkdown(block.content)}
+          </Markdown>
+        </AnimatedMarkdownBlock>
       );
     });
   };
@@ -844,8 +1060,10 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     return renderMarkdownSegments(children, "root");
   }, [children, colors, preferences.linkOpenMode, windowWidth]);
 
+  const canRevealMarkdown = isMarkdownReady && imageSizingReady;
+
   return (
-    <LazyFadeIn visible style={styles.markdownStack}>
+    <LazyFadeIn visible={canRevealMarkdown} style={styles.markdownStack}>
       {markdownNodes}
     </LazyFadeIn>
   );
@@ -854,6 +1072,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
 type MarkdownImageProps = {
   src: string;
   maxWidth: number;
+  initialAspectRatio?: number;
 };
 
 const calloutPalette = {
@@ -885,9 +1104,15 @@ const calloutPalette = {
   },
 } as const;
 
-function MarkdownImage({ src, maxWidth }: MarkdownImageProps) {
+function MarkdownImage({
+  src,
+  maxWidth,
+  initialAspectRatio,
+}: MarkdownImageProps) {
   const colors = useAppColors();
-  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
+  const [aspectRatio, setAspectRatio] = useState<number>(
+    initialAspectRatio ?? 16 / 9,
+  );
   const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
   const [isSvgLoaded, setIsSvgLoaded] = useState(false);
   const isReady = useDeferredRender();
@@ -898,23 +1123,8 @@ function MarkdownImage({ src, maxWidth }: MarkdownImageProps) {
       setAspectRatio(16 / 9);
       return;
     }
-    let active = true;
-    Image.getSize(
-      src,
-      (width, height) => {
-        if (!active || width <= 0 || height <= 0) return;
-        setAspectRatio(width / height);
-      },
-      () => {
-        if (active) {
-          setAspectRatio(16 / 9);
-        }
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [isSvg, src]);
+    setAspectRatio(initialAspectRatio ?? 16 / 9);
+  }, [initialAspectRatio, isSvg]);
 
   useEffect(() => {
     if (!isSvg) {

@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   TouchableWithoutFeedback,
@@ -45,7 +46,7 @@ export default function CreateStreamScreen() {
   const motion = useMotionConfig();
   const bottom = useBottomTabOverflow();
   const reveal = React.useRef(new Animated.Value(0.08)).current;
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -421,11 +422,11 @@ export default function CreateStreamScreen() {
                     disabled={isSubmitting || isUploading}
                   >
                     {isSubmitting ? (
-                      <ActivityIndicator size="small" color={colors.accent} />
+                      <ActivityIndicator size="small" color={colors.onTint} />
                     ) : (
                       <ThemedText
                         type="defaultSemiBold"
-                        style={{ color: colors.accent }}
+                        style={{ color: colors.onTint }}
                       >
                         Create stream
                       </ThemedText>

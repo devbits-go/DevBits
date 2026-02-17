@@ -1038,12 +1038,12 @@ export default function PostDetailScreen() {
                               {isPostUpdating ? (
                                 <ActivityIndicator
                                   size="small"
-                                  color={colors.accent}
+                                  color={colors.onTint}
                                 />
                               ) : (
                                 <ThemedText
                                   type="caption"
-                                  style={{ color: colors.accent }}
+                                  style={{ color: colors.onTint }}
                                 >
                                   Save
                                 </ThemedText>
@@ -1128,12 +1128,12 @@ export default function PostDetailScreen() {
                           {isSubmitting ? (
                             <ActivityIndicator
                               size="small"
-                              color={colors.accent}
+                              color={colors.onTint}
                             />
                           ) : (
                             <ThemedText
                               type="caption"
-                              style={{ color: colors.accent }}
+                              style={{ color: colors.onTint }}
                             >
                               Send
                             </ThemedText>
@@ -1399,12 +1399,12 @@ export default function PostDetailScreen() {
                                     {isCommentUpdating ? (
                                       <ActivityIndicator
                                         size="small"
-                                        color={colors.accent}
+                                        color={colors.onTint}
                                       />
                                     ) : (
                                       <ThemedText
                                         type="caption"
-                                        style={{ color: colors.accent }}
+                                        style={{ color: colors.onTint }}
                                       >
                                         Save
                                       </ThemedText>

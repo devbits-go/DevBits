@@ -28,9 +28,10 @@ export function UserCard({
 
   return (
     <Pressable
-      style={[
+      style={({ pressed }) => [
         styles.card,
         { backgroundColor: colors.surface, borderColor: colors.border },
+        pressed && styles.pressed,
       ]}
       onPress={onPress}
     >
@@ -59,9 +60,13 @@ export function UserCard({
       {showFollow ? (
         <Pressable
           onPress={onToggleFollow}
-          style={[styles.followButton, { backgroundColor: colors.tint }]}
+          style={({ pressed }) => [
+            styles.followButton,
+            { backgroundColor: colors.tint },
+            pressed && styles.pressed,
+          ]}
         >
-          <ThemedText type="caption" style={{ color: colors.accent }}>
+          <ThemedText type="caption" style={{ color: colors.onTint }}>
             {isFollowing ? "Following" : "Follow"}
           </ThemedText>
         </Pressable>
@@ -76,6 +81,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
     gap: 10,
+    minHeight: 90,
   },
   header: {
     flexDirection: "row",
@@ -97,11 +103,18 @@ const styles = StyleSheet.create({
   },
   text: {
     flex: 1,
+    minHeight: 20,
   },
   followButton: {
     alignSelf: "flex-start",
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    minHeight: 30,
+    justifyContent: "center",
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
   },
 });

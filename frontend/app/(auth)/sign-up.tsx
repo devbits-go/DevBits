@@ -133,11 +133,11 @@ export default function SignUpScreen() {
             style={[styles.button, { backgroundColor: colors.tint }]}
           >
             {isSubmitting ? (
-              <ActivityIndicator size="small" color={colors.accent} />
+              <ActivityIndicator size="small" color={colors.onTint} />
             ) : (
               <ThemedText
                 type="defaultSemiBold"
-                style={{ color: colors.accent }}
+                style={{ color: colors.onTint }}
               >
                 Create account
               </ThemedText>

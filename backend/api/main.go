@@ -35,6 +35,9 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	router.HandleMethodNotAllowed = true
+	if err := router.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+		log.Printf("WARN: could not set trusted proxies: %v", err)
+	}
 
 	// Apply CORS middleware to the router
 	corsConfig := cors.Config{
@@ -171,5 +174,11 @@ func main() {
 	}
 	database.Connect(dbinfo, dbtype)
 
-	router.Run("0.0.0.0:8080")
+	if err := router.Run("0.0.0.0:8080"); err != nil {
+		log.Printf("ERROR: failed to start API server on 0.0.0.0:8080: %v", err)
+		if isDebugMode() {
+			log.Println("HINT: port 8080 is likely already in use. Stop the existing backend process or run only one launcher.")
+		}
+		os.Exit(1)
+	}
 }

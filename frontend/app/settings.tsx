@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   Switch,
   StyleSheet,
   TextInput,
@@ -45,7 +46,7 @@ export default function SettingsScreen() {
   const { preferences, updatePreferences } = usePreferences();
   const motion = useMotionConfig();
   const reveal = React.useRef(new Animated.Value(0.08)).current;
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const [picture, setPicture] = useState(user?.picture ?? "");
   const [pendingPicture, setPendingPicture] = useState<{
@@ -68,6 +69,9 @@ export default function SettingsScreen() {
   const [accentHue, setAccentHue] = useState(140);
   const [accentSaturation, setAccentSaturation] = useState(0.78);
   const [accentValue, setAccentValue] = useState(0.95);
+  const [accentRed, setAccentRed] = useState(0);
+  const [accentGreen, setAccentGreen] = useState(243);
+  const [accentBlue, setAccentBlue] = useState(41);
   const accentUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentHorizontalPadding = width < 370 ? 12 : 16;
   const inputFontSize = Math.round(15 * Math.min(1.25, Math.max(1, fontScale)));
@@ -113,6 +117,13 @@ export default function SettingsScreen() {
   }, [colors.tint, preferences.accentColor]);
 
   useEffect(() => {
+    const rgb = hexToRgb(accentPreview);
+    setAccentRed(rgb.r);
+    setAccentGreen(rgb.g);
+    setAccentBlue(rgb.b);
+  }, [accentPreview]);
+
+  useEffect(() => {
     if (!user?.username || isDirty || isSaving) {
       return;
     }
@@ -121,6 +132,8 @@ export default function SettingsScreen() {
       setIsSyncing(true);
       try {
         await refreshUser();
+      } catch {
+        // AuthContext handles auth/session reset; avoid uncaught sync errors here.
       } finally {
         if (isActive) {
           setIsSyncing(false);
@@ -164,6 +177,15 @@ export default function SettingsScreen() {
       void updatePreferences({ accentColor: nextColor });
       accentUpdateRef.current = null;
     }, 160);
+  };
+
+  const applyRgbAccent = (red: number, green: number, blue: number) => {
+    const next = rgbToHex(red, green, blue);
+    const { h, s, v } = hexToHsv(next);
+    setAccentHue(h);
+    setAccentSaturation(s);
+    setAccentValue(v);
+    scheduleAccentUpdate(next);
   };
 
   const handleInputFocus = (event: any) => {
@@ -293,7 +315,7 @@ export default function SettingsScreen() {
           <View style={styles.screen}>
             <Animated.ScrollView
               ref={scrollRef}
-              keyboardShouldPersistTaps="always"
+              keyboardShouldPersistTaps="handled"
               keyboardDismissMode={
                 Platform.OS === "ios" ? "interactive" : "on-drag"
               }
@@ -369,9 +391,10 @@ export default function SettingsScreen() {
                     </View>
                     <Pressable
                       onPress={handlePickImage}
-                      style={[
+                      style={({ pressed }) => [
                         styles.pickButton,
                         { borderColor: colors.border },
+                        pressed && styles.pressFeedback,
                       ]}
                     >
                       <ThemedText
@@ -605,14 +628,18 @@ export default function SettingsScreen() {
 
                   <Pressable
                     onPress={handleSave}
-                    style={[styles.button, { backgroundColor: colors.tint }]}
+                    style={({ pressed }) => [
+                      styles.button,
+                      { backgroundColor: colors.tint },
+                      pressed && styles.pressFeedbackStrong,
+                    ]}
                   >
                     {isSaving ? (
-                      <ActivityIndicator size="small" color={colors.accent} />
+                      <ActivityIndicator size="small" color={colors.onTint} />
                     ) : (
                       <ThemedText
                         type="defaultSemiBold"
-                        style={{ color: colors.accent }}
+                        style={{ color: colors.onTint }}
                       >
                         Save changes
                       </ThemedText>
@@ -669,7 +696,7 @@ export default function SettingsScreen() {
                                 })
                               }
                               disabled={!preferences.backgroundRefreshEnabled}
-                              style={[
+                              style={({ pressed }) => [
                                 styles.intervalChip,
                                 {
                                   borderColor: colors.border,
@@ -680,13 +707,14 @@ export default function SettingsScreen() {
                                     ? 1
                                     : 0.5,
                                 },
+                                pressed && styles.pressFeedback,
                               ]}
                             >
                               <ThemedText
                                 type="caption"
                                 style={{
                                   color: isActive
-                                    ? colors.accent
+                                    ? colors.onTint
                                     : colors.muted,
                                 }}
                               >
@@ -732,6 +760,94 @@ export default function SettingsScreen() {
                       />
                     </View>
                     <View style={styles.accentRow}>
+                      <ThemedText type="default">Text render effect</ThemedText>
+                      <View style={styles.optionRowWrap}>
+                        {textRenderOptions.map((option) => {
+                          const isActive =
+                            preferences.textRenderEffect === option.value;
+                          return (
+                            <Pressable
+                              key={option.value}
+                              onPress={() =>
+                                updatePreferences({
+                                  textRenderEffect: option.value,
+                                })
+                              }
+                              style={({ pressed }) => [
+                                styles.intervalChip,
+                                {
+                                  borderColor: colors.border,
+                                  backgroundColor: isActive
+                                    ? colors.tint
+                                    : colors.surfaceAlt,
+                                },
+                                pressed && styles.pressFeedback,
+                              ]}
+                            >
+                              <ThemedText
+                                type="caption"
+                                style={{
+                                  color: isActive
+                                    ? colors.onTint
+                                    : colors.muted,
+                                }}
+                              >
+                                {option.label}
+                              </ThemedText>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      <ThemedText
+                        type="caption"
+                        animateOnMount
+                        animationMode="auto"
+                        style={{ color: colors.muted }}
+                      >
+                        LOADING DATA
+                      </ThemedText>
+                    </View>
+                    <View style={styles.accentRow}>
+                      <ThemedText type="default">Image reveal</ThemedText>
+                      <View style={styles.optionRowWrap}>
+                        {imageRevealOptions.map((option) => {
+                          const isActive =
+                            preferences.imageRevealEffect === option.value;
+                          return (
+                            <Pressable
+                              key={option.value}
+                              onPress={() =>
+                                updatePreferences({
+                                  imageRevealEffect: option.value,
+                                })
+                              }
+                              style={({ pressed }) => [
+                                styles.intervalChip,
+                                {
+                                  borderColor: colors.border,
+                                  backgroundColor: isActive
+                                    ? colors.tint
+                                    : colors.surfaceAlt,
+                                },
+                                pressed && styles.pressFeedback,
+                              ]}
+                            >
+                              <ThemedText
+                                type="caption"
+                                style={{
+                                  color: isActive
+                                    ? colors.onTint
+                                    : colors.muted,
+                                }}
+                              >
+                                {option.label}
+                              </ThemedText>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                    <View style={styles.accentRow}>
                       <ThemedText type="default">Accent color</ThemedText>
                       <View style={styles.accentPicker}>
                         <View
@@ -749,6 +865,47 @@ export default function SettingsScreen() {
                         >
                           {accentPreview.toUpperCase()}
                         </ThemedText>
+                      </View>
+                      <View style={styles.optionRowWrap}>
+                        {accentPresetOptions.map((preset) => {
+                          const isActive =
+                            accentPreview.toUpperCase() ===
+                            preset.color.toUpperCase();
+                          return (
+                            <Pressable
+                              key={preset.label}
+                              onPress={() => {
+                                const next = preset.color.toUpperCase();
+                                const { h, s, v } = hexToHsv(next);
+                                setAccentHue(h);
+                                setAccentSaturation(s);
+                                setAccentValue(v);
+                                scheduleAccentUpdate(next, true);
+                              }}
+                              style={({ pressed }) => [
+                                styles.intervalChip,
+                                {
+                                  borderColor: colors.border,
+                                  backgroundColor: isActive
+                                    ? colors.tint
+                                    : colors.surfaceAlt,
+                                },
+                                pressed && styles.pressFeedback,
+                              ]}
+                            >
+                              <ThemedText
+                                type="caption"
+                                style={{
+                                  color: isActive
+                                    ? colors.onTint
+                                    : colors.muted,
+                                }}
+                              >
+                                {preset.label}
+                              </ThemedText>
+                            </Pressable>
+                          );
+                        })}
                       </View>
                       <View style={styles.sliderGroup}>
                         <ThemedText
@@ -840,6 +997,159 @@ export default function SettingsScreen() {
                           style={styles.slider}
                         />
                       </View>
+                      <View style={styles.sliderGroup}>
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Red ({accentRed})
+                        </ThemedText>
+                        <Slider
+                          value={accentRed}
+                          minimumValue={0}
+                          maximumValue={255}
+                          step={1}
+                          onValueChange={(value) => {
+                            const next = Math.round(value);
+                            setAccentRed(next);
+                            applyRgbAccent(next, accentGreen, accentBlue);
+                          }}
+                          onSlidingComplete={(value) => {
+                            const next = Math.round(value);
+                            const hex = rgbToHex(next, accentGreen, accentBlue);
+                            scheduleAccentUpdate(hex, true);
+                          }}
+                          minimumTrackTintColor="#FF5252"
+                          maximumTrackTintColor={colors.surfaceAlt}
+                          thumbTintColor={colors.tint}
+                          style={styles.slider}
+                        />
+                      </View>
+                      <View style={styles.sliderGroup}>
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Green ({accentGreen})
+                        </ThemedText>
+                        <Slider
+                          value={accentGreen}
+                          minimumValue={0}
+                          maximumValue={255}
+                          step={1}
+                          onValueChange={(value) => {
+                            const next = Math.round(value);
+                            setAccentGreen(next);
+                            applyRgbAccent(accentRed, next, accentBlue);
+                          }}
+                          onSlidingComplete={(value) => {
+                            const next = Math.round(value);
+                            const hex = rgbToHex(accentRed, next, accentBlue);
+                            scheduleAccentUpdate(hex, true);
+                          }}
+                          minimumTrackTintColor="#4ADE80"
+                          maximumTrackTintColor={colors.surfaceAlt}
+                          thumbTintColor={colors.tint}
+                          style={styles.slider}
+                        />
+                      </View>
+                      <View style={styles.sliderGroup}>
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Blue ({accentBlue})
+                        </ThemedText>
+                        <Slider
+                          value={accentBlue}
+                          minimumValue={0}
+                          maximumValue={255}
+                          step={1}
+                          onValueChange={(value) => {
+                            const next = Math.round(value);
+                            setAccentBlue(next);
+                            applyRgbAccent(accentRed, accentGreen, next);
+                          }}
+                          onSlidingComplete={(value) => {
+                            const next = Math.round(value);
+                            const hex = rgbToHex(accentRed, accentGreen, next);
+                            scheduleAccentUpdate(hex, true);
+                          }}
+                          minimumTrackTintColor="#60A5FA"
+                          maximumTrackTintColor={colors.surfaceAlt}
+                          thumbTintColor={colors.tint}
+                          style={styles.slider}
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.accentRow}>
+                      <ThemedText type="default">
+                        Visualization style
+                      </ThemedText>
+                      <View style={styles.optionRowWrap}>
+                        {visualizationModeOptions.map((option) => {
+                          const isActive =
+                            preferences.visualizationMode === option.value;
+                          return (
+                            <Pressable
+                              key={option.value}
+                              onPress={() =>
+                                updatePreferences({
+                                  visualizationMode: option.value,
+                                })
+                              }
+                              style={({ pressed }) => [
+                                styles.intervalChip,
+                                {
+                                  borderColor: colors.border,
+                                  backgroundColor: isActive
+                                    ? colors.tint
+                                    : colors.surfaceAlt,
+                                },
+                                pressed && styles.pressFeedback,
+                              ]}
+                            >
+                              <ThemedText
+                                type="caption"
+                                style={{
+                                  color: isActive
+                                    ? colors.onTint
+                                    : colors.muted,
+                                }}
+                              >
+                                {option.label}
+                              </ThemedText>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      <View style={styles.sliderGroup}>
+                        <ThemedText
+                          type="caption"
+                          style={{ color: colors.muted }}
+                        >
+                          Visualization intensity (
+                          {Math.round(
+                            (preferences.visualizationIntensity ?? 0.55) * 100,
+                          )}
+                          %)
+                        </ThemedText>
+                        <Slider
+                          value={preferences.visualizationIntensity ?? 0.55}
+                          minimumValue={0}
+                          maximumValue={1}
+                          step={0.01}
+                          onValueChange={(value) =>
+                            updatePreferences({
+                              visualizationIntensity: value,
+                            })
+                          }
+                          minimumTrackTintColor={colors.tint}
+                          maximumTrackTintColor={colors.surfaceAlt}
+                          thumbTintColor={colors.tint}
+                          style={styles.slider}
+                        />
+                      </View>
                     </View>
                   </View>
 
@@ -858,9 +1168,10 @@ export default function SettingsScreen() {
                           params: { username: user.username },
                         });
                       }}
-                      style={[
+                      style={({ pressed }) => [
                         styles.secondaryButton,
                         { borderColor: colors.border },
+                        pressed && styles.pressFeedback,
                       ]}
                       disabled={!user?.username}
                     >
@@ -874,12 +1185,55 @@ export default function SettingsScreen() {
                   </View>
 
                   <View style={styles.section}>
+                    <ThemedText type="subtitle">Help & navigation</ThemedText>
+                    <ThemedText type="caption" style={{ color: colors.muted }}>
+                      Reopen the welcome tour anytime.
+                    </ThemedText>
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: "/welcome",
+                          params: { mode: "help" },
+                        })
+                      }
+                      style={({ pressed }) => [
+                        styles.secondaryButton,
+                        { borderColor: colors.border },
+                        pressed && styles.pressFeedback,
+                      ]}
+                    >
+                      <ThemedText
+                        type="defaultSemiBold"
+                        style={{ color: colors.muted }}
+                      >
+                        Open welcome tour
+                      </ThemedText>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => router.push("/markdown-help")}
+                      style={({ pressed }) => [
+                        styles.secondaryButton,
+                        { borderColor: colors.border },
+                        pressed && styles.pressFeedback,
+                      ]}
+                    >
+                      <ThemedText
+                        type="defaultSemiBold"
+                        style={{ color: colors.muted }}
+                      >
+                        Markdown syntax help
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.section}>
                     <ThemedText type="subtitle">Account</ThemedText>
                     <Pressable
                       onPress={signOut}
-                      style={[
+                      style={({ pressed }) => [
                         styles.secondaryButton,
                         { borderColor: colors.border },
+                        pressed && styles.pressFeedback,
                       ]}
                     >
                       <ThemedText
@@ -899,12 +1253,13 @@ export default function SettingsScreen() {
                     </ThemedText>
                     <Pressable
                       onPress={handleDeleteAccount}
-                      style={[
+                      style={({ pressed }) => [
                         styles.dangerButton,
                         {
                           borderColor: colors.border,
                           backgroundColor: colors.surfaceAlt,
                         },
+                        pressed && styles.pressFeedbackStrong,
                       ]}
                       disabled={isDeletingAccount}
                     >
@@ -966,6 +1321,11 @@ const styles = StyleSheet.create({
   },
   intervalRow: {
     flexDirection: "row",
+    gap: 6,
+  },
+  optionRowWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 6,
   },
   intervalChip: {
@@ -1049,12 +1409,68 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
   },
+  pressFeedback: {
+    opacity: 0.82,
+    transform: [{ scale: 0.985 }],
+  },
+  pressFeedbackStrong: {
+    opacity: 0.78,
+    transform: [{ scale: 0.98 }],
+  },
 });
 
 const intervalOptions = [
   { label: "1m", value: 60000 },
   { label: "2m", value: 120000 },
   { label: "5m", value: 300000 },
+];
+
+const textRenderOptions: Array<{
+  label: string;
+  value: "smooth" | "typewriter" | "wave" | "random" | "off";
+}> = [
+  { label: "Smooth", value: "smooth" },
+  { label: "Typewriter", value: "typewriter" },
+  { label: "Wave", value: "wave" },
+  { label: "Random", value: "random" },
+  { label: "Off", value: "off" },
+];
+
+const imageRevealOptions: Array<{
+  label: string;
+  value: "smooth" | "off";
+}> = [
+  { label: "Smooth", value: "smooth" },
+  { label: "Off", value: "off" },
+];
+
+const accentPresetOptions = [
+  { label: "Default", color: "#00F329" },
+  { label: "Aurora", color: "#4A8DFF" },
+  { label: "Sunset", color: "#FF6B6B" },
+  { label: "Violet", color: "#A855F7" },
+  { label: "Amber", color: "#F59E0B" },
+  { label: "Aqua", color: "#06B6D4" },
+];
+
+const visualizationModeOptions: Array<{
+  label: string;
+  value:
+    | "monoAccent"
+    | "retro"
+    | "classic"
+    | "vivid"
+    | "neon"
+    | "cinematic"
+    | "frost";
+}> = [
+  { label: "Monochrome + Accent", value: "monoAccent" },
+  { label: "Retro", value: "retro" },
+  { label: "Classic", value: "classic" },
+  { label: "Vivid", value: "vivid" },
+  { label: "Neon", value: "neon" },
+  { label: "Cinematic", value: "cinematic" },
+  { label: "Frost", value: "frost" },
 ];
 
 const parseLinks = (links: string[]) => {
@@ -1189,4 +1605,26 @@ const hexToHsv = (hex: string) => {
   const v = max;
 
   return { h, s, v };
+};
+
+const hexToRgb = (hex: string) => {
+  const normalized = hex.replace("#", "").trim();
+  const expanded =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : normalized.padEnd(6, "0").slice(0, 6);
+  return {
+    r: parseInt(expanded.slice(0, 2), 16),
+    g: parseInt(expanded.slice(2, 4), 16),
+    b: parseInt(expanded.slice(4, 6), 16),
+  };
+};
+
+const rgbToHex = (red: number, green: number, blue: number) => {
+  const toHex = (channel: number) =>
+    clamp(channel, 0, 255).toString(16).padStart(2, "0");
+  return `#${toHex(Math.round(red))}${toHex(Math.round(green))}${toHex(Math.round(blue))}`.toUpperCase();
 };

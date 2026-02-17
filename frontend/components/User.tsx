@@ -66,7 +66,10 @@ export default function User({
         {hasPicture ? (
           <Pressable
             onPress={() => setIsImageOpen(true)}
-            style={styles.avatarButton}
+            style={({ pressed }) => [
+              styles.avatarButton,
+              pressed && styles.pressed,
+            ]}
           >
             <FadeInImage
               source={{ uri: resolvedPicture }}
@@ -103,7 +106,11 @@ export default function User({
       ) : null}
       <View style={styles.links}>
         {safeLinks.map((link, index) => (
-          <Pressable key={index} onPress={() => void openUrlSafe(link)}>
+          <Pressable
+            key={index}
+            onPress={() => void openUrlSafe(link)}
+            style={({ pressed }) => [pressed && styles.pressedInline]}
+          >
             <ThemedText type="link" style={styles.link}>
               {link}
             </ThemedText>
@@ -138,11 +145,13 @@ export default function User({
 const styles = StyleSheet.create({
   container: {
     gap: 12,
+    minHeight: 132,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
+    minHeight: 64,
   },
   headerText: {
     flex: 1,
@@ -163,9 +172,11 @@ const styles = StyleSheet.create({
   },
   bio: {
     marginTop: 2,
+    minHeight: 24,
   },
   links: {
     gap: 6,
+    minHeight: 20,
   },
   link: {
     lineHeight: 20,
@@ -184,5 +195,12 @@ const styles = StyleSheet.create({
   viewerImage: {
     width: "100%",
     height: "100%",
+  },
+  pressed: {
+    opacity: 0.84,
+    transform: [{ scale: 0.98 }],
+  },
+  pressedInline: {
+    opacity: 0.8,
   },
 });

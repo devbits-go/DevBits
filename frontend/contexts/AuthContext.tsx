@@ -20,10 +20,12 @@ type AuthContextValue = {
   user: ApiUser | null;
   token: string | null;
   isLoading: boolean;
+  justSignedUp: boolean;
   signIn: (payload: AuthLoginRequest) => Promise<void>;
   signUp: (payload: AuthRegisterRequest) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  acknowledgeSignUp: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -32,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [justSignedUp, setJustSignedUp] = useState(false);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -64,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthToken(response.token);
     setUser(response.user);
     setToken(response.token);
+    setJustSignedUp(false);
     await SecureStore.setItemAsync(TOKEN_KEY, response.token);
   }, []);
 
@@ -72,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthToken(response.token);
     setUser(response.user);
     setToken(response.token);
+    setJustSignedUp(true);
     await SecureStore.setItemAsync(TOKEN_KEY, response.token);
   }, []);
 
@@ -79,20 +84,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthToken(null);
     setUser(null);
     setToken(null);
+    setJustSignedUp(false);
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+  }, []);
+
+  const acknowledgeSignUp = useCallback(() => {
+    setJustSignedUp(false);
   }, []);
 
   const refreshUser = useCallback(async () => {
     if (!token) {
       return;
     }
-    const me = await getMe();
-    setUser(me);
+    try {
+      const me = await getMe();
+      setUser(me);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message.toLowerCase()
+          : String(error).toLowerCase();
+      const isAuthFailure =
+        message.includes("unauthorized") ||
+        message.includes("missing auth token") ||
+        message.includes("request failed (401)");
+
+      if (isAuthFailure) {
+        setAuthToken(null);
+        setUser(null);
+        setToken(null);
+        setJustSignedUp(false);
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+      }
+    }
   }, [token]);
 
   const value = useMemo(
-    () => ({ user, token, isLoading, signIn, signUp, signOut, refreshUser }),
-    [user, token, isLoading, signIn, signUp, signOut, refreshUser],
+    () => ({
+      user,
+      token,
+      isLoading,
+      justSignedUp,
+      signIn,
+      signUp,
+      signOut,
+      refreshUser,
+      acknowledgeSignUp,
+    }),
+    [
+      user,
+      token,
+      isLoading,
+      justSignedUp,
+      signIn,
+      signUp,
+      signOut,
+      refreshUser,
+      acknowledgeSignUp,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

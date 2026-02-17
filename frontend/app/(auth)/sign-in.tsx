@@ -129,11 +129,11 @@ export default function SignInScreen() {
             style={[styles.button, { backgroundColor: colors.tint }]}
           >
             {isSubmitting ? (
-              <ActivityIndicator size="small" color={colors.accent} />
+              <ActivityIndicator size="small" color={colors.onTint} />
             ) : (
               <ThemedText
                 type="defaultSemiBold"
-                style={{ color: colors.accent }}
+                style={{ color: colors.onTint }}
               >
                 Sign in
               </ThemedText>

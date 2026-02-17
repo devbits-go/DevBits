@@ -1,5 +1,5 @@
-import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -12,6 +12,60 @@ export function MyHeader() {
   const router = useRouter();
   const { unreadCount } = useNotifications();
   const badgeCount = unreadCount > 99 ? "99+" : String(unreadCount);
+  const bellScale = useRef(new Animated.Value(1)).current;
+  const bellGlow = useRef(
+    new Animated.Value(unreadCount > 0 ? 1 : 0.25),
+  ).current;
+  const terminalScale = useRef(new Animated.Value(1)).current;
+  const terminalGlow = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(terminalGlow, {
+          toValue: 0.8,
+          duration: 900,
+          useNativeDriver: false,
+        }),
+        Animated.timing(terminalGlow, {
+          toValue: 0.35,
+          duration: 900,
+          useNativeDriver: false,
+        }),
+      ]),
+    );
+    pulse.start();
+    return () => {
+      pulse.stop();
+    };
+  }, [terminalGlow]);
+
+  useEffect(() => {
+    Animated.timing(bellGlow, {
+      toValue: unreadCount > 0 ? 1 : 0.25,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  }, [bellGlow, unreadCount]);
+
+  const animateBell = (toValue: number) => {
+    Animated.spring(bellScale, {
+      toValue,
+      speed: 22,
+      bounciness: 5,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const animateTerminal = (toValue: number) => {
+    Animated.spring(terminalScale, {
+      toValue,
+      speed: 22,
+      bounciness: 5,
+      useNativeDriver: true,
+    }).start();
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.brandRow}>
@@ -28,48 +82,93 @@ export function MyHeader() {
         </View>
       </View>
       <View style={styles.actions}>
-        <Pressable
-          style={[
-            styles.iconButton,
-            {
-              borderColor: colors.tint,
-              backgroundColor: colors.surfaceAlt,
-              shadowColor: colors.tint,
-            },
-          ]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            router.push("/notifications");
+        <Animated.View
+          style={{
+            shadowColor: colors.tint,
+            shadowOpacity: bellGlow.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.08, 0.3],
+            }) as unknown as number,
+            shadowRadius: bellGlow.interpolate({
+              inputRange: [0, 1],
+              outputRange: [2, 8],
+            }) as unknown as number,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: unreadCount > 0 ? 3 : 1,
           }}
         >
-          <Feather name="bell" color={colors.tint} size={18} />
-          {unreadCount > 0 ? (
-            <View style={[styles.badge, { backgroundColor: colors.tint }]}>
-              <ThemedText
-                type="caption"
-                style={[styles.badgeText, { color: colors.accent }]}
-              >
-                {badgeCount}
-              </ThemedText>
-            </View>
-          ) : null}
-        </Pressable>
-        <Pressable
+          <Animated.View style={{ transform: [{ scale: bellScale }] }}>
+            <Pressable
+              hitSlop={10}
+              onPressIn={() => animateBell(0.93)}
+              onPressOut={() => animateBell(1)}
+              style={[
+                styles.iconButton,
+                {
+                  borderColor: colors.tint,
+                  backgroundColor: colors.surfaceAlt,
+                  shadowColor: colors.tint,
+                },
+              ]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push("/notifications");
+              }}
+            >
+              <Feather name="bell" color={colors.tint} size={18} />
+              {unreadCount > 0 ? (
+                <View style={[styles.badge, { backgroundColor: colors.tint }]}>
+                  <ThemedText
+                    type="caption"
+                    style={[styles.badgeText, { color: colors.onTint }]}
+                  >
+                    {badgeCount}
+                  </ThemedText>
+                </View>
+              ) : null}
+            </Pressable>
+          </Animated.View>
+        </Animated.View>
+        <Animated.View
           style={[
-            styles.iconButton,
+            styles.iconShell,
             {
-              borderColor: colors.tint,
-              backgroundColor: colors.surfaceAlt,
               shadowColor: colors.tint,
+              shadowOpacity: terminalGlow.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.1, 0.36],
+              }) as unknown as number,
+              shadowRadius: terminalGlow.interpolate({
+                inputRange: [0, 1],
+                outputRange: [2, 9],
+              }) as unknown as number,
+              shadowOffset: { width: 0, height: 0 },
+              elevation: 3,
             },
           ]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            router.push("/terminal");
-          }}
         >
-          <Feather name="terminal" color={colors.tint} size={18} />
-        </Pressable>
+          <Animated.View style={{ transform: [{ scale: terminalScale }] }}>
+            <Pressable
+              hitSlop={10}
+              onPressIn={() => animateTerminal(0.93)}
+              onPressOut={() => animateTerminal(1)}
+              style={[
+                styles.iconButton,
+                {
+                  borderColor: colors.tint,
+                  backgroundColor: colors.surfaceAlt,
+                  shadowColor: colors.tint,
+                },
+              ]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push("/terminal");
+              }}
+            >
+              <Feather name="terminal" color={colors.tint} size={19} />
+            </Pressable>
+          </Animated.View>
+        </Animated.View>
       </View>
     </View>
   );
@@ -113,6 +212,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 0 },
     elevation: 2,
+  },
+  iconShell: {
+    borderRadius: 10,
   },
   badge: {
     position: "absolute",

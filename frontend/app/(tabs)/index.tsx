@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Easing,
+  InteractionManager,
   Platform,
   RefreshControl,
   ScrollView,
@@ -33,8 +33,8 @@ import { MyHeader } from "@/components/header";
 import CreatePost from "@/components/CreatePost";
 import { Post } from "@/components/Post";
 import { ProjectCard } from "@/components/ProjectCard";
+import { InfiniteHorizontalCycle } from "@/components/InfiniteHorizontalCycle";
 import { SectionHeader } from "@/components/SectionHeader";
-import { StatPill } from "@/components/StatPill";
 import { ThemedText } from "@/components/ThemedText";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { TopBlur } from "@/components/TopBlur";
@@ -46,6 +46,16 @@ import {
 } from "@/services/projectEvents";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedStreams } from "@/contexts/SavedStreamsContext";
+import Reanimated, {
+  Easing as ReanimatedEasing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import { useHyprMotion } from "@/hooks/useHyprMotion";
 
 export default function HomeScreen() {
   const colors = useAppColors();
@@ -63,14 +73,14 @@ export default function HomeScreen() {
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
+  const hyprMotion = useHyprMotion();
   const requestGuard = useRequestGuard();
   const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
-  const revealValues = useRef([
-    new Animated.Value(0.08),
-    new Animated.Value(0.08),
-    new Animated.Value(0.08),
-  ]).current;
+  const heroProgress = useSharedValue(0.08);
+  const streamsProgress = useSharedValue(0.08);
+  const postsProgress = useSharedValue(0.08);
+  const cursorOpacity = useSharedValue(1);
   const homePostFetchCount = 8;
   const homeProjectFetchCount = 8;
   const homeVisiblePostsCount = 8;
@@ -78,32 +88,58 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
-      revealValues.forEach((value) => value.setValue(1));
+      heroProgress.value = 1;
+      streamsProgress.value = 1;
+      postsProgress.value = 1;
+      return;
+    }
+    heroProgress.value = withDelay(0, withSpring(1, hyprMotion.spring));
+    streamsProgress.value = withDelay(
+      hyprMotion.staggerMs,
+      withSpring(1, hyprMotion.spring),
+    );
+    postsProgress.value = withDelay(
+      hyprMotion.staggerMs * 2,
+      withSpring(1, hyprMotion.spring),
+    );
+  }, [
+    heroProgress,
+    hyprMotion.spring,
+    hyprMotion.staggerMs,
+    motion.prefersReducedMotion,
+    postsProgress,
+    streamsProgress,
+  ]);
+
+  useEffect(() => {
+    if (motion.prefersReducedMotion) {
+      cursorOpacity.value = 1;
       return;
     }
 
-    const animations = revealValues.map((value) =>
-      Platform.OS === "android"
-        ? Animated.timing(value, {
-            toValue: 1,
-            duration: motion.duration(320),
-            easing: Easing.bezier(0.22, 1, 0.36, 1),
-            useNativeDriver: true,
-          })
-        : Animated.spring(value, {
-            toValue: 1,
-            speed: 15,
-            bounciness: 6,
-            useNativeDriver: true,
-          }),
+    cursorOpacity.value = withRepeat(
+      withTiming(0.28, {
+        duration: hyprMotion.pulseDuration,
+        easing: ReanimatedEasing.inOut(ReanimatedEasing.quad),
+      }),
+      -1,
+      true,
     );
+    return () => {
+      cursorOpacity.value = 1;
+    };
+  }, [cursorOpacity, hyprMotion.pulseDuration, motion.prefersReducedMotion]);
 
-    Animated.stagger(motion.delay(90), animations).start();
-  }, [motion, revealValues]);
+  useEffect(() => {
+    router.prefetch("/streams");
+    router.prefetch("/bytes");
+    router.prefetch("/terminal");
+  }, [router]);
 
   const loadFeed = useCallback(
     async (showLoader = true) => {
       const requestId = requestGuard.beginRequest();
+      const loadStart = Date.now();
       try {
         if (showLoader && requestGuard.isMounted()) {
           setIsLoading(true);
@@ -170,6 +206,14 @@ export default function HomeScreen() {
           return;
         }
 
+        await new Promise<void>((resolve) => {
+          InteractionManager.runAfterInteractions(() => resolve());
+        });
+
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
+
         setProjects(uiProjects);
         setPosts(uiPosts);
         setBuilderProjectIds(builderProjects.map((project) => project.id));
@@ -189,6 +233,11 @@ export default function HomeScreen() {
         setHasError(true);
       } finally {
         if (showLoader && requestGuard.isMounted()) {
+          const elapsed = Date.now() - loadStart;
+          const remaining = Math.max(0, 180 - elapsed);
+          if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          }
           setIsLoading(false);
         }
       }
@@ -264,23 +313,33 @@ export default function HomeScreen() {
 
   useAutoRefresh(() => loadFeed(false), { focusRefresh: false });
 
-  const revealStyle = (index: number) => ({
-    opacity: revealValues[index],
+  const heroRevealStyle = useAnimatedStyle(() => ({
+    opacity: heroProgress.value,
     transform: [
-      {
-        translateY: revealValues[index].interpolate({
-          inputRange: [0, 1],
-          outputRange: [22, 0],
-        }),
-      },
-      {
-        scale: revealValues[index].interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.97, 1],
-        }),
-      },
+      { translateY: (1 - heroProgress.value) * 22 },
+      { scale: 0.97 + heroProgress.value * 0.03 },
     ],
-  });
+  }));
+
+  const streamsRevealStyle = useAnimatedStyle(() => ({
+    opacity: streamsProgress.value,
+    transform: [
+      { translateY: (1 - streamsProgress.value) * 22 },
+      { scale: 0.97 + streamsProgress.value * 0.03 },
+    ],
+  }));
+
+  const postsRevealStyle = useAnimatedStyle(() => ({
+    opacity: postsProgress.value,
+    transform: [
+      { translateY: (1 - postsProgress.value) * 22 },
+      { scale: 0.97 + postsProgress.value * 0.03 },
+    ],
+  }));
+
+  const cursorStyle = useAnimatedStyle(() => ({
+    opacity: cursorOpacity.value,
+  }));
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -291,6 +350,11 @@ export default function HomeScreen() {
           contentInsetAdjustmentBehavior="never"
           onScroll={onScroll}
           scrollEventThrottle={16}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={
+            Platform.OS === "ios" ? "interactive" : "on-drag"
+          }
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -306,7 +370,7 @@ export default function HomeScreen() {
             { paddingTop: 8, paddingBottom: 96 + insets.bottom },
           ]}
         >
-          <Animated.View style={revealStyle(0)}>
+          <Reanimated.View style={heroRevealStyle}>
             <MyHeader />
             <View
               style={[
@@ -314,18 +378,76 @@ export default function HomeScreen() {
                 { backgroundColor: colors.surface, borderColor: colors.border },
               ]}
             >
-              <ThemedText type="label" style={{ color: colors.muted }}>
-                TODAY'S SHIP LOG
-              </ThemedText>
-              <View style={styles.statRow}>
-                <StatPill label="Streams" value={projects.length} />
-                <StatPill label="Bytes" value={posts.length} />
-                <StatPill label="Tags" value={tags.length} />
+              <View style={styles.shipTopRow}>
+                <ThemedText type="label" style={{ color: colors.muted }}>
+                  TODAY'S SHIP LOG
+                </ThemedText>
+                <View
+                  style={[styles.shipDot, { backgroundColor: colors.tint }]}
+                />
+              </View>
+              <View style={styles.shipCommandRow}>
+                <ThemedText type="caption" style={{ color: colors.tint }}>
+                  $ feed.sync --today
+                </ThemedText>
+                <Reanimated.View
+                  style={[
+                    styles.shipCursor,
+                    { backgroundColor: colors.tint },
+                    cursorStyle,
+                  ]}
+                />
+              </View>
+              <View style={styles.shipMiniGrid}>
+                <View
+                  style={[
+                    styles.shipMiniCard,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.surfaceAlt,
+                    },
+                  ]}
+                >
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Streams
+                  </ThemedText>
+                  <ThemedText type="defaultSemiBold">
+                    {projects.length}
+                  </ThemedText>
+                </View>
+                <View
+                  style={[
+                    styles.shipMiniCard,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.surfaceAlt,
+                    },
+                  ]}
+                >
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Bytes
+                  </ThemedText>
+                  <ThemedText type="defaultSemiBold">{posts.length}</ThemedText>
+                </View>
+                <View
+                  style={[
+                    styles.shipMiniCard,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.surfaceAlt,
+                    },
+                  ]}
+                >
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Tags
+                  </ThemedText>
+                  <ThemedText type="defaultSemiBold">{tags.length}</ThemedText>
+                </View>
               </View>
             </View>
-          </Animated.View>
+          </Reanimated.View>
 
-          <Animated.View style={revealStyle(1)}>
+          <Reanimated.View style={streamsRevealStyle}>
             <SectionHeader
               title="Top streams today"
               actionLabel="See all"
@@ -336,6 +458,8 @@ export default function HomeScreen() {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.edgeToEdgeRail}
+                nestedScrollEnabled
+                directionalLockEnabled={false}
               >
                 <View style={styles.carouselRow}>
                   {[0, 1, 2, 3].map((key) => (
@@ -353,14 +477,13 @@ export default function HomeScreen() {
                 </View>
               </ScrollView>
             ) : projects.length ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.edgeToEdgeRail}
-              >
-                <View style={styles.carouselRow}>
-                  {projects.map((project) => (
-                    <View key={project.id} style={styles.carouselCardWrap}>
+              <View style={styles.edgeToEdgeRail}>
+                <InfiniteHorizontalCycle
+                  data={projects}
+                  itemWidth={260}
+                  keyExtractor={(project) => String(project.id)}
+                  renderItem={(project) => (
+                    <View style={styles.carouselCardWrap}>
                       <ProjectCard
                         project={project}
                         variant="full"
@@ -368,9 +491,9 @@ export default function HomeScreen() {
                         isBuilder={builderProjectIds.includes(project.id)}
                       />
                     </View>
-                  ))}
-                </View>
-              </ScrollView>
+                  )}
+                />
+              </View>
             ) : (
               <View style={styles.emptyState}>
                 <ThemedText type="caption" style={{ color: colors.muted }}>
@@ -380,9 +503,9 @@ export default function HomeScreen() {
                 </ThemedText>
               </View>
             )}
-          </Animated.View>
+          </Reanimated.View>
 
-          <Animated.View style={revealStyle(2)}>
+          <Reanimated.View style={postsRevealStyle}>
             <SectionHeader
               title="Top bytes today"
               actionLabel="See all"
@@ -393,6 +516,8 @@ export default function HomeScreen() {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.edgeToEdgeRail}
+                nestedScrollEnabled
+                directionalLockEnabled={false}
               >
                 <View style={styles.carouselRow}>
                   {[0, 1, 2].map((key) => (
@@ -410,19 +535,18 @@ export default function HomeScreen() {
                 </View>
               </ScrollView>
             ) : posts.length ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.edgeToEdgeRail}
-              >
-                <View style={styles.carouselRow}>
-                  {posts.map((post) => (
-                    <View key={post.id} style={styles.carouselPostWrap}>
+              <View style={styles.edgeToEdgeRail}>
+                <InfiniteHorizontalCycle
+                  data={posts}
+                  itemWidth={300}
+                  keyExtractor={(post) => String(post.id)}
+                  renderItem={(post) => (
+                    <View style={styles.carouselPostWrap}>
                       <Post {...post} />
                     </View>
-                  ))}
-                </View>
-              </ScrollView>
+                  )}
+                />
+              </View>
             ) : (
               <View style={styles.emptyState}>
                 <ThemedText type="caption" style={{ color: colors.muted }}>
@@ -432,7 +556,7 @@ export default function HomeScreen() {
                 </ThemedText>
               </View>
             )}
-          </Animated.View>
+          </Reanimated.View>
         </Animated.ScrollView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
@@ -474,15 +598,44 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
   },
   heroCard: {
-    borderRadius: 16,
-    padding: 10,
-    gap: 8,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 7,
     borderWidth: 1,
   },
-  statRow: {
+  shipTopRow: {
     flexDirection: "row",
-    gap: 10,
-    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  shipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 99,
+  },
+  shipCommandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  shipCursor: {
+    width: 8,
+    height: 2,
+    borderRadius: 1,
+  },
+  shipMiniGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  shipMiniCard: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    justifyContent: "center",
   },
   carouselRow: {
     flexDirection: "row",

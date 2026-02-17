@@ -26,6 +26,10 @@ import { Post } from "@/components/Post";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
+import {
+  UnifiedLoadingInline,
+  UnifiedLoadingList,
+} from "@/components/UnifiedLoading";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
@@ -89,22 +93,31 @@ export default function BytesScreen() {
           setIsLoading(true);
         }
         const start = nextPage * pageSize;
-        const postFeedRaw =
+        const postFeedPromise =
           activeFilter === "following" && user?.username
-            ? await getFollowingPostsFeed(
-                user.username,
-                start,
-                pageSize,
-                activeSort,
-              )
+            ? getFollowingPostsFeed(user.username, start, pageSize, activeSort)
             : activeFilter === "saved" && user?.username
-              ? await getSavedPostsFeed(
-                  user.username,
-                  start,
-                  pageSize,
-                  activeSort,
-                )
-              : await getPostsFeed(activeSort as FeedSort, start, pageSize);
+              ? getSavedPostsFeed(user.username, start, pageSize, activeSort)
+              : getPostsFeed(activeSort as FeedSort, start, pageSize);
+
+        let postFeedRaw: Awaited<ReturnType<typeof getPostsFeed>> = [];
+        try {
+          postFeedRaw = await postFeedPromise;
+        } catch {
+          if (activeFilter !== "all") {
+            postFeedRaw = await getPostsFeed(
+              activeSort as FeedSort,
+              start,
+              pageSize,
+            );
+            if (requestGuard.isMounted()) {
+              setActiveFilter("all");
+            }
+          } else {
+            throw new Error("Failed to load post feed");
+          }
+        }
+
         const postFeed = Array.isArray(postFeedRaw) ? postFeedRaw : [];
 
         const uiPosts = await Promise.all(
@@ -202,7 +215,10 @@ export default function BytesScreen() {
   });
 
   const handleLoadMore = useCallback(() => {
-    if (isLoadingMore || !hasMore || isLoading) {
+    if (isLoadingMore || isLoading) {
+      return;
+    }
+    if (!hasMore) {
       return;
     }
     setIsLoadingMore(true);
@@ -226,11 +242,6 @@ export default function BytesScreen() {
           data={posts}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => <Post {...item} />}
-          initialNumToRender={6}
-          maxToRenderPerBatch={8}
-          updateCellsBatchingPeriod={40}
-          windowSize={8}
-          removeClippedSubviews
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           onScroll={onScroll}
@@ -345,20 +356,7 @@ export default function BytesScreen() {
                 </View>
               </Animated.View>
               {isLoading ? (
-                <View style={styles.skeletonStack}>
-                  {[0, 1, 2].map((key) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.skeletonCard,
-                        {
-                          backgroundColor: colors.surfaceAlt,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
+                <UnifiedLoadingList rows={3} cardHeight={172} />
               ) : null}
             </View>
           }
@@ -379,11 +377,7 @@ export default function BytesScreen() {
           }
           ListFooterComponent={
             isLoadingMore ? (
-              <View style={styles.loadingMore}>
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  Loading more...
-                </ThemedText>
-              </View>
+              <UnifiedLoadingInline label="Loading more..." />
             ) : null
           }
           contentContainerStyle={[
@@ -457,19 +451,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-  },
-  skeletonStack: {
-    gap: 12,
-  },
-  skeletonCard: {
-    borderRadius: 14,
-    height: 96,
-    borderWidth: 1,
-    opacity: 0.7,
-  },
-  loadingMore: {
-    alignItems: "center",
-    paddingVertical: 18,
   },
   emptyState: {
     alignItems: "center",

@@ -26,6 +26,10 @@ import { ProjectCard } from "@/components/ProjectCard";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
+import {
+  UnifiedLoadingInline,
+  UnifiedLoadingList,
+} from "@/components/UnifiedLoading";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
@@ -107,12 +111,29 @@ export default function StreamsScreen() {
               ? getSavedProjectsFeed(user.username, start, pageSize, activeSort)
               : getProjectsFeed(activeSort as FeedSort, start, pageSize);
 
-        const [projectFeedRaw, builderProjectsRaw] = await Promise.all([
-          projectFeedPromise,
+        let projectFeedRaw: Awaited<ReturnType<typeof getProjectsFeed>> = [];
+        try {
+          projectFeedRaw = await projectFeedPromise;
+        } catch {
+          if (activeFilter !== "all") {
+            projectFeedRaw = await getProjectsFeed(
+              activeSort as FeedSort,
+              start,
+              pageSize,
+            );
+            if (requestGuard.isMounted()) {
+              setActiveFilter("all");
+            }
+          } else {
+            throw new Error("Failed to load project feed");
+          }
+        }
+
+        const builderProjectsRaw =
           nextPage === 0 && user?.id
-            ? getProjectsByBuilderId(user.id)
-            : Promise.resolve([]),
-        ]);
+            ? await getProjectsByBuilderId(user.id).catch(() => [])
+            : [];
+
         const projectFeed = Array.isArray(projectFeedRaw) ? projectFeedRaw : [];
         const builderProjects = Array.isArray(builderProjectsRaw)
           ? builderProjectsRaw
@@ -187,7 +208,10 @@ export default function StreamsScreen() {
   });
 
   const handleLoadMore = useCallback(() => {
-    if (isLoadingMore || !hasMore || isLoading) {
+    if (isLoadingMore || isLoading) {
+      return;
+    }
+    if (!hasMore) {
       return;
     }
     setIsLoadingMore(true);
@@ -338,20 +362,7 @@ export default function StreamsScreen() {
                 </View>
               </Animated.View>
               {isLoading ? (
-                <View style={styles.skeletonStack}>
-                  {[0, 1, 2].map((key) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.skeletonCard,
-                        {
-                          backgroundColor: colors.surfaceAlt,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
+                <UnifiedLoadingList rows={3} cardHeight={176} />
               ) : null}
             </View>
           }
@@ -372,22 +383,13 @@ export default function StreamsScreen() {
           }
           ListFooterComponent={
             isLoadingMore ? (
-              <View style={styles.loadingMore}>
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  Loading more...
-                </ThemedText>
-              </View>
+              <UnifiedLoadingInline label="Loading more..." />
             ) : null
           }
           contentContainerStyle={[
             styles.container,
             { paddingTop: 8, paddingBottom: 96 + insets.bottom },
           ]}
-          removeClippedSubviews
-          initialNumToRender={6}
-          maxToRenderPerBatch={5}
-          windowSize={5}
-          updateCellsBatchingPeriod={60}
         />
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
@@ -453,19 +455,6 @@ const styles = StyleSheet.create({
   },
   projectGrid: {
     gap: 12,
-  },
-  skeletonStack: {
-    gap: 12,
-  },
-  skeletonCard: {
-    borderRadius: 14,
-    height: 110,
-    borderWidth: 1,
-    opacity: 0.7,
-  },
-  loadingMore: {
-    alignItems: "center",
-    paddingVertical: 18,
   },
   emptyState: {
     alignItems: "center",

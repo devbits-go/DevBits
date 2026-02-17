@@ -11,6 +11,7 @@ import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { Colors } from "@/constants/Colors";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -23,6 +24,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { HyprBackdrop } from "@/components/HyprBackdrop";
 import { BootScreen } from "@/components/BootScreen";
 import { InAppNotificationBanner } from "@/components/InAppNotificationBanner";
+import { usePreferences } from "@/contexts/PreferencesContext";
 // Prevent the splash screen from auto-hiding before asset loading is complete
 SplashScreen.preventAutoHideAsync();
 
@@ -64,17 +66,19 @@ const navDarkTheme: Theme = {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <PreferencesProvider>
-        <NotificationsProvider>
-          <SavedProvider>
-            <SavedStreamsProvider>
-              <RootLayoutNav />
-            </SavedStreamsProvider>
-          </SavedProvider>
-        </NotificationsProvider>
-      </PreferencesProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <PreferencesProvider>
+          <NotificationsProvider>
+            <SavedProvider>
+              <SavedStreamsProvider>
+                <RootLayoutNav />
+              </SavedStreamsProvider>
+            </SavedProvider>
+          </NotificationsProvider>
+        </PreferencesProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -83,7 +87,8 @@ function RootLayoutNav() {
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, justSignedUp } = useAuth();
+  const { preferences } = usePreferences();
   const { inAppBanner, dismissInAppBanner } = useNotifications();
   const segments = useSegments();
   const router = useRouter();
@@ -154,13 +159,29 @@ function RootLayoutNav() {
     }
 
     const inAuthGroup = segments[0] === "(auth)";
+    const inWelcome = segments[0] === "welcome";
+
     if (!user && !inAuthGroup) {
       router.replace("/(auth)/sign-in");
     }
+
+    if (user && justSignedUp && !preferences.hasSeenWelcomeTour && !inWelcome) {
+      router.replace({ pathname: "/welcome", params: { mode: "first-run" } });
+      return;
+    }
+
     if (user && inAuthGroup) {
       router.replace("/(tabs)");
     }
-  }, [isLoading, loaded, segments, router, user]);
+  }, [
+    isLoading,
+    justSignedUp,
+    loaded,
+    preferences.hasSeenWelcomeTour,
+    segments,
+    router,
+    user,
+  ]);
 
   useEffect(() => {
     if (isExpoGoRuntime()) {
@@ -226,6 +247,8 @@ function RootLayoutNav() {
         >
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="markdown-help" />
           <Stack.Screen name="+not-found" />
         </Stack>
         {shouldShowBoot ? (

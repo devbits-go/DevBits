@@ -15,6 +15,7 @@ import { Post } from "@/components/Post";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
+import { UnifiedLoadingList } from "@/components/UnifiedLoading";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
@@ -36,7 +37,7 @@ export default function SavedLibraryScreen() {
   const [posts, setPosts] = useState([] as ReturnType<typeof mapPostToUi>[]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
   const { scrollY, onScroll } = useTopBlurScroll();
@@ -194,20 +195,7 @@ export default function SavedLibraryScreen() {
           </Animated.View>
 
           {isLoading ? (
-            <View style={styles.skeletonStack}>
-              {[0, 1, 2].map((key) => (
-                <View
-                  key={key}
-                  style={[
-                    styles.skeletonCard,
-                    {
-                      backgroundColor: colors.surfaceAlt,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                />
-              ))}
-            </View>
+            <UnifiedLoadingList rows={3} cardHeight={172} />
           ) : posts.length ? (
             posts.map((post) => <Post key={post.id} {...post} />)
           ) : (
@@ -245,15 +233,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     lineHeight: 30,
-  },
-  skeletonStack: {
-    gap: 12,
-  },
-  skeletonCard: {
-    borderRadius: 14,
-    height: 96,
-    borderWidth: 1,
-    opacity: 0.7,
   },
   emptyState: {
     alignItems: "center",

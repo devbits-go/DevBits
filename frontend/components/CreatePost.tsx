@@ -43,16 +43,17 @@ export default function CreatePost() {
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <Pressable
         onPress={openMenu}
-        style={[
+        style={({ pressed }) => [
           styles.button,
           {
             backgroundColor: colors.tint,
             borderColor: colors.border,
             bottom: Math.max(14, insets.bottom + 10),
           },
+          pressed && styles.pressed,
         ]}
       >
-        <Feather name="plus" size={16} color={colors.accent} />
+        <Feather name="plus" size={16} color={colors.onTint} />
       </Pressable>
 
       <Modal
@@ -75,14 +76,22 @@ export default function CreatePost() {
             ]}
           >
             <Pressable
-              style={[styles.menuButton, { borderColor: colors.border }]}
+              style={({ pressed }) => [
+                styles.menuButton,
+                { borderColor: colors.border },
+                pressed && styles.pressed,
+              ]}
               onPress={handleAddStream}
             >
               <Feather name="radio" size={16} color={colors.tint} />
               <ThemedText type="default">Add stream</ThemedText>
             </Pressable>
             <Pressable
-              style={[styles.menuButton, { borderColor: colors.border }]}
+              style={({ pressed }) => [
+                styles.menuButton,
+                { borderColor: colors.border },
+                pressed && styles.pressed,
+              ]}
               onPress={handleAddByte}
             >
               <Feather name="message-circle" size={16} color={colors.tint} />
@@ -132,5 +141,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
   },
 });

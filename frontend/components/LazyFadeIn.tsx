@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleProp, ViewStyle } from "react-native";
+import { usePreferences } from "@/contexts/PreferencesContext";
+import { useMotionConfig } from "@/hooks/useMotionConfig";
 
 type LazyFadeInProps = {
   visible: boolean;
@@ -14,45 +16,35 @@ export function LazyFadeIn({
   style,
   children,
 }: LazyFadeInProps) {
-  const opacity = useRef(new Animated.Value(1)).current;
+  const { preferences } = usePreferences();
+  const motion = useMotionConfig();
+  const shouldAnimate =
+    preferences.imageRevealEffect === "smooth" && !motion.prefersReducedMotion;
+  const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(6)).current;
   const scale = useRef(new Animated.Value(0.996)).current;
   const hasAnimatedRef = useRef(false);
-  const [hasLaidOut, setHasLaidOut] = useState(false);
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hasMountedVisible, setHasMountedVisible] = useState(false);
 
   useEffect(() => {
     if (!visible) {
-      if (fallbackTimerRef.current) {
-        clearTimeout(fallbackTimerRef.current);
-        fallbackTimerRef.current = null;
-      }
       hasAnimatedRef.current = false;
-      setHasLaidOut(false);
-      opacity.setValue(1);
+      setHasMountedVisible(false);
+      opacity.setValue(0);
       translateY.setValue(6);
       scale.setValue(0.996);
       return;
     }
 
-    if (fallbackTimerRef.current) {
-      clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
+    if (!hasMountedVisible) {
+      setHasMountedVisible(true);
     }
 
-    fallbackTimerRef.current = setTimeout(
-      () => {
-        hasAnimatedRef.current = true;
-        opacity.setValue(1);
-        translateY.setValue(0);
-        scale.setValue(1);
-        setHasLaidOut(true);
-        fallbackTimerRef.current = null;
-      },
-      Math.max(260, duration + 120),
-    );
-
-    if (!hasLaidOut) {
+    if (!shouldAnimate) {
+      hasAnimatedRef.current = true;
+      opacity.setValue(1);
+      translateY.setValue(0);
+      scale.setValue(1);
       return;
     }
 
@@ -64,6 +56,12 @@ export function LazyFadeIn({
     }
 
     Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration,
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
+        useNativeDriver: true,
+      }),
       Animated.timing(translateY, {
         toValue: 0,
         duration,
@@ -76,21 +74,24 @@ export function LazyFadeIn({
         easing: Easing.bezier(0.22, 1, 0.36, 1),
         useNativeDriver: true,
       }),
-    ]).start(() => {
+    ]).start(({ finished }) => {
+      if (!finished) {
+        return;
+      }
       hasAnimatedRef.current = true;
-      if (fallbackTimerRef.current) {
-        clearTimeout(fallbackTimerRef.current);
-        fallbackTimerRef.current = null;
-      }
+      opacity.setValue(1);
+      translateY.setValue(0);
+      scale.setValue(1);
     });
-
-    return () => {
-      if (fallbackTimerRef.current) {
-        clearTimeout(fallbackTimerRef.current);
-        fallbackTimerRef.current = null;
-      }
-    };
-  }, [duration, hasLaidOut, opacity, scale, translateY, visible]);
+  }, [
+    duration,
+    hasMountedVisible,
+    opacity,
+    scale,
+    shouldAnimate,
+    translateY,
+    visible,
+  ]);
 
   if (!visible) {
     return (
@@ -108,11 +109,6 @@ export function LazyFadeIn({
 
   return (
     <Animated.View
-      onLayout={() => {
-        if (!hasLaidOut) {
-          setHasLaidOut(true);
-        }
-      }}
       renderToHardwareTextureAndroid
       style={[style, { opacity, transform: [{ translateY }, { scale }] }]}
     >

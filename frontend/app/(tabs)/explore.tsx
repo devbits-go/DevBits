@@ -42,6 +42,7 @@ import {
 } from "@/services/api";
 import { mapPostToUi, mapProjectToUi } from "@/services/mappers";
 import { ProjectCard } from "@/components/ProjectCard";
+import { InfiniteHorizontalCycle } from "@/components/InfiniteHorizontalCycle";
 import { Post } from "@/components/Post";
 import { SectionHeader } from "@/components/SectionHeader";
 import { TagChip } from "@/components/TagChip";
@@ -54,6 +55,7 @@ import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useRequestGuard } from "@/hooks/useRequestGuard";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePreferences } from "@/contexts/PreferencesContext";
 import { subscribeToPostEvents } from "@/services/postEvents";
 
 const categories = [
@@ -71,6 +73,7 @@ export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
+  const { preferences } = usePreferences();
   const [activeCategory, setActiveCategory] = useState("None");
   const [projects, setProjects] = useState(
     [] as ReturnType<typeof mapProjectToUi>[],
@@ -459,6 +462,7 @@ export default function ExploreScreen() {
   const showBytes = activeKey === "bytes" || activeKey === "all";
   const showUsers = activeKey === "users" || activeKey === "all";
   const showTags = activeKey === "tags" || activeKey === "all";
+  const isRetro = preferences.visualizationMode === "retro";
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -517,7 +521,11 @@ export default function ExploreScreen() {
             <View
               style={[
                 styles.searchBar,
-                { borderColor: colors.border, backgroundColor: colors.surface },
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  borderRadius: isRetro ? 4 : 12,
+                },
               ]}
             >
               <Feather name="search" color={colors.muted} size={18} />
@@ -551,13 +559,14 @@ export default function ExploreScreen() {
                             ? colors.tint
                             : colors.surfaceAlt,
                           borderColor: colors.border,
+                          borderRadius: isRetro ? 3 : 10,
                         },
                       ]}
                     >
                       <ThemedText
                         type="caption"
                         style={{
-                          color: isActive ? colors.accent : colors.muted,
+                          color: isActive ? colors.onTint : colors.muted,
                         }}
                       >
                         {category}
@@ -594,6 +603,7 @@ export default function ExploreScreen() {
                                   {
                                     backgroundColor: colors.surface,
                                     borderColor: colors.border,
+                                    borderRadius: isRetro ? 4 : 14,
                                   },
                                 ]}
                                 onPress={() =>
@@ -636,7 +646,7 @@ export default function ExploreScreen() {
                                 >
                                   <ThemedText
                                     type="caption"
-                                    style={{ color: colors.accent }}
+                                    style={{ color: colors.onTint }}
                                   >
                                     {isFollowing ? "Following" : "Follow"}
                                   </ThemedText>
@@ -659,17 +669,16 @@ export default function ExploreScreen() {
                     <View>
                       <SectionHeader title="Streams" />
                       {searchProjects.length ? (
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          style={styles.edgeToEdgeRail}
-                        >
-                          <View style={styles.projectRow}>
-                            {searchProjects.map((project) => (
-                              <ProjectCard key={project.id} project={project} />
-                            ))}
-                          </View>
-                        </ScrollView>
+                        <View style={styles.edgeToEdgeRail}>
+                          <InfiniteHorizontalCycle
+                            data={searchProjects}
+                            itemWidth={260}
+                            keyExtractor={(project) => String(project.id)}
+                            renderItem={(project) => (
+                              <ProjectCard project={project} />
+                            )}
+                          />
+                        </View>
                       ) : (
                         <View style={styles.emptyState}>
                           <ThemedText
@@ -732,17 +741,16 @@ export default function ExploreScreen() {
                     </View>
                   </ScrollView>
                 ) : filteredProjects.length ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.edgeToEdgeRail}
-                  >
-                    <View style={styles.projectRow}>
-                      {filteredProjects.map((project) => (
-                        <ProjectCard key={project.id} project={project} />
-                      ))}
-                    </View>
-                  </ScrollView>
+                  <View style={styles.edgeToEdgeRail}>
+                    <InfiniteHorizontalCycle
+                      data={filteredProjects}
+                      itemWidth={260}
+                      keyExtractor={(project) => String(project.id)}
+                      renderItem={(project) => (
+                        <ProjectCard project={project} />
+                      )}
+                    />
+                  </View>
                 ) : (
                   <View style={styles.emptyState}>
                     <ThemedText type="caption" style={{ color: colors.muted }}>
@@ -804,6 +812,7 @@ export default function ExploreScreen() {
                             {
                               backgroundColor: colors.surface,
                               borderColor: colors.border,
+                              borderRadius: isRetro ? 4 : 14,
                             },
                           ]}
                           onPress={() =>
@@ -854,7 +863,7 @@ export default function ExploreScreen() {
                           >
                             <ThemedText
                               type="caption"
-                              style={{ color: colors.accent }}
+                              style={{ color: colors.onTint }}
                             >
                               {isFollowing ? "Following" : "Follow"}
                             </ThemedText>

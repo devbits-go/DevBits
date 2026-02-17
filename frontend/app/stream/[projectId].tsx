@@ -6,7 +6,6 @@ import React, {
   useState,
 } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Pressable,
   RefreshControl,
@@ -42,6 +41,10 @@ import { MarkdownText } from "@/components/MarkdownText";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { MediaGallery } from "@/components/MediaGallery";
 import { TopBlur } from "@/components/TopBlur";
+import {
+  UnifiedLoadingInline,
+  UnifiedLoadingList,
+} from "@/components/UnifiedLoading";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -85,12 +88,15 @@ export default function StreamDetailScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { savedProjectIds, toggleSave } = useSavedStreams();
-  const { projectId } = useLocalSearchParams<{ projectId?: string }>();
+  const { projectId } = useLocalSearchParams<{
+    projectId?: string | string[];
+  }>();
   const [project, setProject] = useState<ApiProject | null>(null);
   const [posts, setPosts] = useState([] as ReturnType<typeof mapPostToUi>[]);
   const [builders, setBuilders] = useState<string[]>([]);
   const [creatorName, setCreatorName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPostsLoading, setIsPostsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -105,10 +111,27 @@ export default function StreamDetailScreen() {
   const reveal = useRef(new Animated.Value(0.08)).current;
   const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
-  const prevSavedRef = useRef(false);
-  const hasInitializedSaveRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+  const loadSequenceRef = useRef(0);
+  const revealPostsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const appendPostsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [visiblePostCount, setVisiblePostCount] = useState(0);
 
-  const projectIdNumber = useMemo(() => Number(projectId), [projectId]);
+  const normalizedProjectId = useMemo(
+    () => (Array.isArray(projectId) ? projectId[0] : projectId),
+    [projectId],
+  );
+  const projectIdNumber = useMemo(() => {
+    const parsed = Number.parseInt(String(normalizedProjectId ?? ""), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return null;
+    }
+    return parsed;
+  }, [normalizedProjectId]);
   const isCreator = useMemo(
     () => (project && user?.id ? project.owner === user.id : false),
     [project, user?.id],
@@ -117,6 +140,11 @@ export default function StreamDetailScreen() {
     () =>
       !isCreator && user?.username ? builders.includes(user.username) : false,
     [builders, isCreator, user?.username],
+  );
+
+  const visiblePosts = useMemo(
+    () => posts.slice(0, visiblePostCount),
+    [posts, visiblePostCount],
   );
 
   useEffect(() => {
@@ -134,49 +162,146 @@ export default function StreamDetailScreen() {
 
   const loadStream = useCallback(
     async (showLoader = true) => {
-      if (!projectIdNumber) {
+      if (projectIdNumber == null) {
+        setProject(null);
+        setPosts([]);
+        setVisiblePostCount(0);
+        setBuilders([]);
+        setCreatorName(null);
+        setIsPostsLoading(false);
+        setHasError(true);
+        if (showLoader) {
+          setIsLoading(false);
+        }
         return;
+      }
+      const loadSequence = ++loadSequenceRef.current;
+      if (appendPostsTimerRef.current) {
+        clearTimeout(appendPostsTimerRef.current);
+        appendPostsTimerRef.current = null;
       }
       try {
         if (showLoader) {
           setIsLoading(true);
         }
-        const [projectData, projectPosts, builderList, likeStatus] =
-          await Promise.all([
-            getProjectById(projectIdNumber),
-            getPostsByProjectId(projectIdNumber),
-            getProjectBuilders(projectIdNumber).catch(() => []),
-            user?.username
-              ? isProjectLiked(user.username, projectIdNumber).catch(() => ({
-                  status: false,
-                }))
-              : Promise.resolve({ status: false }),
-          ]);
-        const ownerUser = await getUserById(projectData.owner).catch(
-          () => null,
-        );
-        const safePosts = Array.isArray(projectPosts) ? projectPosts : [];
-        const uiPosts = await Promise.all(
-          safePosts.map(async (post) => {
-            const user = await getUserById(post.user).catch(() => null);
-            return mapPostToUi(post, user, projectData);
-          }),
-        );
+        const projectPromise = getProjectById(projectIdNumber);
+        const postsPromise = getPostsByProjectId(projectIdNumber);
+        const projectData = await projectPromise;
+        if (loadSequence !== loadSequenceRef.current) {
+          return;
+        }
+
+        const [builderList, likeStatus, ownerUser] = await Promise.all([
+          getProjectBuilders(projectIdNumber).catch(() => []),
+          user?.username
+            ? isProjectLiked(user.username, projectIdNumber).catch(() => ({
+                status: false,
+              }))
+            : Promise.resolve({ status: false }),
+          getUserById(projectData.owner).catch(() => null),
+        ]);
+        if (loadSequence !== loadSequenceRef.current) {
+          return;
+        }
 
         setProject(projectData);
-        setPosts(uiPosts);
         setBuilders(Array.isArray(builderList) ? builderList : []);
         setCreatorName(ownerUser?.username ?? `user-${projectData.owner}`);
         setIsLiked(likeStatus.status);
         setHasError(false);
+        hasLoadedOnceRef.current = true;
+        if (showLoader) {
+          setIsPostsLoading(true);
+          setPosts([]);
+          setVisiblePostCount(0);
+        }
+        if (showLoader) {
+          setIsLoading(false);
+        }
+
+        const projectPosts = await postsPromise;
+        if (loadSequence !== loadSequenceRef.current) {
+          return;
+        }
+        const safePosts = Array.isArray(projectPosts) ? projectPosts : [];
+        const userCache = new Map<
+          number,
+          Awaited<ReturnType<typeof getUserById>> | null
+        >();
+
+        const mapBatch = async (batch: typeof safePosts) =>
+          Promise.all(
+            batch.map(async (post) => {
+              let postUser = userCache.get(post.user);
+              if (typeof postUser === "undefined") {
+                postUser = await getUserById(post.user).catch(() => null);
+                userCache.set(post.user, postUser);
+              }
+              return mapPostToUi(post, postUser, projectData);
+            }),
+          );
+
+        const firstBatchSize = 10;
+        const appendBatchSize = 14;
+        const firstMapped = await mapBatch(safePosts.slice(0, firstBatchSize));
+        if (loadSequence !== loadSequenceRef.current) {
+          return;
+        }
+
+        setPosts(firstMapped);
+
+        let nextStart = firstBatchSize;
+        const appendNextBatch = async () => {
+          if (loadSequence !== loadSequenceRef.current) {
+            return;
+          }
+          if (nextStart >= safePosts.length) {
+            setIsPostsLoading(false);
+            return;
+          }
+
+          const nextEnd = Math.min(
+            safePosts.length,
+            nextStart + appendBatchSize,
+          );
+          const mapped = await mapBatch(safePosts.slice(nextStart, nextEnd));
+          if (loadSequence !== loadSequenceRef.current) {
+            return;
+          }
+          setPosts((prev) => prev.concat(mapped));
+          nextStart = nextEnd;
+
+          if (nextStart < safePosts.length) {
+            appendPostsTimerRef.current = setTimeout(() => {
+              void appendNextBatch();
+            }, 0);
+          } else {
+            setIsPostsLoading(false);
+          }
+        };
+
+        if (safePosts.length > firstBatchSize) {
+          appendPostsTimerRef.current = setTimeout(() => {
+            void appendNextBatch();
+          }, 0);
+        } else {
+          setIsPostsLoading(false);
+        }
       } catch {
-        setProject(null);
-        setPosts([]);
-        setBuilders([]);
-        setCreatorName(null);
+        if (loadSequence !== loadSequenceRef.current) {
+          return;
+        }
+        if (showLoader) {
+          setProject(null);
+          setPosts([]);
+          setVisiblePostCount(0);
+          setBuilders([]);
+          setCreatorName(null);
+        }
+        setIsPostsLoading(false);
         setHasError(true);
       } finally {
-        if (showLoader) {
+        if (showLoader && loadSequence === loadSequenceRef.current) {
           setIsLoading(false);
         }
       }
@@ -185,11 +310,62 @@ export default function StreamDetailScreen() {
   );
 
   useEffect(() => {
+    if (revealPostsTimerRef.current) {
+      clearTimeout(revealPostsTimerRef.current);
+      revealPostsTimerRef.current = null;
+    }
+
+    const initialCount = Math.min(posts.length, 8);
+    setVisiblePostCount(initialCount);
+
+    if (initialCount >= posts.length) {
+      return;
+    }
+
+    const step = 8;
+    const revealNext = () => {
+      setVisiblePostCount((prev) => {
+        const next = Math.min(posts.length, prev + step);
+        if (next < posts.length) {
+          revealPostsTimerRef.current = setTimeout(revealNext, 24);
+        }
+        return next;
+      });
+    };
+
+    revealPostsTimerRef.current = setTimeout(revealNext, 24);
+
+    return () => {
+      if (revealPostsTimerRef.current) {
+        clearTimeout(revealPostsTimerRef.current);
+        revealPostsTimerRef.current = null;
+      }
+    };
+  }, [posts.length]);
+
+  useEffect(() => {
+    return () => {
+      loadSequenceRef.current += 1;
+      if (appendPostsTimerRef.current) {
+        clearTimeout(appendPostsTimerRef.current);
+        appendPostsTimerRef.current = null;
+      }
+      if (revealPostsTimerRef.current) {
+        clearTimeout(revealPostsTimerRef.current);
+        revealPostsTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     loadStream();
   }, [loadStream]);
 
   useFocusEffect(
     useCallback(() => {
+      if (!hasLoadedOnceRef.current) {
+        return;
+      }
       clearApiCache();
       loadStream(false);
     }, [loadStream]),
@@ -205,7 +381,7 @@ export default function StreamDetailScreen() {
   useAutoRefresh(() => loadStream(false), { focusRefresh: false });
 
   useEffect(() => {
-    if (!projectIdNumber) {
+    if (projectIdNumber == null) {
       return;
     }
     setIsSaved(savedProjectIds.includes(projectIdNumber));
@@ -226,7 +402,7 @@ export default function StreamDetailScreen() {
   }, [project?.id, project?.likes]);
 
   const handleToggleSave = async () => {
-    if (!user?.username || !projectIdNumber || isSaving) {
+    if (!user?.username || projectIdNumber == null || isSaving) {
       return;
     }
     setIsSaving(true);
@@ -243,7 +419,7 @@ export default function StreamDetailScreen() {
   };
 
   const handleToggleLike = async () => {
-    if (!user?.username || !projectIdNumber || isLiking) {
+    if (!user?.username || projectIdNumber == null || isLiking) {
       return;
     }
     setIsLiking(true);
@@ -268,7 +444,7 @@ export default function StreamDetailScreen() {
   };
 
   const handleLeaveBuilder = async () => {
-    if (!user?.username || !projectIdNumber || !isBuilder || isLeaving) {
+    if (projectIdNumber == null || !user?.username || !isBuilder || isLeaving) {
       return;
     }
     setIsLeaving(true);
@@ -346,12 +522,7 @@ export default function StreamDetailScreen() {
             }}
           >
             {isLoading ? (
-              <View style={styles.loadingState}>
-                <ActivityIndicator size="small" color={colors.muted} />
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  Loading stream...
-                </ThemedText>
-              </View>
+              <UnifiedLoadingList rows={1} cardHeight={312} />
             ) : project ? (
               <View style={styles.streamCard}>
                 <View style={styles.headerBlock}>
@@ -549,8 +720,10 @@ export default function StreamDetailScreen() {
             )}
           </Animated.View>
 
-          {posts.length ? (
-            posts.map((post) => <Post key={post.id} {...post} />)
+          {visiblePosts.length ? (
+            visiblePosts.map((post) => <Post key={post.id} {...post} />)
+          ) : isPostsLoading ? (
+            <UnifiedLoadingInline label="Loading bytes..." />
           ) : (
             <View style={styles.emptyState}>
               <ThemedText type="caption" style={{ color: colors.muted }}>
@@ -558,6 +731,9 @@ export default function StreamDetailScreen() {
               </ThemedText>
             </View>
           )}
+          {isPostsLoading && visiblePosts.length > 0 ? (
+            <UnifiedLoadingInline label="Loading more bytes..." />
+          ) : null}
         </Animated.ScrollView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
@@ -582,11 +758,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 16,
     paddingTop: 0,
-  },
-  loadingState: {
-    alignItems: "center",
-    paddingVertical: 24,
-    gap: 8,
   },
   emptyState: {
     alignItems: "center",

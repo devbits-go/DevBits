@@ -465,7 +465,7 @@ export default function UserProfileScreen() {
                   >
                     <ThemedText
                       type="defaultSemiBold"
-                      style={{ color: colors.accent }}
+                      style={{ color: colors.onTint }}
                     >
                       {isFollowing ? "Following" : "Follow"}
                     </ThemedText>

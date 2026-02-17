@@ -40,6 +40,35 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 
+const postCommentCountCache = new Map<number, number>();
+const postCommentCountInFlight = new Map<number, Promise<number>>();
+
+const getCachedCommentCount = async (postId: number) => {
+  const cached = postCommentCountCache.get(postId);
+  if (typeof cached === "number") {
+    return cached;
+  }
+
+  const pending = postCommentCountInFlight.get(postId);
+  if (pending) {
+    return pending;
+  }
+
+  const request = getCommentsByPostId(postId)
+    .then((list) => {
+      const count = Array.isArray(list) ? list.length : 0;
+      postCommentCountCache.set(postId, count);
+      return count;
+    })
+    .catch(() => 0)
+    .finally(() => {
+      postCommentCountInFlight.delete(postId);
+    });
+
+  postCommentCountInFlight.set(postId, request);
+  return request;
+};
+
 type PostProps = UiPost;
 
 type PostActionProps = {
@@ -53,31 +82,67 @@ type PostActionProps = {
 function PostAction({ icon, label, onPress, color, glow }: PostActionProps) {
   const colors = useAppColors();
   const iconColor = color ?? colors.muted;
+  const scale = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(glow ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(glowAnim, {
+      toValue: glow ? 1 : 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  }, [glow, glowAnim]);
+
+  const animateTo = (toValue: number) => {
+    Animated.spring(scale, {
+      toValue,
+      speed: 22,
+      bounciness: 5,
+      useNativeDriver: true,
+    }).start();
+  };
 
   return (
-    <Pressable
-      style={({ pressed }) => [
+    <Animated.View
+      style={[
         styles.action,
-        glow && {
+        {
           shadowColor: colors.tint,
-          shadowOpacity: 0.35,
-          shadowRadius: 6,
+          shadowOpacity: glowAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.06, 0.34],
+          }) as unknown as number,
+          shadowRadius: glowAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [2, 8],
+          }) as unknown as number,
           shadowOffset: { width: 0, height: 0 },
-          elevation: 2,
+          elevation: glow ? 3 : 1,
         },
-        pressed && styles.actionPressed,
       ]}
-      onPress={onPress}
     >
-      <Feather
-        name={icon as keyof typeof Feather.glyphMap}
-        size={16}
-        color={iconColor}
-      />
-      <ThemedText type="caption" style={{ color: iconColor }}>
-        {label}
-      </ThemedText>
-    </Pressable>
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Pressable
+          hitSlop={10}
+          onPressIn={() => animateTo(0.94)}
+          onPressOut={() => animateTo(1)}
+          style={({ pressed }) => [
+            styles.actionTouch,
+            pressed && styles.actionPressed,
+          ]}
+          onPress={onPress}
+        >
+          <Feather
+            name={icon as keyof typeof Feather.glyphMap}
+            size={16}
+            color={iconColor}
+          />
+          <ThemedText type="caption" style={{ color: iconColor }}>
+            {label}
+          </ThemedText>
+        </Pressable>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -121,6 +186,8 @@ export function Post({
   const previewCharLimit = 220;
   const likeMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
   const saveMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
+  const desiredLikeRef = useRef<boolean | null>(null);
+  const desiredSaveRef = useRef<boolean | null>(null);
   const [isSavedLocal, setIsSavedLocal] = useState(isSaved(id));
   const previewContent = useMemo(() => {
     if (localContent.length <= previewCharLimit) {
@@ -212,6 +279,7 @@ export function Post({
         setLikeCount(event.likes);
       }
       if (typeof event.comments === "number") {
+        postCommentCountCache.set(id, event.comments);
         setCommentCount(event.comments);
       }
       if (typeof event.isLiked === "boolean") {
@@ -232,24 +300,29 @@ export function Post({
     let isMounted = true;
     const loadMeta = async () => {
       if (!user?.username) {
+        const nextCount = await getCachedCommentCount(id);
+        if (isMounted) {
+          setCommentCount(nextCount);
+        }
         return;
       }
       try {
-        const [likeStatus, commentList] = await Promise.all([
+        const [likeStatus, nextCount] = await Promise.all([
           isPostLiked(user.username, id),
-          getCommentsByPostId(id),
+          getCachedCommentCount(id),
         ]);
-        const safeComments = Array.isArray(commentList) ? commentList : [];
         if (isMounted) {
           const pending = likeMutationRef.current;
           if (!pending || Date.now() - pending.ts >= 1500) {
             setIsLiked(likeStatus.status);
           }
-          setCommentCount(safeComments.length);
+          setCommentCount(nextCount);
         }
       } catch {
         if (isMounted) {
           setIsLiked(false);
+          const nextCount = await getCachedCommentCount(id);
+          setCommentCount(nextCount);
         }
       }
     };
@@ -261,30 +334,47 @@ export function Post({
   }, [id, user?.username]);
 
   const handleToggleLike = async () => {
-    if (!user?.username || isLikeUpdating) {
+    if (!user?.username) {
+      return;
+    }
+
+    let nextLiked = false;
+    let nextLikes = 0;
+
+    setIsLiked((prev) => {
+      nextLiked = !prev;
+      return nextLiked;
+    });
+    setLikeCount((prev) => {
+      nextLikes = Math.max(0, prev + (nextLiked ? 1 : -1));
+      return nextLikes;
+    });
+
+    emitPostStats(id, { likes: nextLikes, isLiked: nextLiked });
+    likeMutationRef.current = { value: nextLiked, ts: Date.now() };
+    desiredLikeRef.current = nextLiked;
+
+    if (isLikeUpdating) {
       return;
     }
 
     setIsLikeUpdating(true);
-    const prevLiked = isLiked;
-    const prevLikes = likeCount;
     try {
-      const nextLiked = !prevLiked;
-      const nextLikes = Math.max(0, prevLikes + (nextLiked ? 1 : -1));
-      setIsLiked(nextLiked);
-      setLikeCount(nextLikes);
-      emitPostStats(id, { likes: nextLikes, isLiked: nextLiked });
-      likeMutationRef.current = { value: nextLiked, ts: Date.now() };
+      while (desiredLikeRef.current !== null) {
+        const targetLiked = desiredLikeRef.current;
+        desiredLikeRef.current = null;
 
-      if (nextLiked) {
-        await likePost(user.username, id);
-      } else {
-        await unlikePost(user.username, id);
+        if (targetLiked) {
+          await likePost(user.username, id);
+        } else {
+          await unlikePost(user.username, id);
+        }
       }
     } catch {
-      setIsLiked(prevLiked);
-      setLikeCount(prevLikes);
-      emitPostStats(id, { likes: prevLikes, isLiked: prevLiked });
+      try {
+        const serverStatus = await isPostLiked(user.username, id);
+        setIsLiked(serverStatus.status);
+      } catch {}
     } finally {
       likeMutationRef.current = null;
       setIsLikeUpdating(false);
@@ -292,22 +382,38 @@ export function Post({
   };
 
   const handleToggleSave = async () => {
+    let nextSaved = false;
+    let nextCount = 0;
+
+    setIsSavedLocal((prev) => {
+      nextSaved = !prev;
+      return nextSaved;
+    });
+    setSaveCount((prev) => {
+      nextCount = Math.max(0, prev + (nextSaved ? 1 : -1));
+      return nextCount;
+    });
+
+    saveMutationRef.current = { value: nextSaved, ts: Date.now() };
+    desiredSaveRef.current = nextSaved;
+
     if (isSaving) {
       return;
     }
-    const wasSaved = isSavedLocal;
-    const prevCount = saveCount;
-    const nextSaved = !wasSaved;
-    const nextCount = Math.max(0, saveCount + (nextSaved ? 1 : -1));
+
     setIsSaving(true);
     try {
-      setSaveCount(nextCount);
-      setIsSavedLocal(nextSaved);
-      saveMutationRef.current = { value: nextSaved, ts: Date.now() };
-      await toggleSave(id);
+      while (desiredSaveRef.current !== null) {
+        const targetSaved = desiredSaveRef.current;
+        desiredSaveRef.current = null;
+        const currentlySaved = isSaved(id);
+        if (targetSaved !== currentlySaved) {
+          await toggleSave(id);
+        }
+      }
     } catch {
-      setSaveCount(prevCount);
-      setIsSavedLocal(wasSaved);
+      const restoredSaved = isSaved(id);
+      setIsSavedLocal(restoredSaved);
     } finally {
       saveMutationRef.current = null;
       setIsSaving(false);
@@ -595,9 +701,9 @@ export function Post({
               disabled={isUpdating}
             >
               {isUpdating ? (
-                <ActivityIndicator size="small" color={colors.accent} />
+                <ActivityIndicator size="small" color={colors.onTint} />
               ) : (
-                <ThemedText type="caption" style={{ color: colors.accent }}>
+                <ThemedText type="caption" style={{ color: colors.onTint }}>
                   Save
                 </ThemedText>
               )}
@@ -734,9 +840,11 @@ const styles = StyleSheet.create({
   },
   detailsBlock: {
     gap: 8,
+    minHeight: 98,
   },
   footer: {
     gap: 4,
+    minHeight: 42,
   },
   footerActionsRow: {
     flexDirection: "row",
@@ -759,9 +867,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  actionTouch: {
+    minHeight: 34,
+    minWidth: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  actionShell: {
+    borderRadius: 8,
+    justifyContent: "center",
+  },
   actionPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
+    opacity: 0.78,
   },
   editBlock: {
     gap: 10,

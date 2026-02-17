@@ -70,10 +70,11 @@ export function SavedStreamsProvider({
   const isSaved = (projectId: number) => savedProjectIds.includes(projectId);
 
   const toggleSave = async (projectId: number) => {
-    const isAlreadySaved = savedProjectIds.includes(projectId);
+    const previousIds = savedProjectIds;
+    const isAlreadySaved = previousIds.includes(projectId);
     const nextIds = isAlreadySaved
-      ? normalizeIds(savedProjectIds.filter((id) => id !== projectId))
-      : normalizeIds([...savedProjectIds, projectId]);
+      ? normalizeIds(previousIds.filter((id) => id !== projectId))
+      : normalizeIds([...previousIds, projectId]);
     setSavedProjectIds(nextIds);
     if (user?.username) {
       try {
@@ -83,12 +84,12 @@ export function SavedStreamsProvider({
           await followProject(user.username, projectId);
         }
       } catch {
-        setSavedProjectIds(savedProjectIds);
+        setSavedProjectIds(previousIds);
       }
       return;
     }
 
-    SecureStore.setItemAsync(SAVED_STREAMS_KEY, JSON.stringify(nextIds));
+    await SecureStore.setItemAsync(SAVED_STREAMS_KEY, JSON.stringify(nextIds));
   };
 
   const removeSavedProjectIds = async (projectIds: number[]) => {
@@ -105,7 +106,7 @@ export function SavedStreamsProvider({
     setSavedProjectIds((prev) => {
       const next = normalizeIds(prev.filter((id) => !projectIds.includes(id)));
       if (!user?.username) {
-        SecureStore.setItemAsync(SAVED_STREAMS_KEY, JSON.stringify(next));
+        void SecureStore.setItemAsync(SAVED_STREAMS_KEY, JSON.stringify(next));
       }
       return next;
     });

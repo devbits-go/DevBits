@@ -66,9 +66,10 @@ export function FloatingScrollTopButton({
     >
       <Pressable
         onPress={handlePress}
-        style={[
+        style={({ pressed }) => [
           styles.button,
           { backgroundColor: colors.surface, borderColor: colors.border },
+          pressed && styles.pressed,
         ]}
       >
         <Feather name="arrow-up" size={18} color={colors.tint} />
@@ -90,5 +91,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.96 }],
   },
 });

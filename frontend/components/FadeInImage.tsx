@@ -1,32 +1,87 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, ImageProps } from "react-native";
+import { Animated, Image, ImageProps } from "react-native";
+import { usePreferences } from "@/contexts/PreferencesContext";
+import { useMotionConfig } from "@/hooks/useMotionConfig";
 
 type FadeInImageProps = ImageProps & {
   duration?: number;
 };
 
+const prefetchedImageSources = new Set<string>();
+
 export function FadeInImage({
-  duration = 150,
+  duration = 180,
   onLoad,
   onError,
   onLoadEnd,
   style,
   ...props
 }: FadeInImageProps) {
-  const opacity = useRef(new Animated.Value(0.08)).current;
+  const { preferences } = usePreferences();
+  const motion = useMotionConfig();
+  const shouldAnimate =
+    preferences.imageRevealEffect === "smooth" && !motion.prefersReducedMotion;
+  const opacity = useRef(new Animated.Value(shouldAnimate ? 0.06 : 1)).current;
+  const scale = useRef(new Animated.Value(shouldAnimate ? 1.015 : 1)).current;
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasRevealedRef = useRef(false);
+  const sourceUri =
+    typeof props.source === "object" &&
+    props.source !== null &&
+    "uri" in props.source
+      ? (props.source.uri ?? "")
+      : "";
 
   useEffect(() => {
+    hasRevealedRef.current = false;
+    if (!shouldAnimate) {
+      opacity.setValue(1);
+      scale.setValue(1);
+      hasRevealedRef.current = true;
+      return;
+    }
+    opacity.setValue(0.06);
+    scale.setValue(1.015);
+  }, [opacity, scale, shouldAnimate, sourceUri]);
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      opacity.setValue(1);
+      scale.setValue(1);
+      hasRevealedRef.current = true;
+      return;
+    }
+
+    if (sourceUri && !prefetchedImageSources.has(sourceUri)) {
+      prefetchedImageSources.add(sourceUri);
+      void Image.prefetch(sourceUri);
+    }
+
     fallbackTimerRef.current = setTimeout(
       () => {
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: Math.max(120, duration),
-          useNativeDriver: true,
-        }).start();
+        if (!hasRevealedRef.current) {
+          hasRevealedRef.current = true;
+          Animated.parallel([
+            Animated.timing(opacity, {
+              toValue: 1,
+              duration: Math.max(140, duration),
+              useNativeDriver: true,
+            }),
+            Animated.timing(scale, {
+              toValue: 1,
+              duration: Math.max(180, duration + 20),
+              useNativeDriver: true,
+            }),
+          ]).start(({ finished }) => {
+            if (finished) {
+              opacity.setValue(1);
+              scale.setValue(1);
+            }
+          });
+        }
         fallbackTimerRef.current = null;
       },
-      Math.max(300, duration + 120),
+      Math.max(90, duration - 40),
     );
 
     return () => {
@@ -35,9 +90,16 @@ export function FadeInImage({
         fallbackTimerRef.current = null;
       }
     };
-  }, [duration, opacity]);
+  }, [duration, opacity, scale, shouldAnimate, sourceUri]);
 
   const reveal = () => {
+    if (!shouldAnimate) {
+      return;
+    }
+    if (hasRevealedRef.current) {
+      return;
+    }
+    hasRevealedRef.current = true;
     if (fallbackTimerRef.current) {
       clearTimeout(fallbackTimerRef.current);
       fallbackTimerRef.current = null;
@@ -46,7 +108,20 @@ export function FadeInImage({
       toValue: 1,
       duration,
       useNativeDriver: true,
-    }).start();
+    }).start(({ finished }) => {
+      if (finished) {
+        opacity.setValue(1);
+      }
+    });
+    Animated.timing(scale, {
+      toValue: 1,
+      duration: Math.max(180, duration + 20),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        scale.setValue(1);
+      }
+    });
   };
 
   const handleLoad: ImageProps["onLoad"] = (event) => {
@@ -70,7 +145,7 @@ export function FadeInImage({
       onLoad={handleLoad}
       onError={handleError}
       onLoadEnd={handleLoadEnd}
-      style={[style, { opacity }]}
+      style={[style, { opacity, transform: [{ scale }] }]}
     />
   );
 }

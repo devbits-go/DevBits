@@ -1,6 +1,71 @@
+param(
+    [switch]$KeepBackend
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+function Test-PortListening([int]$Port) {
+    try {
+        $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop | Select-Object -First 1
+        return $null -ne $listener
+    }
+    catch {
+        $netstatMatch = netstat -ano | Select-String -Pattern (":$Port\s+.*LISTENING") -SimpleMatch:$false
+        return $null -ne $netstatMatch
+    }
+}
+
+function Get-ListeningProcessName([int]$Port) {
+    try {
+        $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop | Select-Object -First 1
+        if ($null -eq $listener) {
+            return $null
+        }
+        $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+        if ($process) {
+            return "$($process.ProcessName) (PID $($process.Id))"
+        }
+        return "PID $($listener.OwningProcess)"
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-ListeningProcess([int]$Port) {
+    try {
+        $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop | Select-Object -First 1
+        if ($null -eq $listener) {
+            return $null
+        }
+        $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+        if ($process) {
+            return [PSCustomObject]@{
+                Id   = $process.Id
+                Name = $process.ProcessName
+            }
+        }
+        return [PSCustomObject]@{
+            Id   = $listener.OwningProcess
+            Name = "unknown"
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-BackendHealthy {
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:8080/health" -UseBasicParsing -TimeoutSec 3
+        return $response.StatusCode -eq 200 -and $response.Content -match "API is running"
+    }
+    catch {
+        return $false
+    }
+}
 
 function Resolve-AndroidSdkPath {
     $candidates = @()
@@ -146,7 +211,61 @@ if ($androidSdkPath) {
 
 $frontendCommand = "${frontendEnv}npm run frontend"
 
-Start-Process powershell -WorkingDirectory "$root\backend" -ArgumentList "-NoExit", "-Command", $backendCommand
+$backendHealthy = Test-BackendHealthy
+$portInUse = Test-PortListening 8080
+
+$startBackend = $true
+
+if ($portInUse) {
+    $ownerInfo = Get-ListeningProcess 8080
+    $ownerLabel = if ($ownerInfo) { "$($ownerInfo.Name) (PID $($ownerInfo.Id))" } else { "unknown process" }
+
+    if ($KeepBackend -and $backendHealthy) {
+        Write-Host "Backend is healthy on http://localhost:8080; keeping existing process ($ownerLabel)." -ForegroundColor Yellow
+        $startBackend = $false
+    }
+    elseif ($ownerInfo -and ($ownerInfo.Name -match "^(api|go)$")) {
+        if ($backendHealthy) {
+            Write-Host "Restarting existing backend process on port 8080 ($ownerLabel)..." -ForegroundColor Yellow
+        }
+        else {
+            Write-Warning "Port 8080 is occupied by stale $ownerLabel and /health failed. Restarting backend process."
+        }
+
+        try {
+            Stop-Process -Id $ownerInfo.Id -Force -ErrorAction Stop
+            Start-Sleep -Milliseconds 700
+        }
+        catch {
+            Write-Warning "Could not stop $ownerLabel."
+        }
+
+        if (Test-PortListening 8080) {
+            Write-Warning "Port 8080 is still busy after stop attempt. Backend start aborted."
+            $startBackend = $false
+        }
+    }
+    elseif ($backendHealthy) {
+        Write-Host "Backend healthy on port 8080 via $ownerLabel; leaving existing service running." -ForegroundColor Yellow
+        $startBackend = $false
+    }
+    else {
+        Write-Warning "Port 8080 is in use by $ownerLabel, and /health failed. Backend was not started to avoid killing unrelated processes."
+        $startBackend = $false
+    }
+}
+
+if ($startBackend) {
+    Write-Host "Starting backend..." -ForegroundColor Yellow
+    $backendProcess = Start-Process powershell -WorkingDirectory "$root\backend" -ArgumentList "-NoExit", "-Command", $backendCommand -PassThru
+    Start-Sleep -Seconds 2
+    if (Test-BackendHealthy) {
+        Write-Host "Backend started successfully (PID $($backendProcess.Id))." -ForegroundColor Green
+    }
+    else {
+        Write-Warning "Backend process launched (PID $($backendProcess.Id)) but /health is not responding yet. Check the backend terminal window for errors."
+    }
+}
 Start-Process powershell -WorkingDirectory "$root\frontend" -ArgumentList "-NoExit", "-Command", $frontendCommand
 
 if ($androidSdkPath) {

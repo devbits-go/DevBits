@@ -24,6 +24,87 @@ type ProjectCardProps = {
   onSavedChange?: (saved: boolean) => void;
 };
 
+type RetroActionButtonProps = {
+  icon: keyof typeof Feather.glyphMap;
+  label: string | number;
+  active?: boolean;
+  onPress: () => void;
+};
+
+function RetroActionButton({
+  icon,
+  label,
+  active,
+  onPress,
+}: RetroActionButtonProps) {
+  const colors = useAppColors();
+  const scale = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(active ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(glowAnim, {
+      toValue: active ? 1 : 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  }, [active, glowAnim]);
+
+  const animateTo = (toValue: number) => {
+    Animated.spring(scale, {
+      toValue,
+      speed: 22,
+      bounciness: 5,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.metaItem,
+        {
+          shadowColor: colors.tint,
+          shadowOpacity: glowAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.05, 0.32],
+          }) as unknown as number,
+          shadowRadius: glowAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [2, 8],
+          }) as unknown as number,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: active ? 3 : 1,
+        },
+      ]}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Pressable
+          hitSlop={10}
+          onPressIn={() => animateTo(0.94)}
+          onPressOut={() => animateTo(1)}
+          onPress={onPress}
+          style={({ pressed }) => [
+            styles.metaTouch,
+            pressed && styles.metaPressed,
+          ]}
+        >
+          <Feather
+            name={icon}
+            size={15}
+            color={active ? colors.tint : colors.muted}
+          />
+          <ThemedText
+            type="caption"
+            style={{ color: active ? colors.tint : colors.muted }}
+          >
+            {label}
+          </ThemedText>
+        </Pressable>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
 export function ProjectCard({
   project,
   variant = "compact",
@@ -44,6 +125,8 @@ export function ProjectCard({
   const [isSaving, setIsSaving] = useState(false);
   const [saveCount, setSaveCount] = useState(project.saves ?? 0);
   const likeMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
+  const desiredLikeRef = useRef<boolean | null>(null);
+  const desiredSaveRef = useRef<boolean | null>(null);
   const pendingEmitRef = useRef<{
     likes?: number;
     saves?: number;
@@ -104,34 +187,48 @@ export function ProjectCard({
   }, [project.id, saved, user?.username]);
 
   const handleLikeToggle = async () => {
-    if (!user?.username || isUpdating) {
+    if (!user?.username) {
       return;
     }
-    setIsUpdating(true);
+
     const nextLiked = !isLiked;
     const nextLikes = Math.max(0, likeCount + (nextLiked ? 1 : -1));
     likeMutationRef.current = { value: nextLiked, ts: Date.now() };
     setIsLiked(nextLiked);
     setLikeCount(nextLikes);
+    desiredLikeRef.current = nextLiked;
     pendingEmitRef.current = {
       ...(pendingEmitRef.current ?? {}),
       likes: nextLikes,
       isLiked: nextLiked,
     };
+
+    if (isUpdating) {
+      return;
+    }
+
+    setIsUpdating(true);
     try {
-      if (nextLiked) {
-        await likeProject(user.username, project.id);
-      } else {
-        await unlikeProject(user.username, project.id);
+      while (desiredLikeRef.current !== null) {
+        const targetLiked = desiredLikeRef.current;
+        desiredLikeRef.current = null;
+
+        if (targetLiked) {
+          await likeProject(user.username, project.id);
+        } else {
+          await unlikeProject(user.username, project.id);
+        }
       }
     } catch {
-      const rollbackLikes = likeCount;
-      setIsLiked(isLiked);
-      setLikeCount(rollbackLikes);
+      try {
+        const status = await isProjectLiked(user.username, project.id);
+        setIsLiked(status.status);
+      } catch {}
+      const rollbackLikes = Math.max(0, likeCount);
       pendingEmitRef.current = {
         ...(pendingEmitRef.current ?? {}),
         likes: rollbackLikes,
-        isLiked,
+        isLiked: isLiked,
       };
     } finally {
       setIsUpdating(false);
@@ -139,28 +236,41 @@ export function ProjectCard({
   };
 
   const handleSaveToggle = async () => {
-    if (!user?.username || isSaving) {
+    if (!user?.username) {
       return;
     }
-    setIsSaving(true);
     const nextSaved = !isSaved;
     const nextCount = Math.max(0, saveCount + (nextSaved ? 1 : -1));
     setIsSaved(nextSaved);
     setSaveCount(nextCount);
+    desiredSaveRef.current = nextSaved;
     pendingEmitRef.current = {
       ...(pendingEmitRef.current ?? {}),
       saves: nextCount,
     };
+
+    if (isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      await toggleSave(project.id);
-      onSavedChange?.(nextSaved);
+      while (desiredSaveRef.current !== null) {
+        const targetSaved = desiredSaveRef.current;
+        desiredSaveRef.current = null;
+        const currentlySaved = isStreamSaved(project.id);
+        if (targetSaved !== currentlySaved) {
+          await toggleSave(project.id);
+          onSavedChange?.(targetSaved);
+        }
+      }
     } catch {
       const fallbackSaved = isStreamSaved(project.id);
       setIsSaved(fallbackSaved);
-      setSaveCount(saveCount);
+      setSaveCount(Math.max(0, saveCount));
       pendingEmitRef.current = {
         ...(pendingEmitRef.current ?? {}),
-        saves: saveCount,
+        saves: Math.max(0, saveCount),
       };
     } finally {
       setIsSaving(false);
@@ -254,53 +364,19 @@ export function ProjectCard({
         </View>
         <View style={styles.metaRow}>
           <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.metaItem,
-                isLiked && {
-                  shadowColor: colors.tint,
-                  shadowOpacity: 0.35,
-                  shadowRadius: 6,
-                  shadowOffset: { width: 0, height: 0 },
-                  elevation: 2,
-                },
-                pressed && styles.metaPressed,
-              ]}
+            <RetroActionButton
+              icon="heart"
+              label={likeCount}
+              active={isLiked}
               onPress={handleLikeToggle}
-            >
-              <Feather
-                name="heart"
-                size={14}
-                color={isLiked ? colors.tint : colors.muted}
-              />
-              <ThemedText
-                type="caption"
-                style={{ color: isLiked ? colors.tint : colors.muted }}
-              >
-                {likeCount}
-              </ThemedText>
-            </Pressable>
-          </Animated.View>
-          <Pressable
-            style={({ pressed }) => [
-              styles.metaItem,
-              pressed && styles.metaPressed,
-            ]}
-            onPress={handleSaveToggle}
-            disabled={false}
-          >
-            <Feather
-              name="bookmark"
-              size={14}
-              color={isSaved ? colors.tint : colors.muted}
             />
-            <ThemedText
-              type="caption"
-              style={{ color: isSaved ? colors.tint : colors.muted }}
-            >
-              {saveCount}
-            </ThemedText>
-          </Pressable>
+          </Animated.View>
+          <RetroActionButton
+            icon="bookmark"
+            label={saveCount}
+            active={isSaved}
+            onPress={handleSaveToggle}
+          />
           <View style={styles.metaItem}>
             <Feather name="clock" size={14} color={colors.muted} />
             <ThemedText type="caption" style={{ color: colors.muted }}>
@@ -360,19 +436,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
+    minHeight: 24,
   },
   metaRow: {
     flexDirection: "row",
     gap: 12,
     flexWrap: "wrap",
+    minHeight: 34,
   },
   metaItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
+  metaTouch: {
+    minHeight: 34,
+    minWidth: 44,
+    paddingHorizontal: 4,
+    justifyContent: "center",
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
   metaPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
+    opacity: 0.78,
   },
 });

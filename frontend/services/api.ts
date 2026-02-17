@@ -19,15 +19,47 @@ import {
 const userCache = new Map<number, ApiUser>();
 const projectCache = new Map<number, ApiProject>();
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
+const MAX_USER_CACHE_ENTRIES = 300;
+const MAX_PROJECT_CACHE_ENTRIES = 300;
+const MAX_INFLIGHT_GET_ENTRIES = 200;
 let authToken: string | null = null;
 
+const trimMapToSize = <K, V>(map: Map<K, V>, maxEntries: number) => {
+  if (map.size <= maxEntries) {
+    return;
+  }
+  const excess = map.size - maxEntries;
+  let removed = 0;
+  for (const key of map.keys()) {
+    map.delete(key);
+    removed += 1;
+    if (removed >= excess) {
+      break;
+    }
+  }
+};
+
+const setWithLimit = <K, V>(map: Map<K, V>, key: K, value: V, maxEntries: number) => {
+  if (map.has(key)) {
+    map.delete(key);
+  }
+  map.set(key, value);
+  trimMapToSize(map, maxEntries);
+};
+
 export const setAuthToken = (token: string | null) => {
+  const changed = authToken !== token;
   authToken = token;
+  if (changed) {
+    clearApiCache();
+    inFlightGetRequests.clear();
+  }
 };
 
 export const clearApiCache = () => {
   userCache.clear();
   projectCache.clear();
+  inFlightGetRequests.clear();
 };
 
 const getHostFromUri = (uri?: string | null) => {
@@ -131,7 +163,12 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const pending = execute().finally(() => {
     inFlightGetRequests.delete(inFlightKey);
   });
-  inFlightGetRequests.set(inFlightKey, pending as Promise<unknown>);
+  setWithLimit(
+    inFlightGetRequests,
+    inFlightKey,
+    pending as Promise<unknown>,
+    MAX_INFLIGHT_GET_ENTRIES,
+  );
   return pending;
 };
 
@@ -206,7 +243,7 @@ export const getUserById = async (userId: number) => {
     return userCache.get(userId)!;
   }
   const user = await request<ApiUser>(`/users/id/${userId}`);
-  userCache.set(userId, user);
+  setWithLimit(userCache, userId, user, MAX_USER_CACHE_ENTRIES);
   return user;
 };
 
@@ -218,7 +255,7 @@ export const getProjectById = async (projectId: number) => {
     return projectCache.get(projectId)!;
   }
   const project = await request<ApiProject>(`/projects/${projectId}`);
-  projectCache.set(projectId, project);
+  setWithLimit(projectCache, projectId, project, MAX_PROJECT_CACHE_ENTRIES);
   return project;
 };
 

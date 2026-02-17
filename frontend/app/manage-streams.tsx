@@ -91,7 +91,7 @@ export default function ManageStreamsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const toOneLine = (value: string) => value.replace(/\s+/g, " ").trim();
   const inlineMarkdownRules = {
@@ -792,7 +792,7 @@ export default function ManageStreamsScreen() {
                           >
                             <ThemedText
                               type="caption"
-                              style={{ color: colors.accent }}
+                              style={{ color: colors.onTint }}
                             >
                               Save
                             </ThemedText>
@@ -987,6 +987,9 @@ const styles = StyleSheet.create({
   },
   previewBlock: {
     gap: 8,
+  },
+  editBlock: {
+    gap: 10,
   },
   inlineCode: {
     fontFamily: "SpaceMono",

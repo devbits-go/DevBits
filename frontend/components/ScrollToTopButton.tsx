@@ -27,7 +27,7 @@ const ScrollToTopButton: React.FC<ScrollToTopButtonProps> = ({
       onPress={scrollToTop}
       activeOpacity={1}
     >
-      <Feather name="arrow-up" color={colors.accent} size={20} />
+      <Feather name="arrow-up" color={colors.onTint} size={20} />
     </TouchableOpacity>
   );
 };

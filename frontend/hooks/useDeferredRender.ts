@@ -4,9 +4,14 @@ import { useEffect, useState } from "react";
 type DeferredOptions = {
   enabled?: boolean;
   delayMs?: number;
+  deferUntilInteractions?: boolean;
 };
 
-export function useDeferredRender({ enabled = true, delayMs = 0 }: DeferredOptions = {}) {
+export function useDeferredRender({
+  enabled = true,
+  delayMs = 0,
+  deferUntilInteractions = false,
+}: DeferredOptions = {}) {
   const [ready, setReady] = useState(!enabled);
 
   useEffect(() => {
@@ -15,9 +20,10 @@ export function useDeferredRender({ enabled = true, delayMs = 0 }: DeferredOptio
       return;
     }
 
+    setReady(false);
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
-    const task = InteractionManager.runAfterInteractions(() => {
+    const runReady = () => {
       if (cancelled) {
         return;
       }
@@ -30,16 +36,28 @@ export function useDeferredRender({ enabled = true, delayMs = 0 }: DeferredOptio
         return;
       }
       setReady(true);
-    });
+    };
+
+    let rafId: number | null = null;
+    const task = deferUntilInteractions
+      ? InteractionManager.runAfterInteractions(runReady)
+      : null;
+
+    if (!deferUntilInteractions) {
+      rafId = requestAnimationFrame(runReady);
+    }
 
     return () => {
       cancelled = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       if (timeout) {
         clearTimeout(timeout);
       }
       task?.cancel?.();
     };
-  }, [delayMs, enabled]);
+  }, [deferUntilInteractions, delayMs, enabled]);
 
   return ready;
 }

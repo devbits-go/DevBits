@@ -65,8 +65,20 @@ export interface UserSettings {
     refreshIntervalMs: number;
     zenMode: boolean;
     compactMode: boolean;
+    textRenderEffect?: "smooth" | "typewriter" | "wave" | "random" | "off";
+    imageRevealEffect?: "smooth" | "off";
     accentColor: string;
+    rgbShiftEnabled?: boolean;
+    rgbShiftSpeedMs?: number;
+    rgbShiftTickMs?: number;
+    rgbShiftStep?: number;
+    rgbShiftTheme?: "rainbow" | "ocean" | "sunset" | "neon" | "user1" | "user2";
+    rgbUserTheme1?: string[];
+    rgbUserTheme2?: string[];
+    visualizationMode?: "monoAccent" | "retro" | "classic" | "vivid" | "neon" | "cinematic" | "frost";
+    visualizationIntensity?: number;
     linkOpenMode: "asTyped" | "promptScheme";
+    hasSeenWelcomeTour?: boolean;
 }
 
 export interface AuthLoginRequest {

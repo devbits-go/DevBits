@@ -57,10 +57,11 @@ export function SavedProvider({ children }: { children: React.ReactNode }) {
   const isSaved = (postId: number) => savedPostIds.includes(postId);
 
   const toggleSave = async (postId: number) => {
-    const isAlreadySaved = savedPostIds.includes(postId);
+    const previousIds = savedPostIds;
+    const isAlreadySaved = previousIds.includes(postId);
     const nextIds = isAlreadySaved
-      ? savedPostIds.filter((id) => id !== postId)
-      : [...savedPostIds, postId];
+      ? previousIds.filter((id) => id !== postId)
+      : [...previousIds, postId];
     setSavedPostIds(nextIds);
     if (user?.username) {
       try {
@@ -70,12 +71,12 @@ export function SavedProvider({ children }: { children: React.ReactNode }) {
           await savePost(user.username, postId);
         }
       } catch {
-        setSavedPostIds(savedPostIds);
+        setSavedPostIds(previousIds);
       }
       return;
     }
 
-    SecureStore.setItemAsync(SAVED_KEY, JSON.stringify(nextIds));
+    await SecureStore.setItemAsync(SAVED_KEY, JSON.stringify(nextIds));
   };
 
   const value = useMemo(
