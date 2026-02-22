@@ -64,8 +64,8 @@ try {
         }
 
         $terminateSql = "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$dbName' AND pid <> pg_backend_pid();"
-        $dropDbSql = "DROP DATABASE IF EXISTS \"$dbName\";"
-        $createDbSql = "CREATE DATABASE \"$dbName\";"
+        $dropDbSql = "DROP DATABASE IF EXISTS `"$dbName`;"
+        $createDbSql = "CREATE DATABASE `"$dbName`;"
 
         docker compose exec -T db psql -U $dbUser -d postgres -c $terminateSql
         if ($LASTEXITCODE -ne 0) {
