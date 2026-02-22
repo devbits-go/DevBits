@@ -1,0 +1,1362 @@
+import React, { useEffect, useMemo, useState } from "react";
+import Markdown from "react-native-markdown-display";
+import * as Linking from "expo-linking";
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { WebView } from "react-native-webview";
+import { Collapsible } from "@/components/Collapsible";
+import { FadeInImage } from "@/components/FadeInImage";
+import { useAppColors } from "@/hooks/useAppColors";
+import { usePreferences } from "@/contexts/PreferencesContext";
+import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { API_BASE_URL, resolveMediaUrl } from "@/services/api";
+
+type MarkdownTextProps = {
+  children: string;
+  compact?: boolean;
+  preferStatic?: boolean;
+};
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+
+const stripMarkdownImageTitle = (value: string) => {
+  const match = value.match(/^(.+?)\s+(?:"[^"]*"|'[^']*')\s*$/);
+  return match ? match[1].trim() : value;
+};
+
+const sanitizeImageInput = (value: string) =>
+  stripMarkdownImageTitle(
+    value
+      .trim()
+      .replace(/^<+|>+$/g, "")
+      .replace(/^['"]+|['"]+$/g, "")
+      .replace(/\\([()])/g, "$1")
+      .replace(/&amp;/g, "&")
+      .trim(),
+  );
+
+const rewriteLocalhostToApiBase = (url: URL) => {
+  const host = url.hostname.toLowerCase();
+  if (!LOCAL_HOSTS.has(host)) {
+    return url;
+  }
+
+  try {
+    const apiUrl = new URL(API_BASE_URL);
+    const next = new URL(url.toString());
+    next.protocol = apiUrl.protocol;
+    next.hostname = apiUrl.hostname;
+    next.port = apiUrl.port;
+    return next;
+  } catch {
+    return url;
+  }
+};
+
+const normalizeImageSourceUrl = (value: string) => {
+  const source = sanitizeImageInput(value);
+  if (!source) {
+    return "";
+  }
+
+  if (/^data:image\//i.test(source)) {
+    return source;
+  }
+
+  if (/^\/?uploads\//i.test(source)) {
+    return resolveMediaUrl(source.startsWith("/") ? source : `/${source}`);
+  }
+
+  if (source.startsWith("./") || source.startsWith("../")) {
+    return resolveMediaUrl(source.replace(/^\.?\//, "/"));
+  }
+
+  if (source.startsWith("/")) {
+    try {
+      // Convert absolute-path references to full API URLs so fetch() and Image URI
+      // consumers have a valid absolute URL (avoids "Invalid URL: /path" errors).
+      return `${API_BASE_URL}${source}`;
+    } catch {
+      return "";
+    }
+  }
+
+  const candidate = source.startsWith("//")
+    ? `https:${source}`
+    : source.startsWith("www.")
+      ? `https://${source}`
+      : source;
+
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(candidate)) {
+    return resolveMediaUrl(`/${candidate.replace(/^\/+/, "")}`);
+  }
+
+  try {
+    const parsed = rewriteLocalhostToApiBase(new URL(candidate));
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return "";
+    }
+
+    if (parsed.hostname !== "github.com") {
+      return parsed.toString();
+    }
+
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const blobIndex = segments.indexOf("blob");
+    const rawIndex = segments.indexOf("raw");
+
+    if (segments.length >= 5 && blobIndex === 2) {
+      const [owner, repo, , branch, ...asset] = segments;
+      if (owner && repo && branch && asset.length > 0) {
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${asset.join("/")}`;
+      }
+    }
+
+    if (segments.length >= 5 && rawIndex === 2) {
+      const [owner, repo, , branch, ...asset] = segments;
+      if (owner && repo && branch && asset.length > 0) {
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${asset.join("/")}`;
+      }
+    }
+
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+};
+
+const isSvgUrl = (value: string) => {
+  const clean = value.split("?")[0].split("#")[0].toLowerCase();
+  return clean.endsWith(".svg");
+};
+
+const parseSvgAspectRatio = (svg: string) => {
+  const viewBoxMatch = svg.match(
+    /viewBox\s*=\s*["']\s*([\d.+-]+)[\s,]+([\d.+-]+)[\s,]+([\d.+-]+)[\s,]+([\d.+-]+)\s*["']/i,
+  );
+  if (viewBoxMatch) {
+    const width = Number(viewBoxMatch[3]);
+    const height = Number(viewBoxMatch[4]);
+    if (
+      width > 0 &&
+      height > 0 &&
+      Number.isFinite(width) &&
+      Number.isFinite(height)
+    ) {
+      return width / height;
+    }
+  }
+
+  const widthMatch = svg.match(
+    /\bwidth\s*=\s*["']\s*([\d.+-]+)(?:px)?\s*["']/i,
+  );
+  const heightMatch = svg.match(
+    /\bheight\s*=\s*["']\s*([\d.+-]+)(?:px)?\s*["']/i,
+  );
+  const width = widthMatch ? Number(widthMatch[1]) : NaN;
+  const height = heightMatch ? Number(heightMatch[1]) : NaN;
+  if (
+    width > 0 &&
+    height > 0 &&
+    Number.isFinite(width) &&
+    Number.isFinite(height)
+  ) {
+    return width / height;
+  }
+
+  return 16 / 9;
+};
+
+type InlineCodeScope = "callout" | "blockquote" | null;
+
+const InlineCodeContext = React.createContext<{ scope: InlineCodeScope }>({
+  scope: null,
+});
+
+const imageAspectRatioCache = new Map<string, number>();
+
+function AnimatedMarkdownBlock({
+  children,
+  index,
+  enabled,
+  mode,
+}: {
+  children: React.ReactNode;
+  index: number;
+  enabled: boolean;
+  mode: "smooth" | "typewriter" | "wave" | "random" | "off";
+}) {
+  const opacity = React.useRef(new Animated.Value(enabled ? 0 : 1)).current;
+  const translateY = React.useRef(new Animated.Value(enabled ? 10 : 0)).current;
+  const scale = React.useRef(new Animated.Value(enabled ? 0.996 : 1)).current;
+  const hasAnimatedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!enabled) {
+      hasAnimatedRef.current = true;
+      opacity.setValue(1);
+      translateY.setValue(0);
+      scale.setValue(1);
+      return;
+    }
+
+    if (hasAnimatedRef.current) {
+      return;
+    }
+
+    const staggerSeed = mode === "random" ? (index * 37) % 5 : index;
+    const delay = Math.min(260, staggerSeed * 34);
+    const duration = mode === "typewriter" ? 300 : mode === "wave" ? 260 : 220;
+
+    opacity.setValue(0.04);
+    translateY.setValue(10);
+    scale.setValue(0.996);
+
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: duration + 30,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished) {
+        return;
+      }
+      hasAnimatedRef.current = true;
+      opacity.setValue(1);
+      translateY.setValue(0);
+      scale.setValue(1);
+    });
+  }, [enabled, index, mode, opacity, scale, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }, { scale }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+export function MarkdownText({
+  children,
+  compact = false,
+  preferStatic = false,
+}: MarkdownTextProps) {
+  const colors = useAppColors();
+  const { preferences } = usePreferences();
+  const motion = useMotionConfig();
+  const { width: windowWidth } = useWindowDimensions();
+  const [imageAspectRatios] = useState<Record<string, number>>({});
+  const isLargeDocument = children.length > 1400;
+  const useStaticRendering = preferStatic || isLargeDocument;
+  const toRgba = (hex: string, alpha: number) => {
+    const normalized = hex.replace("#", "");
+    const value =
+      normalized.length === 3
+        ? normalized
+            .split("")
+            .map((channel) => channel + channel)
+            .join("")
+        : normalized;
+    if (value.length !== 6) return hex;
+    const red = parseInt(value.slice(0, 2), 16);
+    const green = parseInt(value.slice(2, 4), 16);
+    const blue = parseInt(value.slice(4, 6), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  };
+  const linkifyText = (text: string) =>
+    text.replace(
+      /(^|\s)((?:https?:\/\/|www\.)[^\s<]+[^\s<\.)])/g,
+      (_match, prefix, url) => `${prefix}[${url}](${url})`,
+    );
+  const sanitizeGithubCallouts = (text: string) =>
+    text.replace(
+      /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*>\s*/gim,
+      "> [!$1] ",
+    );
+  const applyTaskCheckboxes = (text: string) =>
+    text.replace(
+      /(^|\n)(\s*)[-*]\s+\[( |x|X)\]\s+/g,
+      (_match, lineStart, indent, mark) =>
+        `${lineStart}${indent.replace(/\s/g, "\u00A0")}${
+          mark.trim().toLowerCase() === "x" ? "☑" : "☐"
+        }\u00A0`,
+    );
+  const normalizeListTransitions = (text: string) => {
+    const lines = text.split(/\r?\n/);
+    const result: string[] = [];
+    let prevType: "ordered" | "unordered" | null = null;
+    let prevIndent = "";
+
+    const getListInfo = (line: string) => {
+      const match = line.match(/^((?:>\s*)*)(\s*)(\d+\.|[-*+])\s+/);
+      if (!match) return null;
+      const marker = match[3];
+      return {
+        indent: `${match[1]}${match[2]}`,
+        type: /\d+\./.test(marker) ? "ordered" : "unordered",
+      } as const;
+    };
+
+    lines.forEach((line) => {
+      const info = getListInfo(line);
+      if (
+        info &&
+        prevType &&
+        info.indent === prevIndent &&
+        info.type !== prevType &&
+        result.length > 0 &&
+        result[result.length - 1].trim() !== ""
+      ) {
+        result.push("");
+      }
+      result.push(line);
+      if (info) {
+        prevType = info.type;
+        prevIndent = info.indent;
+      } else if (line.trim() === "") {
+        prevType = null;
+        prevIndent = "";
+      }
+    });
+
+    return result.join("\n");
+  };
+  const preprocessMarkdown = (text: string) =>
+    linkifyText(
+      normalizeListTransitions(
+        applyTaskCheckboxes(sanitizeGithubCallouts(text)),
+      ),
+    );
+
+  const normalizeDetailsTags = (text: string) =>
+    text
+      .replace(/&amp;lt;(\/?details[^&]*)&amp;gt;/gi, "<$1>")
+      .replace(/&amp;lt;(\/?summary[^&]*)&amp;gt;/gi, "<$1>")
+      .replace(/&lt;(\/?details[^&]*)&gt;/gi, "<$1>")
+      .replace(/&lt;(\/?summary[^&]*)&gt;/gi, "<$1>")
+      .replace(/\\<(\/?details[^>]*)>/gi, "<$1>")
+      .replace(/\\<(\/?summary[^>]*)>/gi, "<$1>");
+
+  const parseDetailsBlocks = (text: string) => {
+    const blocks: (
+      | { type: "markdown"; content: string }
+      | { type: "details"; summary: string; content: string; open: boolean }
+    )[] = [];
+    const tagRegex = /<\/?details[^>]*>/gi;
+    let cursor = 0;
+    let depth = 0;
+    let openContentStart = -1;
+    let openTagIndex = -1;
+    let openByDefault = false;
+    let match: RegExpExecArray | null = tagRegex.exec(text);
+
+    while (match) {
+      const tag = match[0];
+      const isClose = tag.startsWith("</");
+      if (!isClose) {
+        if (depth === 0) {
+          if (match.index > cursor) {
+            blocks.push({
+              type: "markdown",
+              content: text.slice(cursor, match.index),
+            });
+          }
+          openTagIndex = match.index;
+          openContentStart = match.index + tag.length;
+          openByDefault = /<details\b[^>]*\bopen\b/i.test(tag);
+        }
+        depth += 1;
+      } else {
+        if (depth > 0) {
+          depth -= 1;
+          if (depth === 0 && openContentStart !== -1) {
+            const inner = text.slice(openContentStart, match.index);
+            const summaryMatch = inner.match(
+              /<summary[^>]*>([\s\S]*?)<\/summary>/i,
+            );
+            const summaryRaw = summaryMatch?.[1]?.trim() ?? "Details";
+            const content = summaryMatch
+              ? inner.replace(summaryMatch[0], "").trim()
+              : inner.trim();
+            blocks.push({
+              type: "details",
+              summary: summaryRaw,
+              content,
+              open: openByDefault,
+            });
+            cursor = match.index + tag.length;
+            openContentStart = -1;
+            openTagIndex = -1;
+            openByDefault = false;
+          }
+        }
+      }
+      match = tagRegex.exec(text);
+    }
+
+    if (depth > 0 && openTagIndex !== -1) {
+      blocks.push({ type: "markdown", content: text.slice(openTagIndex) });
+      return blocks;
+    }
+
+    if (cursor < text.length) {
+      blocks.push({ type: "markdown", content: text.slice(cursor) });
+    }
+
+    return blocks;
+  };
+  const openUrlSafe = async (url: string) => {
+    const trimmed = url.trim();
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      if (preferences.linkOpenMode === "promptScheme") {
+        Alert.alert("Open link", `"${trimmed}" is missing a scheme.`, [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Add http://",
+            onPress: () => void openUrlSafe(`http://${trimmed}`),
+          },
+          {
+            text: "Add https://",
+            onPress: () => void openUrlSafe(`https://${trimmed}`),
+          },
+        ]);
+        return;
+      }
+      const normalizedHost = trimmed.startsWith("www.")
+        ? trimmed
+        : `www.${trimmed}`;
+      await openUrlSafe(`https://${normalizedHost}`);
+      return;
+    }
+    const supported = await Linking.canOpenURL(trimmed);
+    if (!supported) {
+      Alert.alert("Unable to open link", trimmed);
+      return;
+    }
+    await Linking.openURL(trimmed);
+  };
+
+  const getCodeContent = (node: { content?: string; children?: any[] }) => {
+    if (typeof node.content === "string") {
+      return node.content;
+    }
+    if (Array.isArray(node.children)) {
+      return node.children.map((child) => child.content ?? "").join("");
+    }
+    return "";
+  };
+
+  // Inline code pill styles are self-contained to avoid inherited markdown styles.
+  const inlineCodeStyles = useMemo(() => {
+    const background = toRgba(colors.text, 0.08);
+    const border = toRgba(colors.text, 0.18);
+    return StyleSheet.create({
+      pill: {
+        backgroundColor: background,
+        borderColor: border,
+        borderWidth: 0.7,
+        borderRadius: 6,
+        paddingHorizontal: 1,
+        paddingVertical: 1,
+        alignSelf: "flex-start",
+        justifyContent: "center",
+      },
+      text: {
+        color: colors.tint,
+        fontFamily: "SpaceMono",
+        fontSize: 12,
+        lineHeight: 15,
+        includeFontPadding: false,
+      },
+    });
+  }, [colors.text, colors.tint]);
+
+  const renderCodeBlock = (node: {
+    key?: string;
+    content?: string;
+    children?: any[];
+  }) => {
+    const content = getCodeContent(node);
+    return (
+      <View
+        key={node.key}
+        style={[
+          styles.codeBlock,
+          { backgroundColor: colors.background, borderColor: colors.border },
+        ]}
+      >
+        <Text
+          selectable
+          style={[
+            styles.codeText,
+            {
+              color: colors.text,
+              backgroundColor: "transparent",
+            },
+          ]}
+        >
+          {content}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderImage = (node: { key?: string; attributes?: any }) => {
+    const originalSrc = String(node.attributes?.src ?? "");
+    let src = normalizeImageSourceUrl(originalSrc);
+    if (!src) {
+      src = normalizeImageSourceUrl(resolveMediaUrl(originalSrc));
+    }
+    if (!src) {
+      return null;
+    }
+    const maxWidth = Math.min(windowWidth - 32, 520);
+    return (
+      <MarkdownImage
+        key={node.key}
+        src={src}
+        maxWidth={maxWidth}
+        initialAspectRatio={imageAspectRatios[src]}
+      />
+    );
+  };
+
+  const renderLink = (
+    node: { key?: string; attributes?: any; children?: any[] },
+    children: React.ReactNode[] = [],
+  ) => {
+    const href = node.attributes?.href ?? "";
+    const hasImageChild = Array.isArray(node.children)
+      ? node.children.some((child) => child?.type === "image")
+      : false;
+
+    if (hasImageChild) {
+      return (
+        <Pressable
+          key={node.key}
+          onPress={() => void openUrlSafe(href)}
+          style={styles.imageLink}
+        >
+          {children}
+        </Pressable>
+      );
+    }
+
+    return (
+      <Text
+        key={node.key}
+        style={[styles.link, { color: colors.tint }]}
+        onPress={() => void openUrlSafe(href)}
+      >
+        {children}
+      </Text>
+    );
+  };
+
+  const extractText = (value: React.ReactNode): string => {
+    if (typeof value === "string" || typeof value === "number") {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      return value.map(extractText).join("");
+    }
+    if (React.isValidElement(value)) {
+      return extractText((value.props as any)?.children);
+    }
+    return "";
+  };
+
+  const stripPrefix = (
+    nodes: React.ReactNode,
+    prefix: string,
+  ): React.ReactNode[] => {
+    let remaining = prefix;
+    const stripNode = (node: React.ReactNode): React.ReactNode | null => {
+      if (!remaining) return node;
+      if (typeof node === "string" || typeof node === "number") {
+        const text = String(node);
+        if (text.startsWith(remaining)) {
+          const updated = text.slice(remaining.length);
+          remaining = "";
+          return updated;
+        }
+        if (remaining.startsWith(text)) {
+          remaining = remaining.slice(text.length);
+          return null;
+        }
+        return node;
+      }
+      if (React.isValidElement(node)) {
+        const childNodes = React.Children.toArray(
+          (node.props as any)?.children,
+        );
+        const updatedChildren = childNodes
+          .map(stripNode)
+          .filter((child) => child !== null);
+        return React.cloneElement(node, node.props as any, updatedChildren);
+      }
+      return node;
+    };
+
+    return React.Children.toArray(nodes)
+      .map(stripNode)
+      .filter((child) => child !== null);
+  };
+
+  const renderBlockquote = (
+    node: { key?: string },
+    children: React.ReactNode,
+  ) => {
+    const text = extractText(children);
+    const match = text.match(
+      /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i,
+    );
+    const type = match?.[1]?.toLowerCase() as
+      | "note"
+      | "tip"
+      | "important"
+      | "warning"
+      | "caution"
+      | undefined;
+    if (!type) {
+      return (
+        <View
+          key={node.key}
+          style={[
+            styles.blockquoteBase,
+            {
+              borderColor: colors.border,
+              borderLeftColor: colors.border,
+              backgroundColor: colors.surfaceAlt,
+            },
+          ]}
+        >
+          <InlineCodeContext.Provider value={{ scope: "blockquote" }}>
+            {children}
+          </InlineCodeContext.Provider>
+        </View>
+      );
+    }
+
+    const palette = calloutPalette[type];
+    const cleanedChildren = stripPrefix(children, match?.[0] ?? "");
+
+    return (
+      <View
+        key={node.key}
+        style={[
+          styles.blockquoteBase,
+          styles.calloutBase,
+          (palette as any).glow && styles.calloutGlow,
+          {
+            borderColor: palette.border,
+            borderLeftColor: palette.border,
+            backgroundColor: palette.background,
+            shadowColor: palette.border,
+          },
+        ]}
+      >
+        <Text style={[styles.calloutTitle, { color: palette.title }]}>
+          {type.charAt(0).toUpperCase() + type.slice(1)}
+        </Text>
+        <View style={styles.calloutContent}>
+          <InlineCodeContext.Provider value={{ scope: "callout" }}>
+            {cleanedChildren}
+          </InlineCodeContext.Provider>
+        </View>
+      </View>
+    );
+  };
+
+  const inlineCodeOffsets: Record<string, number> = {
+    body: 8,
+    paragraph: 1,
+    heading1: 7,
+    heading2: 8,
+    heading3: 8,
+    heading4: 7,
+    heading5: 9,
+    heading6: 10,
+    blockquote: 7.5,
+    callout: 7.5,
+  };
+  const tableTypes = new Set(["table", "thead", "tbody", "tr", "th", "td"]);
+  const blockquoteTypes = new Set(["blockquote"]);
+  const headerTypes = new Set([
+    "heading1",
+    "heading2",
+    "heading3",
+    "heading4",
+    "heading5",
+    "heading6",
+  ]);
+
+  const InlineCodePill = ({
+    content,
+    parentTypes,
+    parentType,
+    nodeParentType,
+    nodeGrandParentType,
+  }: {
+    content: string;
+    parentTypes: { type?: string }[];
+    parentType: string;
+    nodeParentType?: string;
+    nodeGrandParentType?: string;
+  }) => {
+    const { scope } = React.useContext(InlineCodeContext);
+    const headerType =
+      parentTypes.find((item) => headerTypes.has(item.type ?? ""))?.type ??
+      (nodeParentType && headerTypes.has(nodeParentType)
+        ? nodeParentType
+        : undefined) ??
+      (nodeGrandParentType && headerTypes.has(nodeGrandParentType)
+        ? nodeGrandParentType
+        : undefined);
+    const isInTable =
+      parentTypes.some((item) => tableTypes.has(item.type ?? "")) ||
+      tableTypes.has(parentType) ||
+      (nodeParentType ? tableTypes.has(nodeParentType) : false) ||
+      (nodeGrandParentType ? tableTypes.has(nodeGrandParentType) : false);
+    const isInBlockquote =
+      parentTypes.some((item) => blockquoteTypes.has(item.type ?? "")) ||
+      blockquoteTypes.has(parentType) ||
+      (nodeParentType ? blockquoteTypes.has(nodeParentType) : false) ||
+      (nodeGrandParentType ? blockquoteTypes.has(nodeGrandParentType) : false);
+    const scopedOffset =
+      scope === "callout"
+        ? inlineCodeOffsets.callout
+        : scope === "blockquote"
+          ? inlineCodeOffsets.blockquote
+          : null;
+    const translateY = isInTable
+      ? 0
+      : scopedOffset !== null
+        ? scopedOffset
+        : headerType
+          ? (inlineCodeOffsets[headerType] ?? inlineCodeOffsets.body)
+          : isInBlockquote
+            ? inlineCodeOffsets.blockquote
+            : (inlineCodeOffsets[parentType] ?? inlineCodeOffsets.body);
+    const translateStyle = translateY ? { transform: [{ translateY }] } : null;
+    return (
+      <View style={[inlineCodeStyles.pill, translateStyle]}>
+        <Text style={inlineCodeStyles.text}>{`\u00A0${content}\u00A0`}</Text>
+      </View>
+    );
+  };
+
+  const renderInlineCode = (
+    node: { key?: string; content?: string },
+    _children: React.ReactNode[] = [],
+    parent?: { type?: string } | { type?: string }[],
+  ) => {
+    const content = node.content ?? getCodeContent(node);
+    const parentTypes = Array.isArray(parent) ? parent : parent ? [parent] : [];
+    const parentType = parentTypes[0]?.type ?? "body";
+    const nodeParentType = (node as any)?.parent?.type as string | undefined;
+    const nodeGrandParentType = (node as any)?.parent?.parent?.type as
+      | string
+      | undefined;
+    return (
+      <InlineCodePill
+        key={node.key}
+        content={content}
+        parentTypes={parentTypes}
+        parentType={parentType}
+        nodeParentType={nodeParentType}
+        nodeGrandParentType={nodeGrandParentType}
+      />
+    );
+  };
+
+  const renderText = (
+    node: { key?: string; content?: string },
+    _children: React.ReactNode[] = [],
+    parent?: { type?: string } | { type?: string }[],
+    styles?: any,
+    inheritedStyles: any = {},
+  ) => {
+    const content = node.content ?? "";
+    const hasCheckbox = /[☑☐]/.test(content);
+
+    if (!hasCheckbox || !styles) {
+      return (
+        <Text key={node.key} style={[inheritedStyles, styles?.text]}>
+          {content}
+        </Text>
+      );
+    }
+    const parts = content.split(/([☑☐])/g);
+
+    return (
+      <Text key={node.key} style={[inheritedStyles, styles.text]}>
+        {parts.map((part, index) => {
+          if (part === "☑" || part === "☐") {
+            const markerColor = part === "☑" ? colors.tint : colors.muted;
+            return (
+              <Text
+                key={`${node.key}-chk-${index}`}
+                style={{ color: markerColor }}
+              >
+                {part}
+              </Text>
+            );
+          }
+          return part;
+        })}
+      </Text>
+    );
+  };
+
+  const renderStrikethrough = (
+    node: { key?: string },
+    children: React.ReactNode[] = [],
+    _parent?: { type?: string } | { type?: string }[],
+    styles?: any,
+    inheritedStyles: any = {},
+  ) => (
+    <Text key={node.key} style={[inheritedStyles, styles?.s]}>
+      {children}
+    </Text>
+  );
+
+  const renderListItem = (
+    node: { key?: string; index?: number; markup?: string },
+    children: React.ReactNode[] = [],
+    parent?:
+      | { type?: string; attributes?: any }
+      | { type?: string; attributes?: any }[],
+    mdStyles?: any,
+    inheritedStyles: any = {},
+  ) => {
+    const parents = Array.isArray(parent) ? parent : parent ? [parent] : [];
+    const isBullet = parents.some((item) => item.type === "bullet_list");
+    const isOrdered = parents.some((item) => item.type === "ordered_list");
+
+    if (isBullet && mdStyles) {
+      return (
+        <View key={node.key} style={mdStyles._VIEW_SAFE_list_item}>
+          <View
+            style={[
+              styles.bulletMarker,
+              {
+                backgroundColor: colors.tint,
+                borderColor: colors.border,
+              },
+            ]}
+          />
+          <View style={mdStyles._VIEW_SAFE_bullet_list_content}>
+            {children}
+          </View>
+        </View>
+      );
+    }
+
+    if (isOrdered && mdStyles) {
+      const orderedListIndex = parents.findIndex(
+        (item) => item.type === "ordered_list",
+      );
+      const orderedList = parents[orderedListIndex] as
+        | { attributes?: { start?: number } }
+        | undefined;
+      const listItemNumber = orderedList?.attributes?.start
+        ? orderedList.attributes.start + (node.index ?? 0)
+        : (node.index ?? 0) + 1;
+      return (
+        <View key={node.key} style={mdStyles._VIEW_SAFE_list_item}>
+          <Text style={[inheritedStyles, mdStyles.ordered_list_icon]}>
+            {listItemNumber}
+            {node.markup}
+          </Text>
+          <View style={mdStyles._VIEW_SAFE_ordered_list_content}>
+            {children}
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View key={node.key} style={mdStyles?._VIEW_SAFE_list_item}>
+        {children}
+      </View>
+    );
+  };
+
+  const markdownRules = {
+    code_inline: renderInlineCode,
+    text: renderText,
+    s: renderStrikethrough,
+    list_item: renderListItem,
+    code_block: renderCodeBlock,
+    fence: renderCodeBlock,
+    image: renderImage,
+    blockquote: renderBlockquote,
+    link: renderLink,
+  };
+
+  const bodyFontSize = compact ? 13 : 14;
+  const bodyLineHeight = compact ? 18 : 20;
+  const markdownStyle = {
+    body: {
+      color: colors.text,
+      fontSize: bodyFontSize,
+      lineHeight: bodyLineHeight,
+    },
+    heading1: {
+      color: colors.text,
+      fontSize: compact ? 18 : 20,
+      marginBottom: 6,
+    },
+    heading2: {
+      color: colors.text,
+      fontSize: compact ? 16 : 18,
+      marginBottom: 6,
+    },
+    heading3: {
+      color: colors.text,
+      fontSize: compact ? 15 : 16,
+      marginBottom: 6,
+    },
+    hr: {
+      borderBottomColor: colors.border,
+      borderBottomWidth: 1,
+      marginVertical: 16,
+    },
+    bullet_list: { paddingLeft: 12 },
+    ordered_list: { paddingLeft: 12 },
+    list_item: { marginBottom: 4 },
+    task_list_item: { marginBottom: 4 },
+    bullet_list_icon: { color: colors.tint },
+    ordered_list_icon: { color: colors.tint },
+    checkbox: {
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    table: {
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 8,
+      overflow: "hidden",
+    },
+    th: {
+      backgroundColor: colors.surfaceAlt,
+      borderColor: colors.border,
+      borderWidth: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    td: {
+      borderColor: colors.border,
+      borderWidth: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    link: { color: colors.tint },
+    paragraph: { marginTop: 1, marginBottom: 0 },
+    image: {
+      marginTop: 0,
+      marginBottom: 0,
+      alignSelf: "flex-start",
+    },
+    em: { fontStyle: "italic" },
+    strong: { fontWeight: "700" },
+    s: {
+      textDecorationLine: "line-through",
+      textDecorationStyle: "solid",
+      textDecorationColor: colors.text,
+    },
+  } as const;
+
+  const summaryMarkdownStyle = {
+    body: { color: colors.text, fontSize: 15, lineHeight: 20 },
+    paragraph: { marginTop: 0, marginBottom: 0 },
+    link: { color: colors.tint },
+    em: { fontStyle: "italic" },
+    strong: { fontWeight: "700" },
+    s: {
+      textDecorationLine: "line-through",
+      textDecorationStyle: "solid",
+      textDecorationColor: colors.text,
+    },
+  } as const;
+
+  const shouldAnimateMarkdown =
+    !useStaticRendering &&
+    !motion.prefersReducedMotion &&
+    preferences.textRenderEffect !== "off";
+  const enableBlockAnimation = shouldAnimateMarkdown;
+
+  const renderMarkdownSegments = (
+    text: string,
+    keyPrefix: string,
+    depth = 0,
+  ) => {
+    const normalized = normalizeDetailsTags(text);
+    return parseDetailsBlocks(normalized).map((block, index) => {
+      const keyBase = `${keyPrefix}-${index}`;
+      const animationIndex = depth * 10 + index;
+      if (block.type === "details") {
+        const summaryText = block.summary.replace(/\s+/g, " ").trim();
+        return (
+          <AnimatedMarkdownBlock
+            key={`details-wrap-${keyBase}`}
+            index={animationIndex}
+            enabled={enableBlockAnimation}
+            mode={preferences.textRenderEffect}
+          >
+            <Collapsible
+              key={`details-${keyBase}`}
+              title={
+                <Markdown
+                  onLinkPress={(url) => {
+                    void openUrlSafe(url);
+                    return false;
+                  }}
+                  rules={markdownRules}
+                  style={summaryMarkdownStyle}
+                >
+                  {preprocessMarkdown(summaryText)}
+                </Markdown>
+              }
+              defaultOpen={block.open}
+            >
+              <View style={styles.markdownStack}>
+                {renderMarkdownSegments(
+                  block.content,
+                  `nested-${keyBase}`,
+                  depth + 1,
+                )}
+              </View>
+            </Collapsible>
+          </AnimatedMarkdownBlock>
+        );
+      }
+      return (
+        <AnimatedMarkdownBlock
+          key={`markdown-wrap-${keyBase}`}
+          index={animationIndex}
+          enabled={enableBlockAnimation}
+          mode={preferences.textRenderEffect}
+        >
+          <Markdown
+            key={`markdown-${keyBase}`}
+            onLinkPress={(url) => {
+              void openUrlSafe(url);
+              return false;
+            }}
+            rules={markdownRules}
+            style={markdownStyle}
+          >
+            {preprocessMarkdown(block.content)}
+          </Markdown>
+        </AnimatedMarkdownBlock>
+      );
+    });
+  };
+
+  const markdownNodes = renderMarkdownSegments(children, "root");
+
+  return <View style={styles.markdownStack}>{markdownNodes}</View>;
+}
+
+type MarkdownImageProps = {
+  src: string;
+  maxWidth: number;
+  initialAspectRatio?: number;
+};
+
+const calloutPalette = {
+  note: {
+    border: "#3B82F6",
+    background: "rgba(59, 130, 246, 0.12)",
+    title: "#3B82F6",
+  },
+  tip: {
+    border: "#22C55E",
+    background: "rgba(34, 197, 94, 0.12)",
+    title: "#22C55E",
+  },
+  important: {
+    border: "#EF4444",
+    background: "rgba(239, 68, 68, 0.12)",
+    title: "#EF4444",
+  },
+  warning: {
+    border: "#F59E0B",
+    background: "rgba(245, 158, 11, 0.12)",
+    title: "#F59E0B",
+  },
+  caution: {
+    border: "#FF3B30",
+    background: "rgba(255, 59, 48, 0.16)",
+    title: "#FF3B30",
+    glow: true,
+  },
+} as const;
+
+function MarkdownImage({
+  src,
+  maxWidth,
+  initialAspectRatio,
+}: MarkdownImageProps) {
+  const colors = useAppColors();
+  const [aspectRatio, setAspectRatio] = useState<number>(
+    initialAspectRatio ?? 16 / 9,
+  );
+  const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
+  const [isSvgLoaded, setIsSvgLoaded] = useState(false);
+  const [isRasterLoaded, setIsRasterLoaded] = useState(false);
+  const isSvg = useMemo(() => isSvgUrl(src), [src]);
+
+  useEffect(() => {
+    if (isSvg) {
+      setAspectRatio(16 / 9);
+      setIsRasterLoaded(false);
+      return;
+    }
+    setAspectRatio(initialAspectRatio ?? 16 / 9);
+    setIsRasterLoaded(false);
+  }, [initialAspectRatio, isSvg]);
+
+  useEffect(() => {
+    if (!isSvg) {
+      setSvgMarkup(null);
+      return;
+    }
+
+    let active = true;
+    setSvgMarkup(null);
+    setIsSvgLoaded(false);
+
+    (async () => {
+      try {
+        const response = await fetch(src);
+        if (!active) return;
+        if (!response.ok) {
+          throw new Error("Failed to load SVG");
+        }
+        const text = await response.text();
+        if (!active) return;
+        setAspectRatio(parseSvgAspectRatio(text));
+        setSvgMarkup(text);
+      } catch {
+        if (active) {
+          setSvgMarkup(null);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isSvg, src]);
+
+  const svgHtml = useMemo(() => {
+    const content = svgMarkup
+      ? svgMarkup
+      : `<img src="${src.replace(/"/g, "&quot;")}" style="display:block;width:100%;height:auto;max-width:100%;vertical-align:top;" />`;
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" /><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;}svg,img{display:block;width:100%;height:auto;max-width:100%;vertical-align:top;}*{box-sizing:border-box;}</style></head><body>${content}</body></html>`;
+  }, [src, svgMarkup]);
+
+  return isSvg ? (
+    <View
+      style={[
+        styles.image,
+        styles.svgImage,
+        styles.svgImageContainer,
+        {
+          width: maxWidth,
+          maxWidth: "100%",
+          aspectRatio,
+          backgroundColor: "transparent",
+        },
+      ]}
+    >
+      <WebView
+        originWhitelist={["*"]}
+        source={{ html: svgHtml }}
+        style={[styles.svgWebView, !isSvgLoaded && styles.hidden]}
+        scrollEnabled={false}
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        setSupportMultipleWindows={false}
+        onLoadEnd={() => setIsSvgLoaded(true)}
+      />
+      {!isSvgLoaded ? (
+        <View style={styles.svgLoadingOverlay}>
+          <ActivityIndicator size="small" color={colors.muted} />
+        </View>
+      ) : null}
+    </View>
+  ) : (
+    <View
+      style={[
+        styles.image,
+        styles.rasterImageContainer,
+        {
+          width: maxWidth,
+          maxWidth: "100%",
+          aspectRatio,
+          borderColor: colors.border,
+          backgroundColor: colors.surfaceAlt,
+        },
+      ]}
+    >
+      <FadeInImage
+        source={{ uri: src }}
+        resizeMode="contain"
+        onLoad={(event) => {
+          const width = event.nativeEvent?.source?.width ?? 0;
+          const height = event.nativeEvent?.source?.height ?? 0;
+          if (width > 0 && height > 0) {
+            const ratio = width / height;
+            imageAspectRatioCache.set(src, ratio);
+            setAspectRatio(ratio);
+          }
+        }}
+        onLoadEnd={() => {
+          setIsRasterLoaded(true);
+        }}
+        style={styles.rasterImage}
+      />
+      {!isRasterLoaded ? (
+        <View style={styles.svgLoadingOverlay}>
+          <ActivityIndicator size="small" color={colors.muted} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  markdownStack: {
+    gap: 10,
+  },
+  codeBlock: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 0,
+    marginVertical: 10,
+    gap: 8,
+  },
+  blockquoteBase: {
+    borderLeftWidth: 1,
+    borderWidth: 1,
+    paddingLeft: 12,
+    paddingRight: 12,
+    paddingVertical: 8,
+    marginVertical: 8,
+    borderRadius: 10,
+  },
+  calloutBase: {
+    gap: 4,
+  },
+  calloutGlow: {
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  calloutTitle: {
+    fontSize: 12,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    fontFamily: "SpaceMono",
+  },
+  calloutContent: {
+    marginTop: 2,
+  },
+  codeText: {
+    fontFamily: "SpaceMono",
+    fontSize: 13,
+    lineHeight: 18,
+    borderRadius: 10,
+    borderWidth: 0,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 1,
+    paddingVertical: 0,
+  },
+  inlineCodePill: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 1,
+    paddingVertical: 1,
+    alignSelf: "flex-start",
+  },
+  inlineCodeText: {
+    fontFamily: "SpaceMono",
+    fontSize: 12,
+    lineHeight: 15,
+    includeFontPadding: false,
+  },
+  imageLink: {
+    alignSelf: "flex-start",
+  },
+  link: {
+    textDecorationLine: "underline",
+  },
+  image: {
+    borderRadius: 10,
+  },
+  svgImage: {
+    backgroundColor: "transparent",
+  },
+  svgWebView: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "transparent",
+  },
+  svgImageContainer: {
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  rasterImageContainer: {
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  rasterImage: {
+    width: "100%",
+    height: "100%",
+  },
+  svgLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hidden: {
+    opacity: 0,
+  },
+  bulletMarker: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    borderWidth: 0.5,
+    marginLeft: 10,
+    marginRight: 10,
+    marginTop: 6,
+  },
+});

@@ -2,13 +2,51 @@ package database
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
-
-	"backend/api/internal/types"
 )
+
+// we can implement this type...
+type NullableInt64 struct {
+	sql.NullInt64
+}
+
+// ...so that we can create custom functions on it
+func (n *NullableInt64) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		n.Valid = false
+		return nil
+	}
+
+	var number int64
+	if err := json.Unmarshal(data, &number); err != nil {
+		return err
+	}
+
+	n.Int64 = number
+	n.Valid = true
+	return nil
+}
+
+func (n NullableInt64) MarshalJSON() ([]byte, error) {
+	if !n.Valid {
+		return []byte("null"), nil
+	}
+	return json.Marshal(n.Int64)
+}
+
+type Comment struct {
+	ID            int64         `json:"id"`
+	User          int64         `json:"user" binding:"required"`
+	Likes         int64         `json:"likes"`
+	ParentComment NullableInt64 `json:"parent_comment" binding:"required"`
+	CreationDate  time.Time     `json:"created_on"`
+	Content       string        `json:"content" binding:"required"`
+	Media         []string      `json:"media"`
+}
 
 // QueryComment retrieves a comment by its ID from the database.
 //
@@ -16,17 +54,19 @@ import (
 //   - id: The unique identifier of the comment to query.
 //
 // Returns:
-//   - *types.Comment: The comment details if found.
+//   - *Comment: The comment details if found.
 //   - error: An error if the query fails. Returns nil for both if no comment exists.
-func QueryComment(id int) (*types.Comment, error) {
-	query := `SELECT id, user_id, content, likes, creation_date, parent_comment_id FROM Comments WHERE id = ?;`
+func QueryComment(id int) (*Comment, error) {
+	query := `SELECT id, user_id, content, COALESCE(media, '[]'), likes, creation_date, parent_comment_id FROM comments WHERE id = $1;`
 	row := DB.QueryRow(query, id)
-	var comment types.Comment
+	var comment Comment
+	var mediaJSON string
 
 	err := row.Scan(
 		&comment.ID,
 		&comment.User,
 		&comment.Content,
+		&mediaJSON,
 		&comment.Likes,
 		&comment.CreationDate,
 		&comment.ParentComment,
@@ -35,6 +75,10 @@ func QueryComment(id int) (*types.Comment, error) {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
+		return nil, err
+	}
+
+	if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
 		return nil, err
 	}
 
@@ -47,20 +91,21 @@ func QueryComment(id int) (*types.Comment, error) {
 //   - id: The unique identifier of the user to query.
 //
 // Returns:
-//   - []types.Post: The post details if found.
+//   - []Comment: The post details if found.
 //   - error: An error if the query fails. Returns nil for both if no comments exists.
-func QueryCommentsByUserId(userId int) ([]types.Comment, int, error) {
+func QueryCommentsByUserId(userId int) ([]Comment, int, error) {
 	query := `
-            SELECT 
-                c.id AS comment_id,
-                c.user_id,
-                c.content,
-                c.likes,
-                c.creation_date,
-                c.parent_comment_id
-            FROM Comments c
-            JOIN PostComments pc ON c.id = pc.comment_id
-            WHERE c.user_id = ?;
+	            SELECT 
+	                c.id AS comment_id,
+	                c.user_id,
+	                c.content,
+	                COALESCE(c.media, '[]'),
+	                c.likes,
+	                c.creation_date,
+	                c.parent_comment_id
+	            FROM comments c
+	            JOIN postcomments pc ON c.id = pc.comment_id
+	            WHERE c.user_id = $1;
     `
 
 	postRows, err := DB.Query(query, userId)
@@ -70,30 +115,33 @@ func QueryCommentsByUserId(userId int) ([]types.Comment, int, error) {
 	defer postRows.Close()
 
 	query = `
-            SELECT 
-                c.id AS comment_id,
-                c.user_id,
-                c.content,
-                (SELECT COUNT(*) FROM CommentLikes cl WHERE cl.comment_id = c.id) AS likes,
-                c.creation_date,
-                c.parent_comment_id
-            FROM Comments c
-            JOIN ProjectComments pc ON c.id = pc.comment_id
-            WHERE pc.project_id = ?;
-    `
+	        SELECT 
+	            c.id AS comment_id,
+	            c.user_id,
+	            c.content,
+	            COALESCE(c.media, '[]'),
+	            (SELECT COUNT(*) FROM CommentLikes cl WHERE cl.comment_id = c.id) AS likes,
+	            c.creation_date,
+	            c.parent_comment_id
+	        FROM comments c
+	        JOIN projectcomments pc ON c.id = pc.comment_id
+	        WHERE c.user_id = $1;
+	`
 	projRows, err := DB.Query(query, userId)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
 	defer projRows.Close()
-	var comments []types.Comment
+	comments := []Comment{}
 
 	for projRows.Next() {
-		var comment types.Comment
+		var comment Comment
+		var mediaJSON string
 		err := projRows.Scan(
 			&comment.ID,
 			&comment.User,
 			&comment.Content,
+			&mediaJSON,
 			&comment.Likes,
 			&comment.CreationDate,
 			&comment.ParentComment,
@@ -105,14 +153,19 @@ func QueryCommentsByUserId(userId int) ([]types.Comment, int, error) {
 			}
 			return nil, http.StatusInternalServerError, err
 		}
+		if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
+			return nil, http.StatusBadRequest, err
+		}
 		comments = append(comments, comment)
 	}
 	for postRows.Next() {
-		var comment types.Comment
+		var comment Comment
+		var mediaJSON string
 		err := postRows.Scan(
 			&comment.ID,
 			&comment.User,
 			&comment.Content,
+			&mediaJSON,
 			&comment.Likes,
 			&comment.CreationDate,
 			&comment.ParentComment,
@@ -123,6 +176,9 @@ func QueryCommentsByUserId(userId int) ([]types.Comment, int, error) {
 				return nil, http.StatusOK, nil
 			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
+			return nil, http.StatusBadRequest, err
 		}
 		comments = append(comments, comment)
 	}
@@ -136,34 +192,37 @@ func QueryCommentsByUserId(userId int) ([]types.Comment, int, error) {
 //   - id: The unique identifier of the project to query.
 //
 // Returns:
-//   - *types.Comment: The comment details if found.
+//   - *Comment: The comment details if found.
 //   - error: An error if the query fails. Returns nil for both if no comment exists.
-func QueryCommentsByProjectId(id int) ([]types.Comment, int, error) {
+func QueryCommentsByProjectId(id int) ([]Comment, int, error) {
 	query := `
-            SELECT 
-                c.id AS comment_id,
-                c.user_id,
-                c.content,
-                c.likes,
-                c.creation_date,
-                c.parent_comment_id
-            FROM Comments c
-            JOIN ProjectComments pc ON c.id = pc.comment_id
-            WHERE pc.project_id = ?;
+	            SELECT 
+	                c.id AS comment_id,
+	                c.user_id,
+	                c.content,
+	                COALESCE(c.media, '[]'),
+	                c.likes,
+	                c.creation_date,
+	                c.parent_comment_id
+	            FROM comments c
+	            JOIN projectcomments pc ON c.id = pc.comment_id
+	            WHERE pc.project_id = $1;
     `
 	rows, err := DB.Query(query, id)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
 	defer rows.Close()
-	var comments []types.Comment
+	comments := []Comment{}
 
 	for rows.Next() {
-		var comment types.Comment
+		var comment Comment
+		var mediaJSON string
 		err := rows.Scan(
 			&comment.ID,
 			&comment.User,
 			&comment.Content,
+			&mediaJSON,
 			&comment.Likes,
 			&comment.CreationDate,
 			&comment.ParentComment,
@@ -174,6 +233,9 @@ func QueryCommentsByProjectId(id int) ([]types.Comment, int, error) {
 				return nil, http.StatusOK, nil
 			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
+			return nil, http.StatusBadRequest, err
 		}
 		comments = append(comments, comment)
 	}
@@ -186,34 +248,37 @@ func QueryCommentsByProjectId(id int) ([]types.Comment, int, error) {
 //   - id: The unique identifier of the post to query.
 //
 // Returns:
-//   - *types.Comment: The comment details if found.
+//   - *Comment: The comment details if found.
 //   - error: An error if the query fails. Returns nil for both if no comment exists.
-func QueryCommentsByPostId(id int) ([]types.Comment, int, error) {
+func QueryCommentsByPostId(id int) ([]Comment, int, error) {
 	query := `
-            SELECT 
-                c.id AS comment_id,
-                c.user_id,
-                c.content,
-                c.likes,
-                c.creation_date,
-                c.parent_comment_id
-            FROM Comments c
-            JOIN PostComments pc ON c.id = pc.comment_id
-            WHERE pc.post_id = ?;
+	            SELECT 
+	                c.id AS comment_id,
+	                c.user_id,
+	                c.content,
+	                COALESCE(c.media, '[]'),
+	                c.likes,
+	                c.creation_date,
+	                c.parent_comment_id
+	            FROM comments c
+	            JOIN postcomments pc ON c.id = pc.comment_id
+	            WHERE pc.post_id = $1;
     `
 	rows, err := DB.Query(query, id)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
 	defer rows.Close()
-	var comments []types.Comment
+	comments := []Comment{}
 
 	for rows.Next() {
-		var comment types.Comment
+		var comment Comment
+		var mediaJSON string
 		err := rows.Scan(
 			&comment.ID,
 			&comment.User,
 			&comment.Content,
+			&mediaJSON,
 			&comment.Likes,
 			&comment.CreationDate,
 			&comment.ParentComment,
@@ -224,6 +289,9 @@ func QueryCommentsByPostId(id int) ([]types.Comment, int, error) {
 				return nil, http.StatusOK, nil
 			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
+			return nil, http.StatusBadRequest, err
 		}
 		comments = append(comments, comment)
 	}
@@ -236,33 +304,36 @@ func QueryCommentsByPostId(id int) ([]types.Comment, int, error) {
 //   - id: The unique identifier of the comment to query.
 //
 // Returns:
-//   - *types.Comment: The comment details if found.
+//   - *Comment: The comment details if found.
 //   - error: An error if the query fails. Returns nil for both if no comment exists.
-func QueryCommentsByCommentId(id int) ([]types.Comment, int, error) {
+func QueryCommentsByCommentId(id int) ([]Comment, int, error) {
 	query := `
-            SELECT 
-                c.id AS comment_id,
-                c.user_id,
-                c.content,
-                c.likes,
-                c.creation_date,
-                c.parent_comment_id
-            FROM Comments c
-            WHERE c.parent_comment_id = ?;
+	            SELECT 
+	                c.id AS comment_id,
+	                c.user_id,
+	                c.content,
+	                COALESCE(c.media, '[]'),
+	                c.likes,
+	                c.creation_date,
+	                c.parent_comment_id
+	            FROM comments c
+	            WHERE c.parent_comment_id = $1;
     `
 	rows, err := DB.Query(query, id)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
 	defer rows.Close()
-	var comments []types.Comment
+	comments := []Comment{}
 
 	for rows.Next() {
-		var comment types.Comment
+		var comment Comment
+		var mediaJSON string
 		err := rows.Scan(
 			&comment.ID,
 			&comment.User,
 			&comment.Content,
+			&mediaJSON,
 			&comment.Likes,
 			&comment.CreationDate,
 			&comment.ParentComment,
@@ -273,6 +344,9 @@ func QueryCommentsByCommentId(id int) ([]types.Comment, int, error) {
 				return nil, http.StatusOK, nil
 			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
+			return nil, http.StatusBadRequest, err
 		}
 		comments = append(comments, comment)
 	}
@@ -288,27 +362,48 @@ func QueryCommentsByCommentId(id int) ([]types.Comment, int, error) {
 // Returns:
 //   - int64: The ID of the newly created comment.
 //   - error: An error if the operation fails.
-func QueryCreateCommentOnPost(comment types.Comment, postId int) (int64, error) {
+func QueryCreateCommentOnPost(comment Comment, postId int) (int64, error) {
+	tx, err := DB.Begin()
+	if err != nil {
+		return -1, fmt.Errorf("failed to begin transaction: %v", err)
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+
 	currentTime := time.Now().UTC()
+	mediaJSON, err := MarshalToJSON(comment.Media)
+	if err != nil {
+		return -1, err
+	}
 
-	query := `INSERT INTO Comments (user_id, content, parent_comment_id, likes, creation_date) 
-              VALUES (?, ?, ?, ?, ?);`
+	query := `INSERT INTO comments (user_id, content, media, parent_comment_id, likes, creation_date) 
+	              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id;`
 
-	res, err := DB.Exec(query, comment.User, comment.Content, comment.ParentComment, 0, currentTime)
+	var lastId int64
+	err = tx.QueryRow(
+		query,
+		comment.User,
+		comment.Content,
+		string(mediaJSON),
+		comment.ParentComment,
+		0,
+		currentTime,
+	).Scan(&lastId)
 
 	if err != nil {
 		return -1, fmt.Errorf("Failed to create comment: %v", err)
 	}
 
-	lastId, err := res.LastInsertId()
-	if err != nil {
-		return -1, fmt.Errorf("Failed to ensure post was created: %v", err)
-	}
+	query = `INSERT INTO postcomments (user_id, post_id, comment_id)
+             VALUES ($1, $2, $3)`
 
-	query = `INSERT INTO PostComments (user_id, post_id, comment_id)
-             VALUES (?, ?, ?)`
-
-	res, err = DB.Exec(query, comment.User, postId, lastId)
+	_, err = tx.Exec(query, comment.User, postId, lastId)
 	if err != nil {
 		return -1, fmt.Errorf("Failed to link comment to post: %v", err)
 	}
@@ -325,27 +420,47 @@ func QueryCreateCommentOnPost(comment types.Comment, postId int) (int64, error) 
 // Returns:
 //   - int64: The ID of the newly created comment.
 //   - error: An error if the operation fails.
-func QueryCreateCommentOnProject(comment types.Comment, projectId int) (int64, error) {
+func QueryCreateCommentOnProject(comment Comment, projectId int) (int64, error) {
+	tx, err := DB.Begin()
+	if err != nil {
+		return -1, fmt.Errorf("failed to begin transaction: %v", err)
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
 	currentTime := time.Now().UTC()
+	mediaJSON, err := MarshalToJSON(comment.Media)
+	if err != nil {
+		return -1, err
+	}
 
-	query := `INSERT INTO Comments (user_id, content, parent_comment_id, likes, creation_date) 
-              VALUES (?, ?, ?, ?, ?);`
+	query := `INSERT INTO comments (user_id, content, media, parent_comment_id, likes, creation_date) 
+	              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id;`
 
-	res, err := DB.Exec(query, comment.User, comment.Content, comment.ParentComment, 0, currentTime)
+	var lastId int64
+	err = tx.QueryRow(
+		query,
+		comment.User,
+		comment.Content,
+		string(mediaJSON),
+		comment.ParentComment,
+		0,
+		currentTime,
+	).Scan(&lastId)
 
 	if err != nil {
 		return -1, fmt.Errorf("Failed to create comment: %v", err)
 	}
 
-	lastId, err := res.LastInsertId()
-	if err != nil {
-		return -1, fmt.Errorf("Failed to ensure project was created: %v", err)
-	}
+	query = `INSERT INTO projectcomments (user_id, project_id, comment_id)
+             VALUES ($1, $2, $3)`
 
-	query = `INSERT INTO ProjectComments (user_id, project_id, comment_id)
-             VALUES (?, ?, ?)`
-
-	res, err = DB.Exec(query, comment.User, projectId, lastId)
+	_, err = tx.Exec(query, comment.User, projectId, lastId)
 	if err != nil {
 		return -1, fmt.Errorf("Failed to link comment to project: %v", err)
 	}
@@ -362,21 +477,29 @@ func QueryCreateCommentOnProject(comment types.Comment, projectId int) (int64, e
 // Returns:
 //   - int64: The ID of the newly created comment.
 //   - error: An error if the operation fails.
-func QueryCreateCommentOnComment(comment types.Comment, commentId int) (int64, error) {
+func QueryCreateCommentOnComment(comment Comment, commentId int) (int64, error) {
 	currentTime := time.Now().UTC()
+	mediaJSON, err := MarshalToJSON(comment.Media)
+	if err != nil {
+		return -1, err
+	}
 
-	query := `INSERT INTO Comments (user_id, content, parent_comment_id, likes, creation_date) 
-              VALUES (?, ?, ?, ?, ?);`
+	query := `INSERT INTO comments (user_id, content, media, parent_comment_id, likes, creation_date) 
+	              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id;`
 
-	res, err := DB.Exec(query, comment.User, comment.Content, commentId, 0, currentTime)
+	var lastId int64
+	err = DB.QueryRow(
+		query,
+		comment.User,
+		comment.Content,
+		string(mediaJSON),
+		commentId,
+		0,
+		currentTime,
+	).Scan(&lastId)
 
 	if err != nil {
 		return -1, fmt.Errorf("Failed to create comment: %v", err)
-	}
-
-	lastId, err := res.LastInsertId()
-	if err != nil {
-		return -1, fmt.Errorf("Failed to ensure comment was created: %v", err)
 	}
 
 	return lastId, nil
@@ -391,18 +514,31 @@ func QueryCreateCommentOnComment(comment types.Comment, commentId int) (int64, e
 //   - int16: http status code
 //   - error: An error if the operation fails.
 func QueryDeleteComment(id int) (int16, error) {
-	_, err := DB.Exec(`UPDATE PostComments SET user_id = -1 WHERE comment_id = ?`, id)
+	tx, err := DB.Begin()
+	if err != nil {
+		return -1, fmt.Errorf("failed to begin transaction: %v", err)
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+
+	_, err = tx.Exec(`UPDATE postcomments SET user_id = -1 WHERE comment_id = $1`, id)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to update PostComments for deleted comment: %v", err)
 	}
 
-	_, err = DB.Exec(`UPDATE ProjectComments SET user_id = -1 WHERE comment_id = ?`, id)
+	_, err = tx.Exec(`UPDATE projectcomments SET user_id = -1 WHERE comment_id = $1`, id)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to update ProjectComments for deleted comment: %v", err)
 	}
 
-	query := `UPDATE Comments SET user_id = -1, content = "This comment was deleted.", likes = 0, creation_date = ? WHERE id = ?`
-	res, err := DB.Exec(query, time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), id)
+	query := `UPDATE comments SET user_id = -1, content = 'This comment was deleted.', media = '[]', likes = 0, creation_date = $1 WHERE id = $2`
+	res, err := tx.Exec(query, time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), id)
 	if err != nil {
 		return http.StatusBadRequest, fmt.Errorf("Failed to soft delete comment `%v`: %v", id, err)
 	}
@@ -417,19 +553,19 @@ func QueryDeleteComment(id int) (int16, error) {
 	return http.StatusOK, nil
 }
 
-// QueryUpdateCommentContent updates comment's content
+// QueryUpdateComment updates comment fields with validation on edit time.
 //
 // Parameters:
 //   - id: The id of the comment to be updated
-//   - newContent: the updated content
+//   - updatedData: fields to update (content, media)
 //
 // Returns:
 //   - int16: http status code
 //   - error: An error if the operation fails.
-func QueryUpdateCommentContent(id int, newContent string) (int16, error) {
+func QueryUpdateComment(id int, updatedData map[string]interface{}) (int16, error) {
 	// get comment creation time to validate time diff
 	var createdAt time.Time
-	query := `SELECT creation_date FROM Comments WHERE id = ?`
+	query := `SELECT creation_date FROM comments WHERE id = $1`
 	err := DB.QueryRow(query, id).Scan(&createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -444,17 +580,21 @@ func QueryUpdateCommentContent(id int, newContent string) (int16, error) {
 		return http.StatusBadRequest, fmt.Errorf("Cannot update comment. More than 2 minutes have passed since posting.")
 	}
 
-	query = `UPDATE Comments SET content = ? WHERE id = ?`
-	res, err := DB.Exec(query, newContent, id)
+	query = `UPDATE Comments SET `
+	queryParams, args, err := BuildUpdateQuery(updatedData)
 	if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("Failed to update comment content: %v", err)
+		return http.StatusBadRequest, err
 	}
+	query += queryParams
+	query += fmt.Sprintf(" WHERE id = $%d", len(args)+1)
+	args = append(args, id)
 
-	rowsAffected, err := res.RowsAffected()
+	rowsAffected, err := ExecUpdate(query, args...)
+	if err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Failed to update comment: %v", err)
+	}
 	if rowsAffected == 0 {
 		return http.StatusNotFound, fmt.Errorf("Comment not found or no changes made")
-	} else if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("Failed to fetch affected rows: %v", err)
 	}
 
 	return http.StatusOK, nil
@@ -491,7 +631,7 @@ func CreateCommentLike(username string, strCommentId string) (int, error) {
 	// check if the like already exists
 	var exists bool
 	query := `SELECT EXISTS (
-                 SELECT 1 FROM CommentLikes WHERE user_id = ? AND comment_id = ?
+				 SELECT 1 FROM commentlikes WHERE user_id = $1 AND comment_id = $2
               )`
 	err = DB.QueryRow(query, user_id, commentId).Scan(&exists)
 	if err != nil {
@@ -501,17 +641,29 @@ func CreateCommentLike(username string, strCommentId string) (int, error) {
 		// like already exists, but we return success to keep it idempotent
 		return http.StatusOK, nil
 	}
+	tx, err := DB.Begin()
+	if err != nil {
+		return -1, fmt.Errorf("failed to begin transaction: %v", err)
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
 
 	// insert the like
-	insertQuery := `INSERT INTO CommentLikes (user_id, comment_id) VALUES (?, ?)`
-	_, err = DB.Exec(insertQuery, user_id, commentId)
+	insertQuery := `INSERT INTO commentlikes (user_id, comment_id) VALUES ($1, $2)`
+	_, err = tx.Exec(insertQuery, user_id, commentId)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to insert comment like: %v", err)
 	}
 
 	// update the likes column
-	updateQuery := `UPDATE Comments SET likes = likes + 1 WHERE id = ?`
-	_, err = DB.Exec(updateQuery, commentId)
+	updateQuery := `UPDATE comments SET likes = likes + 1 WHERE id = $1`
+	_, err = tx.Exec(updateQuery, commentId)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to update likes count: %v", err)
 	}
@@ -547,9 +699,22 @@ func RemoveCommentLike(username string, strCommentId string) (int, error) {
 		return http.StatusInternalServerError, fmt.Errorf("An error occurred verifying the comment exists: %v", err)
 	}
 
+	tx, err := DB.Begin()
+	if err != nil {
+		return -1, fmt.Errorf("failed to begin transaction: %v", err)
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+
 	// perform the delete operation
-	deleteQuery := `DELETE FROM CommentLikes WHERE user_id = ? AND comment_id = ?`
-	result, err := DB.Exec(deleteQuery, user_id, commentId)
+	deleteQuery := `DELETE FROM commentlikes WHERE user_id = $1 AND comment_id = $2`
+	result, err := tx.Exec(deleteQuery, user_id, commentId)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to delete comment like: %v", err)
 	}
@@ -566,8 +731,8 @@ func RemoveCommentLike(username string, strCommentId string) (int, error) {
 	}
 
 	// update the likes column
-	updateQuery := `UPDATE Comments SET likes = likes - 1 WHERE id = ?`
-	_, err = DB.Exec(updateQuery, commentId)
+	updateQuery := `UPDATE comments SET likes = likes - 1 WHERE id = $1`
+	_, err = tx.Exec(updateQuery, commentId)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to update likes count: %v", err)
 	}
@@ -607,7 +772,7 @@ func QueryCommentLike(username string, strCommId string) (int, bool, error) {
 	// check if the like already exists
 	var exists bool
 	query := `SELECT EXISTS (
-                 SELECT 1 FROM CommentLikes WHERE user_id = ? AND comment_id = ?
+				 SELECT 1 FROM commentlikes WHERE user_id = $1 AND comment_id = $2
               )`
 	err = DB.QueryRow(query, user_id, commId).Scan(&exists)
 	if err != nil {
@@ -638,7 +803,7 @@ func QueryIsCommentEditable(strCommId string) (int, bool, error) {
 	}
 
 	var createdAt time.Time
-	query := `SELECT creation_date FROM Comments WHERE id = ?`
+	query := `SELECT creation_date FROM comments WHERE id = $1`
 	err = DB.QueryRow(query, commId).Scan(&createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -650,7 +815,7 @@ func QueryIsCommentEditable(strCommId string) (int, bool, error) {
 	now := time.Now().UTC()
 	// now check if the comment is older than 2 minutes
 	if now.Sub(createdAt) > 2*time.Minute {
-        return http.StatusOK, false, nil
+		return http.StatusOK, false, nil
 	} else {
 		return http.StatusOK, true, nil
 	}

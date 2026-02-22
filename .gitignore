@@ -1,0 +1,32 @@
+
+# Expo
+.expo/
+
+# Local env files
+.env
+.env.*
+*.env
+
+# Secrets folder (recommended place for service keys)
+secrets/
+
+# Service account and credential files
+*service-account*.json
+devbits-*.json
+devbits-487803-*.json
+
+# Private keys and certs
+*.key
+*.pem
+*.p12
+*.jks
+*.p8
+*.keystore
+
+# OS / editor files
+.DS_Store
+.vscode/
+
+# Build artifacts
+dist/
+build/

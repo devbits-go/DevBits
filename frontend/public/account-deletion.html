@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <title>DevBits — Request account & data deletion</title>
+    <style>
+      body {
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Arial,
+          sans-serif;
+        margin: 0;
+        padding: 0;
+        background:
+          radial-gradient(
+            circle at 20% 10%,
+            rgba(0, 243, 41, 0.13),
+            transparent 35%
+          ),
+          radial-gradient(
+            circle at 78% 72%,
+            rgba(0, 243, 41, 0.08),
+            transparent 34%
+          ),
+          #05070a;
+        color: #f0f3f7;
+      }
+      .glow-grid {
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 34px 34px;
+        mask-image: radial-gradient(
+          circle at center,
+          black 35%,
+          transparent 75%
+        );
+        pointer-events: none;
+      }
+      .topbar {
+        border-bottom: 1px solid rgba(180, 255, 196, 0.2);
+        background: linear-gradient(
+          180deg,
+          rgba(13, 18, 26, 0.86) 0%,
+          rgba(8, 11, 16, 0.72) 100%
+        );
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 10px 24px rgba(0, 0, 0, 0.28),
+          inset 0 0 20px rgba(0, 243, 41, 0.04);
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+      .topbar-inner {
+        width: min(1080px, 100% - 32px);
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 0;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+      }
+      .brand-logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        object-fit: cover;
+        box-shadow: 0 0 14px rgba(0, 243, 41, 0.18);
+      }
+      .nav {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .nav a {
+        color: #94a0af;
+        text-decoration: none;
+      }
+      .nav a:hover,
+      .nav a.active {
+        color: #00f329;
+      }
+      .shell {
+        max-width: 860px;
+        margin: 28px auto;
+        padding: 0 16px;
+      }
+
+      .card {
+        max-width: 100%;
+        margin: 0;
+        padding: 20px;
+        background: rgba(12, 16, 22, 0.6);
+        border: 1px solid rgba(180, 255, 196, 0.18);
+        border-radius: 22px;
+        box-shadow:
+          0 0 18px rgba(0, 243, 41, 0.05),
+          inset 0 0 24px rgba(0, 243, 41, 0.03);
+        backdrop-filter: blur(14px);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 20px;
+      }
+      p {
+        margin: 8px 0;
+      }
+      ul {
+        margin: 8px 0 16px 20px;
+      }
+      .muted {
+        color: #94a0af;
+      }
+      a.button {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 10px 14px;
+        background: #00f329;
+        color: #0a0d12;
+        border-radius: 8px;
+        text-decoration: none;
+      }
+      footer {
+        margin-top: 20px;
+        color: #94a0af;
+      }
+      a {
+        color: #00f329;
+      }
+
+      @media (max-width: 768px) {
+        .topbar-inner {
+          width: min(1080px, 100% - 20px);
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 12px 0;
+        }
+
+        .nav {
+          width: 100%;
+          gap: 10px 12px;
+        }
+
+        .nav a {
+          font-size: 14px;
+        }
+
+        .shell {
+          margin: 18px auto 24px;
+          padding: 0 12px;
+        }
+
+        .card {
+          border-radius: 18px;
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow-grid"></div>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a
+          class="brand"
+          href="https://play.google.com/apps/testing/com.devbits.frontend"
+          aria-label="Open DevBits on Google Play"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img class="brand-logo" src="/icon.png" alt="DevBits logo" />
+        </a>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="/">Home</a>
+          <a href="/features">Features</a>
+          <a href="/tester-application">Tester</a>
+          <a href="/about">About</a>
+          <a href="/privacy-policy">Privacy</a>
+          <a class="active" href="/account-deletion">Deletion</a>
+        </nav>
+      </div>
+    </header>
+    <main class="shell">
+      <section class="card">
+        <h1>Request account and data deletion — DevBits</h1>
+        <p class="muted">
+          This page explains how you can request deletion of your DevBits
+          account and associated data. It is provided by the developer shown on
+          the Google Play store listing: <strong>DevBits</strong>.
+        </p>
+
+        <h2>How to request deletion</h2>
+        <ol>
+          <li>
+            Email us at
+            <a href="mailto:mail@elifouts.com">mail@elifouts.com</a> with the
+            subject "Account Deletion Request" and include the username and the
+            email address associated with your account.
+          </li>
+          <li>
+            We will reply within 5 business days to confirm the request and may
+            ask for a brief confirmation to verify account ownership.
+          </li>
+          <li>
+            After confirmation we will process account deletion; you will
+            receive a confirmation email when deletion is completed.
+          </li>
+        </ol>
+
+        <h2>What data we will delete</h2>
+        <ul>
+          <li>Account record (username, profile fields, avatar).</li>
+          <li>
+            User-generated content you created: posts, comments, project pages
+            (these will be permanently removed).
+          </li>
+          <li>Authentication credentials (passwords) and associated tokens.</li>
+          <li>Push notification token(s) associated with your account.</li>
+        </ul>
+
+        <h2>What data may be retained</h2>
+        <ul>
+          <li>
+            Aggregated, anonymized usage analytics (non-identifying) for product
+            and security monitoring.
+          </li>
+          <li>
+            Server logs and backups (retained for security, fraud prevention,
+            and legal compliance). We purge backups according to the schedule
+            below.
+          </li>
+        </ul>
+
+        <h2>Retention period</h2>
+        <p>
+          After you request deletion, we will remove your account and most
+          associated personal data within <strong>30 days</strong>. Backups and
+          logs that cannot be instantly purged for technical or legal reasons
+          will be deleted or anonymized within <strong>90 days</strong> unless
+          otherwise required by law.
+        </p>
+
+        <h2>Additional notes</h2>
+        <ul>
+          <li>
+            If your content was shared by other users (e.g. forwarded messages),
+            copies may remain in their accounts until those users delete them.
+          </li>
+          <li>
+            Deleting your account is irreversible. If you wish to stop using
+            DevBits temporarily, you can request account deactivation instead —
+            contact us and we can advise.
+          </li>
+        </ul>
+
+        <p>
+          If you need help with deletion or have legal requests, contact us at
+          <a href="mailto:mail@elifouts.com">mail@elifouts.com</a>.
+        </p>
+
+        <div
+          style="
+            margin-top: 12px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+          "
+        >
+          <a
+            class="button"
+            href="mailto:mail@elifouts.com?subject=Account%20Deletion%20Request"
+            >Request account deletion</a
+          >
+          <a class="button" href="/privacy-policy" style="background: #334155"
+            >Privacy Policy</a
+          >
+        </div>
+
+        <footer>
+          <small
+            >Developer: DevBits — Last updated: February 18, 2026. Please
+            replace the contact email in this page with your preferred support
+            address before publishing.</small
+          >
+        </footer>
+      </section>
+    </main>
+  </body>
+</html>

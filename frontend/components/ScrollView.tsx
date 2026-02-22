@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactElement } from "react";
+import type { PropsWithChildren } from "react";
 import { StyleSheet, SafeAreaView } from "react-native";
 import Animated, { useAnimatedRef } from "react-native-reanimated";
 import { ThemedView } from "@/components/ThemedView";
@@ -6,7 +6,7 @@ import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 
 const HEADER_HEIGHT = 250;
 
-type Props = PropsWithChildren<{}>;
+type Props = PropsWithChildren;
 
 export default function ScrollView({ children }: Props) {
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
@@ -41,7 +41,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 32,
+    paddingVertical: 32,
+    paddingHorizontal: 0,
     gap: 16,
     overflow: "hidden",
   },

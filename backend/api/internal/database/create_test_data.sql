@@ -1,17 +1,17 @@
 -- Users
-INSERT INTO Users (username, picture, bio, links, creation_date) VALUES
-    ('dev_user1', 'https://example.com/dev_user1.jpg', 'Full-stack developer passionate about open-source projects.', '["https://github.com/dev_user1", "https://devuser1.com"]', '2023-12-13 00:00:00'),
-    ('tech_writer2', 'https://example.com/tech_writer2.jpg', 'Technical writer and Python enthusiast.', '["https://blog.techwriter.com"]', '2022-12-13 00:00:00'),
-    ('data_scientist3', 'https://example.com/data_scientist3.jpg', 'Data scientist with a passion for machine learning.', '["https://github.com/data_scientist3", "https://datascientist3.com"]', '2023-06-13 00:00:00'),
-    ('backend_guru4', 'https://example.com/backend_guru4.jpg', 'Backend expert specializing in scalable systems.', '["https://github.com/backend_guru4"]', '2024-01-15 00:00:00'),
-    ('ui_designer5', 'https://example.com/ui_designer5.jpg', 'UI/UX designer with a love for user-friendly apps.', '["https://portfolio.uidesigner5.com"]', '2023-05-10 00:00:00');
+INSERT INTO Users (username, picture, bio, links, settings, creation_date) VALUES
+    ('dev_user1', 'https://example.com/dev_user1.jpg', 'Full-stack developer passionate about open-source projects.', '["https://github.com/dev_user1", "https://devuser1.com"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2023-12-13 00:00:00'),
+    ('tech_writer2', 'https://example.com/tech_writer2.jpg', 'Technical writer and Python enthusiast.', '["https://blog.techwriter.com"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2022-12-13 00:00:00'),
+    ('data_scientist3', 'https://example.com/data_scientist3.jpg', 'Data scientist with a passion for machine learning.', '["https://github.com/data_scientist3", "https://datascientist3.com"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2023-06-13 00:00:00'),
+    ('backend_guru4', 'https://example.com/backend_guru4.jpg', 'Backend expert specializing in scalable systems.', '["https://github.com/backend_guru4"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2024-01-15 00:00:00'),
+    ('ui_designer5', 'https://example.com/ui_designer5.jpg', 'UI/UX designer with a love for user-friendly apps.', '["https://portfolio.uidesigner5.com"]', '{"accentColor":"","backgroundRefreshEnabled":false,"refreshIntervalMs":120000,"zenMode":false,"compactMode":false}', '2023-05-10 00:00:00');
 
 -- Projects
 INSERT INTO Projects (name, description, status, likes, tags, links, owner, creation_date) VALUES
-    ('OpenAPI Toolkit', 'A toolkit for generating and testing OpenAPI specs.', 1, 120, '["OpenAPI", "Go", "Tooling"]', '["https://github.com/dev_user1/openapi-toolkit"]', (SELECT id FROM Users WHERE username = 'dev_user1'), '2023-06-13 00:00:00'),
-    ('DocuHelper', 'A library for streamlining technical documentation processes.', 2, 85, '["Documentation", "Python"]', '["https://github.com/tech_writer2/docuhelper"]', (SELECT id FROM Users WHERE username = 'tech_writer2'), '2021-12-13 00:00:00'),
-    ('ML Research', 'Research repository for various machine learning algorithms.', 1, 45, '["Machine Learning", "Python", "Research"]', '["https://github.com/data_scientist3/ml-research"]', (SELECT id FROM Users WHERE username = 'data_scientist3'), '2024-09-13 00:00:00'),
-    ('ScaleDB', 'A scalable database system for modern apps.', 1, 70, '["Database", "Scalability", "Backend"]', '["https://github.com/backend_guru4/scaledb"]', (SELECT id FROM Users WHERE username = 'backend_guru4'), '2024-03-15 00:00:00');
+    ('OpenAPI Toolkit', 'A toolkit for generating and testing OpenAPI specs.', 1, 120, '["OpenAPI", "Go", "Tooling"]', '["https://github.com/dev_user1/openapi-toolkit"]', 1, '2023-06-13 00:00:00'),
+    ('DocuHelper', 'A library for streamlining technical documentation processes.', 2, 85, '["Documentation", "Python"]', '["https://github.com/tech_writer2/docuhelper"]', 2, '2021-12-13 00:00:00'),
+    ('ML Research', 'Research repository for various machine learning algorithms.', 1, 45, '["Machine Learning", "Python", "Research"]', '["https://github.com/data_scientist3/ml-research"]', 3, '2024-09-13 00:00:00'),
+    ('ScaleDB', 'A scalable database system for modern apps.', 1, 70, '["Database", "Scalability", "Backend"]', '["https://github.com/backend_guru4/scaledb"]', 4, '2024-03-15 00:00:00');
 
 -- Posts
 INSERT INTO Posts (content, project_id, creation_date, user_id, likes) VALUES
@@ -102,7 +102,7 @@ INSERT INTO PostLikes (post_id, user_id) VALUES
      (SELECT id FROM Users WHERE username = 'ui_designer5'));
 
 -- User Follows (Additional follows between existing users)
-INSERT INTO UserFollows (follower_id, follows_id) VALUES
+INSERT INTO UserFollows (follower_id, followed_id) VALUES
     ((SELECT id FROM Users WHERE username = 'dev_user1'), 
      (SELECT id FROM Users WHERE username = 'data_scientist3')),
     ((SELECT id FROM Users WHERE username = 'tech_writer2'), 

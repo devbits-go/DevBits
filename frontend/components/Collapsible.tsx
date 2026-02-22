@@ -1,45 +1,77 @@
-import { PropsWithChildren, useState } from 'react';
-import { StyleSheet, TouchableOpacity } from 'react-native';
+import { PropsWithChildren, type ReactNode, useState } from "react";
+import { StyleSheet, TouchableOpacity } from "react-native";
 
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useAppColors } from "@/hooks/useAppColors";
 
-export function Collapsible({ children, title }: PropsWithChildren & { title: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const theme = useColorScheme() ?? 'light';
+type CollapsibleProps = PropsWithChildren & {
+  title: ReactNode;
+  defaultOpen?: boolean;
+};
+
+export function Collapsible({
+  children,
+  title,
+  defaultOpen = false,
+}: CollapsibleProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const colors = useAppColors();
+  const isTitleText = typeof title === "string" || typeof title === "number";
 
   return (
-    <ThemedView>
+    <ThemedView
+      style={[
+        styles.container,
+        { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+      ]}
+    >
       <TouchableOpacity
-        style={styles.heading}
+        style={[styles.heading, { backgroundColor: colors.surfaceAlt }]}
         onPress={() => setIsOpen((value) => !value)}
-        activeOpacity={0.8}>
+        activeOpacity={0.8}
+      >
         <IconSymbol
           name="chevron.right"
           size={18}
           weight="medium"
-          color={theme === 'light' ? Colors.light.icon : Colors.dark.icon}
-          style={{ transform: [{ rotate: isOpen ? '90deg' : '0deg' }] }}
+          color={colors.icon}
+          style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}
         />
 
-        <ThemedText type="defaultSemiBold">{title}</ThemedText>
+        {isTitleText ? (
+          <ThemedText type="defaultSemiBold">{title}</ThemedText>
+        ) : (
+          title
+        )}
       </TouchableOpacity>
-      {isOpen && <ThemedView style={styles.content}>{children}</ThemedView>}
+      {isOpen && (
+        <ThemedView
+          style={[styles.content, { backgroundColor: colors.surface }]}
+        >
+          {children}
+        </ThemedView>
+      )}
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
   heading: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   content: {
-    marginTop: 6,
-    marginLeft: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
 });

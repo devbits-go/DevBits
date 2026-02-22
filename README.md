@@ -1,4 +1,4 @@
-# DevBits 
+# DevBits
 
 ## Goal: Create an X and LinkedIn crossover for posting real content about your projects, semi-formally
 
@@ -93,7 +93,7 @@ cd /path/to/DevBits/frontend
 #### 2. Check required packages are installed
 
 ```bash
-npm install     
+npm install
 ```
 
 #### 3. Start the app
@@ -124,3 +124,17 @@ cd /path/to/DevBits/frontend
 ```bash
 npm run all
 ```
+
+#### Windows quick start (root script)
+
+From the project root, you can launch backend + frontend together:
+
+```powershell
+./run-all.ps1
+```
+
+## Deployment DB scripts
+
+All deployment database script commands and usage are documented in:
+
+- [backend/scripts/README.md](backend/scripts/README.md)

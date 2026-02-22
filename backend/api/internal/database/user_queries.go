@@ -4,428 +4,535 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"slices"
-	"time"
-
-	"backend/api/internal/types"
+	"log"
 )
 
-// GetUsernameById retrieves the username associated with the given user ID.
-//
-// Parameters:
-//   - id: The unique identifier of the user.
-//
-// Returns:
-//   - string: The username if found.
-//   - error: An error if the query fails. Returns nil for both if no user exists.
-func GetUsernameById(id int64) (string, error) {
-	query := `SELECT username FROM Users WHERE id = ?;`
-
-	row := DB.QueryRow(query, id)
-
-	var retrievedUserName string
-	err := row.Scan(&retrievedUserName)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil
-		}
-		return "", err
-	}
-
-	return retrievedUserName, nil
+type ApiUser struct {
+	Id           int                    `json:"id"`
+	Username     string                 `json:"username"`
+	Picture      string                 `json:"picture"`
+	Bio          string                 `json:"bio"`
+	Links        map[string]interface{} `json:"links"`
+	Settings     map[string]interface{} `json:"settings"`
+	CreationDate string                 `json:"creation_date"`
 }
 
-// GetUserIdByUsername retrieves the user ID associated with the given username.
-//
-// Parameters:
-//   - username: The username to query.
-//
-// Returns:
-//   - int: The user ID if found.
-//   - error: An error if the query fails or the username does not exist.
-func GetUserIdByUsername(username string) (int, error) {
-	query := `SELECT id FROM Users WHERE username = ?`
+type UserLoginInfo struct {
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"`
+}
+
+// CreateUser inserts a new user into the database
+func CreateUser(user *ApiUser) (int, error) {
+	linksJson, err := json.Marshal(user.Links)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal links: %w", err)
+	}
+	settingsJson, err := json.Marshal(user.Settings)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal settings: %w", err)
+	}
+
+	// Use $1, $2, etc. for parameter placeholders in PostgreSQL
+	query := `
+		INSERT INTO users (username, picture, bio, links, settings, creation_date)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+		RETURNING id;
+	`
+	var newId int
+	err = DB.QueryRow(
+		query,
+		user.Username,
+		user.Picture,
+		user.Bio,
+		linksJson,
+		settingsJson,
+	).Scan(&newId)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert user: %w", err)
+	}
+	return newId, nil
+}
+
+// GetUserByUsername retrieves a user by their username
+func GetUserByUsername(username string) (*ApiUser, error) {
+	query := `
+		SELECT id, username, picture, bio, links, settings, creation_date
+		FROM users
+		WHERE LOWER(username) = LOWER($1)
+		ORDER BY CASE WHEN username = $1 THEN 0 ELSE 1 END, id ASC
+		LIMIT 1;
+	`
+	user := &ApiUser{}
+	var links, settings []byte
+	err := DB.QueryRow(query, username).Scan(
+		&user.Id,
+		&user.Username,
+		&user.Picture,
+		&user.Bio,
+		&links,
+		&settings,
+		&user.CreationDate,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // User not found
+		}
+		return nil, fmt.Errorf("failed to get user by username: %w", err)
+	}
+
+	if err := json.Unmarshal(links, &user.Links); err != nil {
+		log.Printf("WARN: could not unmarshal user links: %v", err)
+	}
+	if err := json.Unmarshal(settings, &user.Settings); err != nil {
+		log.Printf("WARN: could not unmarshal user settings: %v", err)
+	}
+
+	return user, nil
+}
+
+// GetUserById retrieves a user by their ID
+func GetUserById(id int) (*ApiUser, error) {
+	query := `
+		SELECT id, username, picture, bio, links, settings, creation_date
+		FROM users
+		WHERE id = $1;
+	`
+	user := &ApiUser{}
+	var links, settings []byte
+	err := DB.QueryRow(query, id).Scan(
+		&user.Id,
+		&user.Username,
+		&user.Picture,
+		&user.Bio,
+		&links,
+		&settings,
+		&user.CreationDate,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // User not found
+		}
+		return nil, fmt.Errorf("failed to get user by id: %w", err)
+	}
+
+	if err := json.Unmarshal(links, &user.Links); err != nil {
+		log.Printf("WARN: could not unmarshal user links: %v", err)
+	}
+	if err := json.Unmarshal(settings, &user.Settings); err != nil {
+		log.Printf("WARN: could not unmarshal user settings: %v", err)
+	}
+
+	return user, nil
+}
+
+// UpdateUser updates a user's information
+func UpdateUser(user *ApiUser) error {
+	linksJson, err := json.Marshal(user.Links)
+	if err != nil {
+		return fmt.Errorf("failed to marshal links: %w", err)
+	}
+	settingsJson, err := json.Marshal(user.Settings)
+	if err != nil {
+		return fmt.Errorf("failed to marshal settings: %w", err)
+	}
+
+	query := `
+		UPDATE users
+		SET picture = $1, bio = $2, links = $3, settings = $4
+		WHERE username = $5;
+	`
+	_, err = DB.Exec(
+		query,
+		user.Picture,
+		user.Bio,
+		linksJson,
+		settingsJson,
+		user.Username,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+	return nil
+}
+
+// DeleteUser deletes a user by their username
+func DeleteUser(username string) error {
+	tx, err := DB.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start user delete transaction: %w", err)
+	}
+
+	rollback := func(original error) error {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return fmt.Errorf("%v (rollback failed: %v)", original, rollbackErr)
+		}
+		return original
+	}
+
 	var userID int
-	row := DB.QueryRow(query, username)
-	err := row.Scan(&userID)
-	if err != nil { // TODO: Is there a way this can return a 404 vs 500 error? this could be a 404 or 500, but we cannot tell from an err here
-		return -1, fmt.Errorf("Error fetching user ID for username '%v' (this usually means username does not exist) : %v", username, err)
+	if err := tx.QueryRow("SELECT id FROM users WHERE username = $1", username).Scan(&userID); err != nil {
+		if err == sql.ErrNoRows {
+			return rollback(fmt.Errorf("user not found"))
+		}
+		return rollback(fmt.Errorf("failed to resolve user id: %w", err))
 	}
-	return userID, nil
+
+	_, err = tx.Exec(
+		`DELETE FROM comments WHERE id IN (
+			SELECT DISTINCT comment_id FROM (
+				SELECT pc.comment_id
+				FROM postcomments pc
+				JOIN posts p ON p.id = pc.post_id
+				WHERE p.user_id = $1 OR p.project_id IN (SELECT id FROM projects WHERE owner = $1)
+				UNION
+				SELECT prc.comment_id
+				FROM projectcomments prc
+				JOIN projects pr ON pr.id = prc.project_id
+				WHERE pr.owner = $1
+			) owned_comment_ids
+		);`,
+		userID,
+	)
+	if err != nil {
+		return rollback(fmt.Errorf("failed to delete comments linked to user-owned content: %w", err))
+	}
+
+	if _, err := tx.Exec("DELETE FROM userlogininfo WHERE username = $1", username); err != nil {
+		return rollback(fmt.Errorf("failed to delete user login info: %w", err))
+	}
+
+	if _, err := tx.Exec("DELETE FROM directmessages WHERE sender_id = $1 OR recipient_id = $1", userID); err != nil {
+		return rollback(fmt.Errorf("failed to delete user direct messages: %w", err))
+	}
+
+	res, err := tx.Exec("DELETE FROM users WHERE id = $1", userID)
+	if err != nil {
+		return rollback(fmt.Errorf("failed to delete user: %w", err))
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return rollback(fmt.Errorf("failed to fetch affected rows while deleting user: %w", err))
+	}
+	if rowsAffected == 0 {
+		return rollback(fmt.Errorf("user not found"))
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit user delete transaction: %w", err)
+	}
+
+	return nil
 }
 
-// QueryUsername retrieves all user data for the given username.
-//
-// Parameters:
-//   - username: The username to query.
-//
-// Returns:
-//   - *types.User: The user details if found.
-//   - error: An error if the query or data parsing fails.
-func QueryUsername(username string) (*types.User, error) {
-	query := `SELECT username, picture, bio, links, creation_date FROM Users WHERE username = ?;`
+// GetUsers retrieves a list of all users
+func GetUsers() ([]*ApiUser, error) {
+	query := `
+		SELECT id, username, picture, bio, links, settings, creation_date
+		FROM users;
+	`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users: %w", err)
+	}
+	defer rows.Close()
 
-	row := DB.QueryRow(query, username)
+	var users []*ApiUser
+	for rows.Next() {
+		user := &ApiUser{}
+		var links, settings []byte
+		if err := rows.Scan(
+			&user.Id,
+			&user.Username,
+			&user.Picture,
+			&user.Bio,
+			&links,
+			&settings,
+			&user.CreationDate,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan user row: %w", err)
+		}
 
-	var user types.User
-	var linksJSON string
-	err := row.Scan(&user.Username, &user.Picture, &user.Bio, &linksJSON, &user.CreationDate)
+		if err := json.Unmarshal(links, &user.Links); err != nil {
+			log.Printf("WARN: could not unmarshal user links: %v", err)
+		}
+		if err := json.Unmarshal(settings, &user.Settings); err != nil {
+			log.Printf("WARN: could not unmarshal user settings: %v", err)
+		}
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+// FollowUser creates a follow relationship between two users
+func FollowUser(followerUsername, followedUsername string) error {
+	follower, err := GetUserByUsername(followerUsername)
+	if err != nil {
+		return fmt.Errorf("failed to get follower: %w", err)
+	}
+	if follower == nil {
+		return fmt.Errorf("follower not found")
+	}
+
+	followed, err := GetUserByUsername(followedUsername)
+	if err != nil {
+		return fmt.Errorf("failed to get followed user: %w", err)
+	}
+	if followed == nil {
+		return fmt.Errorf("followed user not found")
+	}
+
+	query := "INSERT INTO userfollows (follower_id, followed_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;"
+	_, err = DB.Exec(query, follower.Id, followed.Id)
+	if err != nil {
+		return fmt.Errorf("failed to follow user: %w", err)
+	}
+	return nil
+}
+
+// UnfollowUser removes a follow relationship between two users
+func UnfollowUser(followerUsername, followedUsername string) error {
+	follower, err := GetUserByUsername(followerUsername)
+	if err != nil {
+		return fmt.Errorf("failed to get follower: %w", err)
+	}
+	if follower == nil {
+		return fmt.Errorf("follower not found")
+	}
+
+	followed, err := GetUserByUsername(followedUsername)
+	if err != nil {
+		return fmt.Errorf("failed to get followed user: %w", err)
+	}
+	if followed == nil {
+		return fmt.Errorf("followed user not found")
+	}
+
+	query := "DELETE FROM userfollows WHERE follower_id = $1 AND followed_id = $2;"
+	_, err = DB.Exec(query, follower.Id, followed.Id)
+	if err != nil {
+		return fmt.Errorf("failed to unfollow user: %w", err)
+	}
+	return nil
+}
+
+// GetUserFollowers retrieves a list of users who follow the given user
+func GetUserFollowers(username string) ([]*ApiUser, error) {
+	user, err := GetUserByUsername(username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	query := `
+		SELECT u.id, u.username, u.picture, u.bio, u.links, u.settings, u.creation_date
+		FROM users u
+		JOIN userfollows f ON u.id = f.follower_id
+		WHERE f.followed_id = $1;
+	`
+	rows, err := DB.Query(query, user.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get followers: %w", err)
+	}
+	defer rows.Close()
+
+	var followers []*ApiUser
+	for rows.Next() {
+		follower := &ApiUser{}
+		var links, settings []byte
+		if err := rows.Scan(
+			&follower.Id,
+			&follower.Username,
+			&follower.Picture,
+			&follower.Bio,
+			&links,
+			&settings,
+			&follower.CreationDate,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan follower row: %w", err)
+		}
+
+		if err := json.Unmarshal(links, &follower.Links); err != nil {
+			log.Printf("WARN: could not unmarshal follower links: %v", err)
+		}
+		if err := json.Unmarshal(settings, &follower.Settings); err != nil {
+			log.Printf("WARN: could not unmarshal follower settings: %v", err)
+		}
+		followers = append(followers, follower)
+	}
+
+	return followers, nil
+}
+
+// GetUserFollowing retrieves a list of users the given user follows
+func GetUserFollowing(username string) ([]*ApiUser, error) {
+	user, err := GetUserByUsername(username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	query := `
+		SELECT u.id, u.username, u.picture, u.bio, u.links, u.settings, u.creation_date
+		FROM users u
+		JOIN userfollows f ON u.id = f.followed_id
+		WHERE f.follower_id = $1;
+	`
+	rows, err := DB.Query(query, user.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get following: %w", err)
+	}
+	defer rows.Close()
+
+	var following []*ApiUser
+	for rows.Next() {
+		followed := &ApiUser{}
+		var links, settings []byte
+		if err := rows.Scan(
+			&followed.Id,
+			&followed.Username,
+			&followed.Picture,
+			&followed.Bio,
+			&links,
+			&settings,
+			&followed.CreationDate,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan followed row: %w", err)
+		}
+
+		if err := json.Unmarshal(links, &followed.Links); err != nil {
+			log.Printf("WARN: could not unmarshal followed links: %v", err)
+		}
+		if err := json.Unmarshal(settings, &followed.Settings); err != nil {
+			log.Printf("WARN: could not unmarshal followed settings: %v", err)
+		}
+		following = append(following, followed)
+	}
+
+	return following, nil
+}
+
+// GetUserFollowersUsernames retrieves a list of usernames who follow the given user
+func GetUserFollowersUsernames(username string) ([]string, error) {
+	user, err := GetUserByUsername(username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	query := `
+		SELECT u.username
+		FROM users u
+		JOIN userfollows f ON u.id = f.follower_id
+		WHERE f.followed_id = $1;
+	`
+	rows, err := DB.Query(query, user.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get follower usernames: %w", err)
+	}
+	defer rows.Close()
+
+	var usernames []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("failed to scan follower username: %w", err)
+		}
+		usernames = append(usernames, name)
+	}
+
+	return usernames, nil
+}
+
+// GetUserFollowingUsernames retrieves a list of usernames the given user follows
+func GetUserFollowingUsernames(username string) ([]string, error) {
+	user, err := GetUserByUsername(username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	query := `
+		SELECT u.username
+		FROM users u
+		JOIN userfollows f ON u.id = f.followed_id
+		WHERE f.follower_id = $1;
+	`
+	rows, err := DB.Query(query, user.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get following usernames: %w", err)
+	}
+	defer rows.Close()
+
+	var usernames []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("failed to scan following username: %w", err)
+		}
+		usernames = append(usernames, name)
+	}
+
+	return usernames, nil
+}
+
+// GetUserIdByUsername retrieves a user's ID by their username
+func GetUserIdByUsername(username string) (int, error) {
+	var id int
+	query := `
+		SELECT id
+		FROM users
+		WHERE LOWER(username) = LOWER($1)
+		ORDER BY CASE WHEN username = $1 THEN 0 ELSE 1 END, id ASC
+		LIMIT 1;
+	`
+	err := DB.QueryRow(query, username).Scan(&id)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return 0, fmt.Errorf("user not found")
 		}
-		return nil, err
+		return 0, fmt.Errorf("failed to get user id by username: %w", err)
 	}
-
-	var links []string
-	err = json.Unmarshal([]byte(linksJSON), &links)
-	if err != nil {
-		return nil, err
-	}
-
-	user.Links = links
-	return &user, nil
+	return id, nil
 }
 
-// QueryCreateUser creates a new user in the database.
-//
-// Parameters:
-//   - user: The user data to insert.
-//
-// Returns:
-//   - error: An error if the user creation fails.
-func QueryCreateUser(user *types.User) error {
-	linksJSON, err := json.Marshal(user.Links)
+// GetUserLoginInfo retrieves the login information for a user
+func GetUserLoginInfo(username string) (*UserLoginInfo, error) {
+	query := `
+		SELECT username, password_hash
+		FROM userlogininfo
+		WHERE LOWER(username) = LOWER($1)
+		ORDER BY CASE WHEN username = $1 THEN 0 ELSE 1 END
+		LIMIT 1;
+	`
+	info := &UserLoginInfo{}
+	err := DB.QueryRow(query, username).Scan(&info.Username, &info.PasswordHash)
 	if err != nil {
-		return fmt.Errorf("Failed to marshal links for user '%v': %v", user.Username, err)
+		if err == sql.ErrNoRows {
+			return nil, nil // User not found
+		}
+		return nil, fmt.Errorf("failed to get user login info: %w", err)
 	}
+	return info, nil
+}
 
-	currentTime := time.Now().UTC()
-
-	query := `INSERT INTO Users (username, picture, bio, links, creation_date)
-	VALUES (?, ?, ?, ?, ?);`
-
-	res, err := DB.Exec(query, user.Username, user.Picture, user.Bio, string(linksJSON), currentTime)
+// CreateUserLoginInfo creates a new login info record for a user
+func CreateUserLoginInfo(info *UserLoginInfo) error {
+	query := "INSERT INTO UserLoginInfo (username, password_hash) VALUES ($1, $2);"
+	_, err := DB.Exec(query, info.Username, info.PasswordHash)
 	if err != nil {
-		return fmt.Errorf("Failed to create user '%v': %v", user.Username, err)
+		return fmt.Errorf("failed to create user login info: %w", err)
 	}
-
-	_, err = res.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("Failed to ensure user was created: %v", err)
-	}
-
 	return nil
 }
 
-// QueryDeleteUser deletes a user by their username.
-//
-// Parameters:
-//   - username: The username of the user to delete.
-//
-// Returns:
-//   - int16: HTTP-like status code indicating the result.
-//   - error: An error if the deletion fails.
-func QueryDeleteUser(username string) (int16, error) {
-	query := `DELETE from Users WHERE username=?;`
-	res, err := DB.Exec(query, username)
-	if err != nil {
-		return http.StatusBadRequest, fmt.Errorf("Failed to delete user '%v': %v", username, err)
-	}
-
-	RowsAffected, err := res.RowsAffected()
-	if RowsAffected == 0 {
-		return http.StatusNotFound, fmt.Errorf("Deletion did not affect any records")
-	} else if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("Failed to fetch affected rows: %v", err)
-	}
-
-	return http.StatusOK, nil
-}
-
-// QueryUpdateUser updates a user's details by their username.
-//
-// Parameters:
-//   - username: The username of the user to update.
-//   - updatedData: A map of fields to update and their new values.
-//
-// Returns:
-//   - error: An error if the update fails or no user is found.
-func QueryUpdateUser(username string, updatedData map[string]interface{}) error {
-
-	newUsername, usernameExists := updatedData["username"]
-	usernameStr, parseOk := newUsername.(string)
-
-	// if there is a new username provided, ensure it is not empty
-	if usernameExists && parseOk && usernameStr == "" {
-		return fmt.Errorf("Updated username cannot be empty!")
-	}
-
-	query := `UPDATE Users SET `
-	var args []interface{}
-
-	queryParams, args, err := BuildUpdateQuery(updatedData)
-	if err != nil {
-		return fmt.Errorf("Error building query: %v", err)
-	}
-
-	query += queryParams + " WHERE username = ?"
-	args = append(args, username)
-
-	rowsAffected, err := ExecUpdate(query, args...)
-	if err != nil {
-		return fmt.Errorf("Error checking rows affected: %v", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("No user found with username '%s' to update", username)
-	}
-
-	return nil
-}
-
-// QueryGetUsersFollowersUsernames retrieves the usernames of users who follow the specified user.
-//
-// Parameters:
-//   - username: The username of the user.
-//
-// Returns:
-//   - []string: A list of usernames of the followers.
-//   - int: HTTP-like status code.
-//   - error: An error if the query fails.
-func QueryGetUsersFollowersUsernames(username string) ([]string, int, error) {
-	userID, err := GetUserIdByUsername(username)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-
-	query := `
-        SELECT u.username
-        FROM Users u
-        JOIN UserFollows uf ON u.id = uf.follower_id
-        WHERE uf.follows_id = ?`
-
-	return getUsersFollowingOrFollowersUsernames(query, userID)
-}
-
-// function to retrieve the user ids of the users who follow the given user
-//
-// Parameters:
-//   - username (string): the user to retrieve
-//
-// Returns:
-//   - []int: a list of user ids of users who follow the specified user
-//   - int: HTTP status code indicating the result of the operation
-//   - error: any error encountered during the query
-func QueryGetUsersFollowers(username string) ([]int, int, error) {
-	userID, err := GetUserIdByUsername(username)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-
-	query := `
-        SELECT u.id 
-        FROM Users u
-        JOIN UserFollows uf ON u.id = uf.follower_id
-        WHERE uf.follows_id = ?`
-
-	return getUsersFollowingOrFollowers(query, userID)
-}
-
-// function to retrieve the usernames of the users who follow the given user
-//
-// Parameters:
-//   - username (string): the user to retrieve
-//
-// Returns:
-//   - []string: a list of usernames of users who follow the specified user
-//   - int: HTTP status code indicating the result of the operation
-//   - error: any error encountered during the query
-func QueryGetUsersFollowingUsernames(username string) ([]string, int, error) {
-	userID, err := GetUserIdByUsername(username)
-	if err != nil {
-		return nil, http.StatusNotFound, err
-	}
-
-	query := `
-        SELECT u.username 
-        FROM Users u
-        JOIN UserFollows uf ON u.id = uf.follows_id
-        WHERE uf.follower_id = ?`
-
-	return getUsersFollowingOrFollowersUsernames(query, userID)
-}
-
-// function to retrieve the ids of the users who follow the given user
-//
-// Parameters:
-//   - username (string) - the user to retrieve
-//
-// Returns:
-//   - []int: a list of user IDs of users who follow the specified user
-//   - int: HTTP status code indicating the result of the operation
-//   - error: any error encountered during the query
-func QueryGetUsersFollowing(username string) ([]int, int, error) {
-	userID, err := GetUserIdByUsername(username)
-	if err != nil {
-		return nil, http.StatusNotFound, err
-	}
-
-	query := `
-        SELECT u.id 
-        FROM Users u
-        JOIN UserFollows uf ON u.id = uf.follows_id
-        WHERE uf.follower_id = ?`
-
-	return getUsersFollowingOrFollowers(query, userID)
-}
-
-// helper function to retrieve the followers or followings of a user by their IDs
-//
-// Parameters:
-//   - query (string): the SQL query to execute
-//   - userID (int): the ID of the user to find follow data for
-//
-// Returns:
-//   - []int: a list of user IDs for the followers or followings
-//   - int: HTTP status code
-//   - error: any error encountered during the query
-func getUsersFollowingOrFollowers(query string, userID int) ([]int, int, error) {
-	rows, err := DB.Query(query, userID)
-	if err != nil {
-		return nil, http.StatusNotFound, err
-	}
-	defer rows.Close()
-
-	var users []int
-	for rows.Next() {
-		var username int
-		if err := rows.Scan(&username); err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-		users = append(users, username)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-
-	return users, http.StatusOK, nil
-}
-
-// helper function to retrieve the followers or followings of a user by their usernames
-//
-// Parameters:
-//   - query (string): the SQL query to execute
-//   - userID (int): the ID of the user to find follow data for
-//
-// Returns:
-//   - []string: a list of usernames for the followers or followings
-//   - int: HTTP status code
-//   - error: any error encountered during the query
-func getUsersFollowingOrFollowersUsernames(query string, userID int) ([]string, int, error) {
-	rows, err := DB.Query(query, userID)
-	if err != nil {
-		return nil, http.StatusNotFound, err
-	}
-	defer rows.Close()
-
-	var users []string
-	for rows.Next() {
-		var username string
-		if err := rows.Scan(&username); err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-		users = append(users, username)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-
-	return users, http.StatusOK, nil
-}
-
-// function to create a follow relationship between two users
-//
-// Parameters:
-//   - user (string): the username of the user initiating the follow
-//   - newFollow (string): the username of the user to be followed
-//
-// Returns:
-//   - int: HTTP status code
-//   - error: any error encountered during the query
-func CreateNewUserFollow(user string, newFollow string) (int, error) {
-	userID, err := GetUserIdByUsername(user)
-	if err != nil {
-		return http.StatusNotFound, fmt.Errorf("Cannot find user with username '%v'", user)
-	}
-
-	newFollowID, err := GetUserIdByUsername(newFollow)
-	if err != nil {
-		return http.StatusNotFound, fmt.Errorf("Cannot find user with username '%v'", newFollow)
-	}
-
-	currFollowers, httpCode, err := QueryGetUsersFollowing(user)
-	if err != nil {
-		return httpCode, fmt.Errorf("Cannot retrieve user's following list: %v", err)
-	}
-
-	if slices.Contains(currFollowers, newFollowID) {
-		return http.StatusConflict, fmt.Errorf("User '%v' is already being followed", newFollow)
-	}
-
-	query := `INSERT INTO UserFollows (follower_id, follows_id) VALUES (?, ?)`
-	rowsAffected, err := ExecUpdate(query, userID, newFollowID)
-	if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("An error occurred adding follower: %v", err)
-	}
-
-	if rowsAffected == 0 {
-		return http.StatusInternalServerError, fmt.Errorf("Failed to add the follow relationship")
-	}
-
-	return http.StatusOK, nil
-}
-
-// function to remove a follow relationship between two users
-//
-// Parameters:
-//   - user (string): the username of the user initiating the unfollow
-//   - unfollow (string): the username of the user to be unfollowed
-//
-// Returns:
-//   - int: HTTP status code
-//   - error: any error encountered during the query
-func RemoveUserFollow(user string, unfollow string) (int, error) {
-	userID, err := GetUserIdByUsername(user)
-	if err != nil {
-		return http.StatusNotFound, fmt.Errorf("Cannot find user with username '%v'", user)
-	}
-
-	unfollowID, err := GetUserIdByUsername(unfollow)
-	if err != nil {
-		return http.StatusNotFound, fmt.Errorf("Cannot find user with username '%v'", unfollow)
-	}
-
-	currFollowers, httpCode, err := QueryGetUsersFollowing(user)
-	if err != nil {
-		return httpCode, fmt.Errorf("Error retrieving user's following list: %v", err)
-	}
-
-	if !slices.Contains(currFollowers, unfollowID) {
-		return http.StatusConflict, fmt.Errorf("User '%v' is not being followed", unfollow)
-	}
-
-	query := `DELETE FROM UserFollows WHERE follower_id = ? AND follows_id = ?;`
-	rowsAffected, err := ExecUpdate(query, userID, unfollowID)
-	if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("An error occurred removing follower: %v", err)
-	}
-
-	if rowsAffected == 0 {
-		return http.StatusConflict, fmt.Errorf("No such follow relationship exists")
-	}
-
-	return http.StatusOK, nil
-}

@@ -1,25 +1,167 @@
 import {
   DarkTheme,
   DefaultTheme,
+  type Theme,
   ThemeProvider,
 } from "@react-navigation/native";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
-import { SafeAreaView, Platform } from "react-native";
+import { Colors } from "@/constants/Colors";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { SavedProvider } from "@/contexts/SavedContext";
+import { SavedStreamsProvider } from "@/contexts/SavedStreamsContext";
+import {
+  PreferencesProvider,
+  usePreferences,
+} from "@/contexts/PreferencesContext";
+import {
+  NotificationsProvider,
+  useNotifications,
+} from "@/contexts/NotificationsContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import { ThemedView } from "@/components/ThemedView";
+import { HyprBackdrop } from "@/components/HyprBackdrop";
+import { BootScreen } from "@/components/BootScreen";
+import { InAppNotificationBanner } from "@/components/InAppNotificationBanner";
 // Prevent the splash screen from auto-hiding before asset loading is complete
 SplashScreen.preventAutoHideAsync();
 
+type NotificationsModule = typeof import("expo-notifications");
+
+const isExpoGoRuntime = () => {
+  const ownership = Constants.appOwnership;
+  const executionEnvironment = Constants.executionEnvironment;
+  return ownership === "expo" || executionEnvironment === "storeClient";
+};
+
+let hasShownBoot = __DEV__;
+
+const navLightTheme: Theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: Colors.light.tint,
+    background: Colors.light.background,
+    card: Colors.light.surface,
+    text: Colors.light.text,
+    border: Colors.light.border,
+    notification: Colors.light.tint,
+  },
+};
+
+const navDarkTheme: Theme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    primary: Colors.dark.tint,
+    background: Colors.dark.background,
+    card: Colors.dark.surface,
+    text: Colors.dark.text,
+    border: Colors.dark.border,
+    notification: Colors.dark.tint,
+  },
+};
+
 export default function RootLayout() {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <PreferencesProvider>
+          <NotificationsProvider>
+            <SavedProvider>
+              <SavedStreamsProvider>
+                <RootLayoutNav />
+              </SavedStreamsProvider>
+            </SavedProvider>
+          </NotificationsProvider>
+        </PreferencesProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  const { user, isLoading, justSignedUp } = useAuth();
+  const { preferences } = usePreferences();
+  const { inAppBanner, dismissInAppBanner } = useNotifications();
+  const segments = useSegments();
+  const router = useRouter();
+  const [showBoot, setShowBoot] = useState(() => !hasShownBoot);
+  const shouldShowBoot = useMemo(
+    () => loaded && showBoot && !hasShownBoot,
+    [loaded, showBoot],
+  );
+  const stackAnimation = useMemo(() => {
+    switch (preferences.pageTransitionEffect) {
+      case "none":
+        return "none" as const;
+      case "default":
+        return "default" as const;
+      default:
+        return "fade" as const;
+    }
+  }, [preferences.pageTransitionEffect]);
+
+  const openFromPayload = useCallback(
+    (payload: Record<string, any>) => {
+      const type = String(payload?.type ?? "").toLowerCase();
+      const actorName = String(payload?.actor_name ?? "").trim();
+      const asNumber = (value: unknown) => {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          return value;
+        }
+        if (typeof value === "string" && value.trim()) {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      };
+
+      if (type === "direct_message" && actorName) {
+        router.push({ pathname: "/terminal", params: { chat: actorName } });
+        return;
+      }
+
+      if (type === "follow_user" && actorName) {
+        router.push({
+          pathname: "/user/[username]",
+          params: { username: actorName },
+        });
+        return;
+      }
+
+      const projectId = asNumber(payload?.project_id);
+      if ((type === "save_project" || type === "builder_added") && projectId) {
+        router.push({
+          pathname: "/stream/[projectId]",
+          params: { projectId: String(projectId) },
+        });
+        return;
+      }
+
+      const postId = asNumber(payload?.post_id);
+      if ((type === "save_post" || type === "comment_post") && postId) {
+        router.push({
+          pathname: "/post/[postId]",
+          params: { postId: String(postId) },
+        });
+        return;
+      }
+
+      router.push("/notifications");
+    },
+    [router],
+  );
 
   useEffect(() => {
     if (loaded) {
@@ -28,18 +170,132 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
+  useEffect(() => {
+    if (!loaded || isLoading) {
+      return;
+    }
+
+    const inAuthGroup = segments[0] === "(auth)";
+    const inWelcome = segments[0] === "welcome";
+
+    if (!user && !inAuthGroup) {
+      router.replace("/(auth)/sign-in");
+    }
+
+    if (user && justSignedUp && !preferences.hasSeenWelcomeTour && !inWelcome) {
+      router.replace({ pathname: "/welcome", params: { mode: "first-run" } });
+      return;
+    }
+
+    if (user && inAuthGroup) {
+      router.replace("/(tabs)");
+    }
+  }, [
+    isLoading,
+    justSignedUp,
+    loaded,
+    preferences.hasSeenWelcomeTour,
+    segments,
+    router,
+    user,
+  ]);
+
+  useEffect(() => {
+    if (isExpoGoRuntime()) {
+      return;
+    }
+
+    let cancelled = false;
+    let subscription: { remove: () => void } | null = null;
+
+    const setup = async () => {
+      const Notifications: NotificationsModule =
+        await import("expo-notifications");
+      if (cancelled) {
+        return;
+      }
+
+      subscription = Notifications.addNotificationResponseReceivedListener(
+        (response) => {
+          const data = (response?.notification?.request?.content?.data ??
+            {}) as Record<string, any>;
+          openFromPayload(data);
+        },
+      );
+
+      const response = await Notifications.getLastNotificationResponseAsync();
+      if (cancelled) {
+        return;
+      }
+
+      const data = (response?.notification?.request?.content?.data ??
+        {}) as Record<string, any>;
+      if (Object.keys(data).length) {
+        openFromPayload(data);
+      }
+    };
+
+    void setup();
+
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, [openFromPayload]);
+
   // Render null if fonts are not loaded
   if (!loaded) {
     return null;
   }
 
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+    <ThemeProvider
+      value={colorScheme === "dark" ? navDarkTheme : navLightTheme}
+    >
+      <View style={{ flex: 1 }}>
+        <HyprBackdrop />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: stackAnimation,
+            contentStyle: {
+              backgroundColor: Colors[colorScheme ?? "light"].background,
+            },
+          }}
+        >
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="markdown-help" />
+          <Stack.Screen
+            name="manage-stream/[projectId]"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        {shouldShowBoot ? (
+          <BootScreen
+            onDone={() => {
+              hasShownBoot = true;
+              setShowBoot(false);
+            }}
+          />
+        ) : null}
+        <InAppNotificationBanner
+          visible={!!inAppBanner}
+          title={inAppBanner?.title ?? "Notification"}
+          body={inAppBanner?.body ?? "You have new activity."}
+          onDismiss={dismissInAppBanner}
+          onPress={() => {
+            const payload =
+              (inAppBanner?.payload as Record<string, any> | undefined) ?? {};
+            dismissInAppBanner();
+            openFromPayload(payload);
+          }}
+        />
+        <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+      </View>
     </ThemeProvider>
   );
 }

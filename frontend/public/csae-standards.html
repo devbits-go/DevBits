@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <title>Child Safety Standards — CSAE Policy</title>
+    <style>
+      body {
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+        line-height: 1.5;
+        margin: 0;
+        color: #f0f3f7;
+        background:
+          radial-gradient(
+            circle at 20% 10%,
+            rgba(0, 243, 41, 0.13),
+            transparent 35%
+          ),
+          radial-gradient(
+            circle at 78% 72%,
+            rgba(0, 243, 41, 0.08),
+            transparent 34%
+          ),
+          #05070a;
+      }
+
+      .glow-grid {
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 34px 34px;
+        mask-image: radial-gradient(
+          circle at center,
+          black 35%,
+          transparent 75%
+        );
+        pointer-events: none;
+      }
+
+      .topbar {
+        border-bottom: 1px solid rgba(180, 255, 196, 0.2);
+        background: linear-gradient(
+          180deg,
+          rgba(13, 18, 26, 0.86) 0%,
+          rgba(8, 11, 16, 0.72) 100%
+        );
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 10px 24px rgba(0, 0, 0, 0.28),
+          inset 0 0 20px rgba(0, 243, 41, 0.04);
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+
+      .topbar-inner {
+        width: min(1080px, 100% - 32px);
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .brand-logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        object-fit: cover;
+        box-shadow: 0 0 14px rgba(0, 243, 41, 0.18);
+      }
+
+      .nav {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .nav a {
+        color: #94a0af;
+        text-decoration: none;
+      }
+
+      .nav a:hover,
+      .nav a.active {
+        color: #00f329;
+      }
+
+      .shell {
+        max-width: 980px;
+        margin: 28px auto;
+        padding: 0 16px;
+      }
+
+      .card {
+        background: rgba(12, 16, 22, 0.6);
+        border: 1px solid rgba(180, 255, 196, 0.18);
+        border-radius: 22px;
+        padding: 24px;
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 0 18px rgba(0, 243, 41, 0.05),
+          inset 0 0 24px rgba(0, 243, 41, 0.03);
+      }
+
+      h1,
+      h2 {
+        color: #f0f3f7;
+      }
+
+      p,
+      li,
+      dd,
+      .muted {
+        color: #d8e0ea;
+      }
+
+      a {
+        color: #00f329;
+      }
+
+      .contact {
+        border: 1px solid rgba(180, 255, 196, 0.18);
+        border-radius: 12px;
+        padding: 12px;
+        background: rgba(12, 16, 22, 0.56);
+        backdrop-filter: blur(10px);
+        box-shadow:
+          0 0 12px rgba(0, 243, 41, 0.03),
+          inset 0 0 14px rgba(0, 243, 41, 0.015);
+      }
+
+      pre {
+        background: #10141a;
+        border: 1px solid #1f2732;
+        border-radius: 10px;
+        padding: 10px;
+        overflow: auto;
+        color: #d8e0ea;
+      }
+
+      .footer {
+        margin-top: 26px;
+        border-top: 1px solid #1f2732;
+        padding-top: 12px;
+      }
+
+      @media (max-width: 768px) {
+        .topbar-inner {
+          width: min(1080px, 100% - 20px);
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 12px 0;
+        }
+
+        .nav {
+          width: 100%;
+          gap: 10px 12px;
+        }
+
+        .nav a {
+          font-size: 14px;
+        }
+
+        .shell {
+          margin: 18px auto 24px;
+          padding: 0 12px;
+        }
+
+        .card {
+          border-radius: 18px;
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow-grid"></div>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a
+          class="brand"
+          href="https://play.google.com/apps/testing/com.devbits.frontend"
+          aria-label="Open DevBits on Google Play"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img class="brand-logo" src="/icon.png" alt="DevBits logo" />
+        </a>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="/">Home</a>
+          <a href="/features">Features</a>
+          <a href="/tester-application">Tester</a>
+          <a href="/about">About</a>
+          <a href="/privacy-policy">Privacy</a>
+          <a href="/account-deletion">Deletion</a>
+        </nav>
+      </div>
+    </header>
+    <main class="shell">
+      <section class="card">
+        <h1>Child Sexual Abuse &amp; Exploitation (CSAE) Policy</h1>
+        <p class="muted">
+          This public policy describes how DevBits prevents, reports, and
+          responds to child sexual abuse and exploitation (CSAE/CSAM).
+        </p>
+
+        <h2>1. Purpose</h2>
+        <p>
+          This policy outlines prevention, detection, reporting, and response
+          standards for child safety incidents across our platform.
+        </p>
+
+        <h2>2. Scope</h2>
+        <p>
+          Applies to all users, user-generated content, and platform
+          interactions.
+        </p>
+
+        <h2>3. Definitions</h2>
+        <dl>
+          <dt>CSAE</dt>
+          <dd>
+            Child sexual abuse and exploitation involving minors under 18.
+          </dd>
+          <dt>CSAM</dt>
+          <dd>
+            Child sexual abuse material in image, video, or similar media form.
+          </dd>
+        </dl>
+
+        <h2>4. Policy requirements</h2>
+        <ul>
+          <li>Maintain this public child safety policy.</li>
+          <li>Provide in-app reporting mechanisms for CSAE concerns.</li>
+          <li>
+            Remove confirmed CSAM immediately and preserve evidence where
+            required.
+          </li>
+          <li>Comply with legal reporting and child protection obligations.</li>
+          <li>Maintain a monitored child safety contact point.</li>
+        </ul>
+
+        <h2>5. Reporting procedures</h2>
+        <ul>
+          <li>In-app reporting tools (recommended).</li>
+          <li>Public reporting channels and support email.</li>
+          <li>
+            Child Safety Contact: <strong>security@yourdomain.example</strong>
+            (replace with your monitored address).
+          </li>
+        </ul>
+
+        <h2>6. Response and triage</h2>
+        <ol>
+          <li>
+            Acknowledge report receipt when contact information is provided.
+          </li>
+          <li>Triage for immediate safety risk.</li>
+          <li>Restrict/remove suspected violating content quickly.</li>
+          <li>
+            Escalate confirmed CSAM to relevant authorities where required.
+          </li>
+        </ol>
+
+        <h2>7. Evidence preservation &amp; retention</h2>
+        <p>
+          We retain evidence and metadata only as needed for investigation and
+          legal compliance, and disclose only to authorized parties or where
+          required by law.
+        </p>
+
+        <h2>8. Cooperation with authorities</h2>
+        <p>
+          DevBits cooperates with lawful requests from law enforcement and child
+          protection agencies.
+        </p>
+
+        <h2>9. Moderation and enforcement</h2>
+        <p>
+          Enforcement may include content removal, account suspension, permanent
+          bans, and legal escalation.
+        </p>
+
+        <h2>10. Prevention and minimization</h2>
+        <ul>
+          <li>Abuse detection and moderation tooling.</li>
+          <li>Rate limiting and suspicious behavior monitoring.</li>
+          <li>Age-appropriate restrictions where applicable.</li>
+        </ul>
+
+        <h2>11. User education</h2>
+        <p>We provide guidance on safe use and reporting channels.</p>
+
+        <h2>12. Roles, training, and audits</h2>
+        <p>
+          Safety processes are periodically reviewed, with designated owner(s)
+          for policy response.
+        </p>
+
+        <h2>13. Appeals and corrections</h2>
+        <p>Users may appeal moderation outcomes through support channels.</p>
+
+        <h2>14. Contact</h2>
+        <div class="contact">
+          <p><strong>Child Safety Contact</strong></p>
+          <p>Email: <strong>security@yourdomain.example</strong></p>
+          <p>
+            For imminent harm, contact your local emergency services or child
+            protection hotline.
+          </p>
+        </div>
+
+        <h2>15. Changes and review</h2>
+        <p>
+          This policy is reviewed regularly and updated when legal/platform
+          requirements change.
+        </p>
+
+        <h2>16. Quick reporting checklist</h2>
+        <pre>
+1) Provide username/link and timestamp
+2) Attach screenshots if safe to do so
+3) Explain why content is concerning
+4) Include contact details for follow-up
+        </pre>
+
+        <h2>17. Developer obligations</h2>
+        <ul>
+          <li>Keep this policy publicly available and updated.</li>
+          <li>Monitor and triage child safety reports promptly.</li>
+          <li>Maintain a working monitored child safety contact.</li>
+        </ul>
+
+        <div class="footer">
+          <p class="muted">
+            This is the official CSAE/CSAM policy page for DevBits. Ensure
+            contact details are monitored and current.
+          </p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

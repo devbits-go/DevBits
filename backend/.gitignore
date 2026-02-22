@@ -8,3 +8,18 @@
 *.dylib
 *.test
 *.out
+
+# Secrets and certificates
+*.key
+*.pem
+*.p12
+*.jks
+*.keystore
+*.crt
+
+# Service account files
+*service-account*.json
+devbits-*.json
+
+# nginx certs (if you keep private certs locally, move to secrets/ and ignore)
+nginx/certs/

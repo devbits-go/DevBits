@@ -8,16 +8,16 @@ package tests
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"testing"
-    "fmt"
-    "os"
-    "database/sql"
 
 	"github.com/stretchr/testify/assert"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type TestCase struct {
@@ -129,7 +129,12 @@ func TestAPI(t *testing.T) {
 		"Post Tests":    post_tests,
 	}
 
-    db, err := sql.Open("sqlite3", "../database/dev.sqlite3")
+	dbPath := "../database/dev.sqlite3"
+	if removeErr := os.Remove(dbPath); removeErr != nil && !os.IsNotExist(removeErr) {
+		panic(fmt.Sprintf("Failed to reset test database file: %v", removeErr))
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to connect to database: %v", err))
 	}

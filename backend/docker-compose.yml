@@ -1,0 +1,68 @@
+services:
+  db:
+    image: postgres:15
+    container_name: devbits-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-devbits}
+      POSTGRES_USER: ${POSTGRES_USER:-devbits}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (set it in backend/.env)}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devbits-backend
+    restart: unless-stopped
+    volumes:
+      # Mount the uploads directory to persist data
+      - ./uploads:/root/uploads
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app-network
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-devbits}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-devbits}?sslmode=disable
+
+  nginx:
+    image: nginx:latest
+    container_name: devbits-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Mount volumes for Let's Encrypt certificates
+      - ./nginx/certs:/etc/letsencrypt
+      # Serve static site assets (public pages + screenshots)
+      - ../frontend/public:/usr/share/nginx/html:ro
+    depends_on:
+      backend:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
