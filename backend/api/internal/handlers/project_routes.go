@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"backend/api/internal/database"
-	"backend/api/internal/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -136,13 +135,13 @@ func AddProjectBuilder(context *gin.Context) {
 		return
 	}
 
-	builderId, err := database.GetUserIdByUsername(builderUsername)
-	if err != nil || builderId == 0 {
+	builder, err := database.GetUserByUsername(builderUsername)
+	if err != nil || builder == nil {
 		RespondWithError(context, http.StatusBadRequest, "Builder user not found")
 		return
 	}
 
-	builderID64 := int64(builderId)
+	builderID64 := int64(builder.Id)
 	if builderID64 == project.Owner {
 		context.JSON(http.StatusOK, gin.H{"message": "Owner already has access"})
 		return
@@ -155,7 +154,7 @@ func AddProjectBuilder(context *gin.Context) {
 	}
 
 	projectID64 := int64(projectId)
-	ownerName, _ := database.GetUsernameById(project.Owner)
+	owner, _ := database.GetUserById(int(project.Owner))
 	createAndPushNotification(
 		builderID64,
 		project.Owner,
@@ -163,7 +162,7 @@ func AddProjectBuilder(context *gin.Context) {
 		nil,
 		&projectID64,
 		nil,
-		notificationBody(ownerName, "added you as a builder"),
+		notificationBody(owner.Username, "added you as a builder"),
 	)
 
 	context.JSON(http.StatusOK, gin.H{"message": "Builder added"})
@@ -193,8 +192,8 @@ func RemoveProjectBuilder(context *gin.Context) {
 		return
 	}
 
-	builderId, err := database.GetUserIdByUsername(builderUsername)
-	if err != nil || builderId == 0 {
+	builder, err := database.GetUserByUsername(builderUsername)
+	if err != nil || builder == nil {
 		RespondWithError(context, http.StatusBadRequest, "Builder user not found")
 		return
 	}
@@ -205,7 +204,7 @@ func RemoveProjectBuilder(context *gin.Context) {
 		return
 	}
 
-	builderID64 := int64(builderId)
+	builderID64 := int64(builder.Id)
 	if project.Owner != authUserID && builderID64 != authUserID {
 		RespondWithError(context, http.StatusForbidden, "Only the owner can manage builders")
 		return
@@ -221,14 +220,14 @@ func RemoveProjectBuilder(context *gin.Context) {
 }
 
 // CreateProject handles POST requests to create a new project.
-// It expects a JSON payload that can be bound to a `types.Project` object.
+// It expects a JSON payload that can be bound to a `database.Project` object.
 // Validates the provided owner's ID and ensures the user exists.
 // Returns:
 // - 400 Bad Request if the JSON payload is invalid or the owner cannot be verified.
 // - 500 Internal Server Error if there is a database error.
 // On success, responds with a 201 Created status and the new project ID in JSON format.
 func CreateProject(context *gin.Context) {
-	var newProj types.Project
+	var newProj database.Project
 	err := context.BindJSON(&newProj)
 
 	if err != nil {
@@ -237,13 +236,13 @@ func CreateProject(context *gin.Context) {
 	}
 
 	// verify the owner
-	username, err := database.GetUsernameById(newProj.Owner)
+	user, err := database.GetUserById(int(newProj.Owner))
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify project ownership: %v", err))
 		return
 	}
 
-	if username == "" {
+	if user == nil {
 		RespondWithError(context, http.StatusBadRequest, "Failed to verify project ownership. User could not be found")
 		return
 	}
@@ -360,8 +359,8 @@ func UpdateProjectInfo(context *gin.Context) {
 			RespondWithError(context, http.StatusBadRequest, "Invalid owner id format")
 			return
 		}
-		username, err := database.GetUsernameById(int64(ownerID))
-		if err != nil || username == "" {
+		user, err := database.GetUserById(int(ownerID))
+		if err != nil || user == nil {
 			RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Invalid owner id: %v", ownerID))
 			return
 		}
@@ -495,12 +494,12 @@ func FollowProject(context *gin.Context) {
 
 	projectInt, _ := strconv.Atoi(projectId)
 	project, _ := database.QueryProject(projectInt)
-	actorID, _ := database.GetUserIdByUsername(username)
+	actor, _ := database.GetUserByUsername(username)
 	if project != nil {
 		projectID64 := int64(project.ID)
 		createAndPushNotification(
 			project.Owner,
-			int64(actorID),
+			int64(actor.Id),
 			"save_project",
 			nil,
 			&projectID64,
@@ -528,12 +527,12 @@ func UnfollowProject(context *gin.Context) {
 
 	projectInt, _ := strconv.Atoi(projectId)
 	project, _ := database.QueryProject(projectInt)
-	actorID, _ := database.GetUserIdByUsername(username)
+	actor, _ := database.GetUserByUsername(username)
 	if project != nil {
 		projectID64 := int64(project.ID)
 		_, _ = database.DeleteNotificationByReference(
 			project.Owner,
-			int64(actorID),
+			int64(actor.Id),
 			"save_project",
 			nil,
 			&projectID64,

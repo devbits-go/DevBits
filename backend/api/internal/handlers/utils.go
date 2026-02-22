@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"backend/api/internal/logger"
-	"backend/api/internal/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -48,7 +47,10 @@ func IsFieldAllowed(existingData interface{}, fieldName string) bool {
 
 func RespondWithError(context *gin.Context, status int, message string) {
 	logger.Log.Infof("Error: %s", message)
-	response := types.ErrorResponse{
+	response := struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}{
 		Error:   http.StatusText(status),
 		Message: message,
 	}

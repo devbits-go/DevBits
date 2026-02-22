@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -15,35 +14,93 @@ import {
 import { WebView } from "react-native-webview";
 import { Collapsible } from "@/components/Collapsible";
 import { FadeInImage } from "@/components/FadeInImage";
-import { LazyFadeIn } from "@/components/LazyFadeIn";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { API_BASE_URL, resolveMediaUrl } from "@/services/api";
 
 type MarkdownTextProps = {
   children: string;
+  compact?: boolean;
+  preferStatic?: boolean;
+};
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+
+const stripMarkdownImageTitle = (value: string) => {
+  const match = value.match(/^(.+?)\s+(?:"[^"]*"|'[^']*')\s*$/);
+  return match ? match[1].trim() : value;
+};
+
+const sanitizeImageInput = (value: string) =>
+  stripMarkdownImageTitle(
+    value
+      .trim()
+      .replace(/^<+|>+$/g, "")
+      .replace(/^['"]+|['"]+$/g, "")
+      .replace(/\\([()])/g, "$1")
+      .replace(/&amp;/g, "&")
+      .trim(),
+  );
+
+const rewriteLocalhostToApiBase = (url: URL) => {
+  const host = url.hostname.toLowerCase();
+  if (!LOCAL_HOSTS.has(host)) {
+    return url;
+  }
+
+  try {
+    const apiUrl = new URL(API_BASE_URL);
+    const next = new URL(url.toString());
+    next.protocol = apiUrl.protocol;
+    next.hostname = apiUrl.hostname;
+    next.port = apiUrl.port;
+    return next;
+  } catch {
+    return url;
+  }
 };
 
 const normalizeImageSourceUrl = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) {
+  const source = sanitizeImageInput(value);
+  if (!source) {
     return "";
   }
 
-  const source = trimmed
-    .replace(/^<+|>+$/g, "")
-    .replace(/&amp;/g, "&")
-    .trim();
+  if (/^data:image\//i.test(source)) {
+    return source;
+  }
 
-  const withScheme = source.startsWith("//")
+  if (/^\/?uploads\//i.test(source)) {
+    return resolveMediaUrl(source.startsWith("/") ? source : `/${source}`);
+  }
+
+  if (source.startsWith("./") || source.startsWith("../")) {
+    return resolveMediaUrl(source.replace(/^\.?\//, "/"));
+  }
+
+  if (source.startsWith("/")) {
+    try {
+      // Convert absolute-path references to full API URLs so fetch() and Image URI
+      // consumers have a valid absolute URL (avoids "Invalid URL: /path" errors).
+      return `${API_BASE_URL}${source}`;
+    } catch {
+      return "";
+    }
+  }
+
+  const candidate = source.startsWith("//")
     ? `https:${source}`
     : source.startsWith("www.")
       ? `https://${source}`
       : source;
 
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(candidate)) {
+    return resolveMediaUrl(`/${candidate.replace(/^\/+/, "")}`);
+  }
+
   try {
-    const parsed = new URL(withScheme);
+    const parsed = rewriteLocalhostToApiBase(new URL(candidate));
     if (!/^https?:$/i.test(parsed.protocol)) {
       return "";
     }
@@ -57,22 +114,16 @@ const normalizeImageSourceUrl = (value: string) => {
     const rawIndex = segments.indexOf("raw");
 
     if (segments.length >= 5 && blobIndex === 2) {
-      const owner = segments[0];
-      const repo = segments[1];
-      const branch = segments[3];
-      const assetPath = segments.slice(4).join("/");
-      if (owner && repo && branch && assetPath) {
-        return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${assetPath}`;
+      const [owner, repo, , branch, ...asset] = segments;
+      if (owner && repo && branch && asset.length > 0) {
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${asset.join("/")}`;
       }
     }
 
     if (segments.length >= 5 && rawIndex === 2) {
-      const owner = segments[0];
-      const repo = segments[1];
-      const branch = segments[3];
-      const assetPath = segments.slice(4).join("/");
-      if (owner && repo && branch && assetPath) {
-        return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${assetPath}`;
+      const [owner, repo, , branch, ...asset] = segments;
+      if (owner && repo && branch && asset.length > 0) {
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${asset.join("/")}`;
       }
     }
 
@@ -87,6 +138,43 @@ const isSvgUrl = (value: string) => {
   return clean.endsWith(".svg");
 };
 
+const parseSvgAspectRatio = (svg: string) => {
+  const viewBoxMatch = svg.match(
+    /viewBox\s*=\s*["']\s*([\d.+-]+)[\s,]+([\d.+-]+)[\s,]+([\d.+-]+)[\s,]+([\d.+-]+)\s*["']/i,
+  );
+  if (viewBoxMatch) {
+    const width = Number(viewBoxMatch[3]);
+    const height = Number(viewBoxMatch[4]);
+    if (
+      width > 0 &&
+      height > 0 &&
+      Number.isFinite(width) &&
+      Number.isFinite(height)
+    ) {
+      return width / height;
+    }
+  }
+
+  const widthMatch = svg.match(
+    /\bwidth\s*=\s*["']\s*([\d.+-]+)(?:px)?\s*["']/i,
+  );
+  const heightMatch = svg.match(
+    /\bheight\s*=\s*["']\s*([\d.+-]+)(?:px)?\s*["']/i,
+  );
+  const width = widthMatch ? Number(widthMatch[1]) : NaN;
+  const height = heightMatch ? Number(heightMatch[1]) : NaN;
+  if (
+    width > 0 &&
+    height > 0 &&
+    Number.isFinite(width) &&
+    Number.isFinite(height)
+  ) {
+    return width / height;
+  }
+
+  return 16 / 9;
+};
+
 type InlineCodeScope = "callout" | "blockquote" | null;
 
 const InlineCodeContext = React.createContext<{ scope: InlineCodeScope }>({
@@ -94,33 +182,6 @@ const InlineCodeContext = React.createContext<{ scope: InlineCodeScope }>({
 });
 
 const imageAspectRatioCache = new Map<string, number>();
-
-const extractMarkdownImageUrls = (text: string) => {
-  const found = new Set<string>();
-  const markdownImageRegex = /!\[[^\]]*\]\(([^)\s]+(?:\s+"[^"]*")?)\)/g;
-  const htmlImageRegex = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
-
-  let match: RegExpExecArray | null = markdownImageRegex.exec(text);
-  while (match) {
-    const raw = (match[1] ?? "").trim().split(/\s+"/)[0];
-    const normalized = normalizeImageSourceUrl(raw);
-    if (normalized) {
-      found.add(normalized);
-    }
-    match = markdownImageRegex.exec(text);
-  }
-
-  match = htmlImageRegex.exec(text);
-  while (match) {
-    const normalized = normalizeImageSourceUrl((match[1] ?? "").trim());
-    if (normalized) {
-      found.add(normalized);
-    }
-    match = htmlImageRegex.exec(text);
-  }
-
-  return Array.from(found);
-};
 
 function AnimatedMarkdownBlock({
   children,
@@ -196,87 +257,18 @@ function AnimatedMarkdownBlock({
   );
 }
 
-export function MarkdownText({ children }: MarkdownTextProps) {
+export function MarkdownText({
+  children,
+  compact = false,
+  preferStatic = false,
+}: MarkdownTextProps) {
   const colors = useAppColors();
   const { preferences } = usePreferences();
   const motion = useMotionConfig();
   const { width: windowWidth } = useWindowDimensions();
-  const [imageAspectRatios, setImageAspectRatios] = useState<
-    Record<string, number>
-  >({});
-  const [imageSizingReady, setImageSizingReady] = useState(false);
-  const markdownImageUrls = useMemo(
-    () => extractMarkdownImageUrls(children),
-    [children],
-  );
-  const isMarkdownReady = useDeferredRender({
-    enabled: true,
-    delayMs: motion.prefersReducedMotion ? 0 : 14,
-    deferUntilInteractions: true,
-  });
-
-  useEffect(() => {
-    let isActive = true;
-
-    const preloadImageSizes = async () => {
-      const nonSvgUrls = markdownImageUrls.filter((src) => !isSvgUrl(src));
-      if (!nonSvgUrls.length) {
-        if (isActive) {
-          setImageAspectRatios({});
-          setImageSizingReady(true);
-        }
-        return;
-      }
-
-      setImageSizingReady(false);
-
-      const entries = await Promise.all(
-        nonSvgUrls.map(
-          (src) =>
-            new Promise<[string, number]>((resolve) => {
-              const cached = imageAspectRatioCache.get(src);
-              if (typeof cached === "number" && Number.isFinite(cached)) {
-                resolve([src, cached]);
-                return;
-              }
-
-              Image.getSize(
-                src,
-                (width, height) => {
-                  const ratio =
-                    width > 0 && height > 0 ? width / height : 16 / 9;
-                  imageAspectRatioCache.set(src, ratio);
-                  resolve([src, ratio]);
-                },
-                () => {
-                  const fallback = 16 / 9;
-                  imageAspectRatioCache.set(src, fallback);
-                  resolve([src, fallback]);
-                },
-              );
-            }),
-        ),
-      );
-
-      if (!isActive) {
-        return;
-      }
-
-      setImageAspectRatios(
-        entries.reduce<Record<string, number>>((accumulator, [src, ratio]) => {
-          accumulator[src] = ratio;
-          return accumulator;
-        }, {}),
-      );
-      setImageSizingReady(true);
-    };
-
-    void preloadImageSizes();
-
-    return () => {
-      isActive = false;
-    };
-  }, [markdownImageUrls]);
+  const [imageAspectRatios] = useState<Record<string, number>>({});
+  const isLargeDocument = children.length > 1400;
+  const useStaticRendering = preferStatic || isLargeDocument;
   const toRgba = (hex: string, alpha: number) => {
     const normalized = hex.replace("#", "");
     const value =
@@ -367,10 +359,10 @@ export function MarkdownText({ children }: MarkdownTextProps) {
       .replace(/\\<(\/?summary[^>]*)>/gi, "<$1>");
 
   const parseDetailsBlocks = (text: string) => {
-    const blocks: Array<
+    const blocks: (
       | { type: "markdown"; content: string }
       | { type: "details"; summary: string; content: string; open: boolean }
-    > = [];
+    )[] = [];
     const tagRegex = /<\/?details[^>]*>/gi;
     let cursor = 0;
     let depth = 0;
@@ -531,7 +523,11 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   };
 
   const renderImage = (node: { key?: string; attributes?: any }) => {
-    const src = normalizeImageSourceUrl(node.attributes?.src ?? "");
+    const originalSrc = String(node.attributes?.src ?? "");
+    let src = normalizeImageSourceUrl(originalSrc);
+    if (!src) {
+      src = normalizeImageSourceUrl(resolveMediaUrl(originalSrc));
+    }
     if (!src) {
       return null;
     }
@@ -724,7 +720,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     nodeGrandParentType,
   }: {
     content: string;
-    parentTypes: Array<{ type?: string }>;
+    parentTypes: { type?: string }[];
     parentType: string;
     nodeParentType?: string;
     nodeGrandParentType?: string;
@@ -774,7 +770,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   const renderInlineCode = (
     node: { key?: string; content?: string },
     _children: React.ReactNode[] = [],
-    parent?: { type?: string } | Array<{ type?: string }>,
+    parent?: { type?: string } | { type?: string }[],
   ) => {
     const content = node.content ?? getCodeContent(node);
     const parentTypes = Array.isArray(parent) ? parent : parent ? [parent] : [];
@@ -798,7 +794,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   const renderText = (
     node: { key?: string; content?: string },
     _children: React.ReactNode[] = [],
-    parent?: { type?: string } | Array<{ type?: string }>,
+    parent?: { type?: string } | { type?: string }[],
     styles?: any,
     inheritedStyles: any = {},
   ) => {
@@ -837,7 +833,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   const renderStrikethrough = (
     node: { key?: string },
     children: React.ReactNode[] = [],
-    _parent?: { type?: string } | Array<{ type?: string }>,
+    _parent?: { type?: string } | { type?: string }[],
     styles?: any,
     inheritedStyles: any = {},
   ) => (
@@ -851,7 +847,7 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     children: React.ReactNode[] = [],
     parent?:
       | { type?: string; attributes?: any }
-      | Array<{ type?: string; attributes?: any }>,
+      | { type?: string; attributes?: any }[],
     mdStyles?: any,
     inheritedStyles: any = {},
   ) => {
@@ -920,11 +916,29 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     link: renderLink,
   };
 
+  const bodyFontSize = compact ? 13 : 14;
+  const bodyLineHeight = compact ? 18 : 20;
   const markdownStyle = {
-    body: { color: colors.text, fontSize: 14, lineHeight: 20 },
-    heading1: { color: colors.text, fontSize: 20, marginBottom: 6 },
-    heading2: { color: colors.text, fontSize: 18, marginBottom: 6 },
-    heading3: { color: colors.text, fontSize: 16, marginBottom: 6 },
+    body: {
+      color: colors.text,
+      fontSize: bodyFontSize,
+      lineHeight: bodyLineHeight,
+    },
+    heading1: {
+      color: colors.text,
+      fontSize: compact ? 18 : 20,
+      marginBottom: 6,
+    },
+    heading2: {
+      color: colors.text,
+      fontSize: compact ? 16 : 18,
+      marginBottom: 6,
+    },
+    heading3: {
+      color: colors.text,
+      fontSize: compact ? 15 : 16,
+      marginBottom: 6,
+    },
     hr: {
       borderBottomColor: colors.border,
       borderBottomWidth: 1,
@@ -960,7 +974,12 @@ export function MarkdownText({ children }: MarkdownTextProps) {
       paddingVertical: 6,
     },
     link: { color: colors.tint },
-    paragraph: { marginTop: 1 },
+    paragraph: { marginTop: 1, marginBottom: 0 },
+    image: {
+      marginTop: 0,
+      marginBottom: 0,
+      alignSelf: "flex-start",
+    },
     em: { fontStyle: "italic" },
     strong: { fontWeight: "700" },
     s: {
@@ -984,9 +1003,10 @@ export function MarkdownText({ children }: MarkdownTextProps) {
   } as const;
 
   const shouldAnimateMarkdown =
-    !motion.prefersReducedMotion && preferences.textRenderEffect !== "off";
-  const enableBlockAnimation =
-    isMarkdownReady && imageSizingReady && shouldAnimateMarkdown;
+    !useStaticRendering &&
+    !motion.prefersReducedMotion &&
+    preferences.textRenderEffect !== "off";
+  const enableBlockAnimation = shouldAnimateMarkdown;
 
   const renderMarkdownSegments = (
     text: string,
@@ -1056,17 +1076,9 @@ export function MarkdownText({ children }: MarkdownTextProps) {
     });
   };
 
-  const markdownNodes = useMemo(() => {
-    return renderMarkdownSegments(children, "root");
-  }, [children, colors, preferences.linkOpenMode, windowWidth]);
+  const markdownNodes = renderMarkdownSegments(children, "root");
 
-  const canRevealMarkdown = isMarkdownReady && imageSizingReady;
-
-  return (
-    <LazyFadeIn visible={canRevealMarkdown} style={styles.markdownStack}>
-      {markdownNodes}
-    </LazyFadeIn>
-  );
+  return <View style={styles.markdownStack}>{markdownNodes}</View>;
 }
 
 type MarkdownImageProps = {
@@ -1115,15 +1127,17 @@ function MarkdownImage({
   );
   const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
   const [isSvgLoaded, setIsSvgLoaded] = useState(false);
-  const isReady = useDeferredRender();
+  const [isRasterLoaded, setIsRasterLoaded] = useState(false);
   const isSvg = useMemo(() => isSvgUrl(src), [src]);
 
   useEffect(() => {
     if (isSvg) {
       setAspectRatio(16 / 9);
+      setIsRasterLoaded(false);
       return;
     }
     setAspectRatio(initialAspectRatio ?? 16 / 9);
+    setIsRasterLoaded(false);
   }, [initialAspectRatio, isSvg]);
 
   useEffect(() => {
@@ -1136,24 +1150,23 @@ function MarkdownImage({
     setSvgMarkup(null);
     setIsSvgLoaded(false);
 
-    void fetch(src)
-      .then((response) => {
+    (async () => {
+      try {
+        const response = await fetch(src);
+        if (!active) return;
         if (!response.ok) {
           throw new Error("Failed to load SVG");
         }
-        return response.text();
-      })
-      .then((text) => {
-        if (!active) {
-          return;
-        }
+        const text = await response.text();
+        if (!active) return;
+        setAspectRatio(parseSvgAspectRatio(text));
         setSvgMarkup(text);
-      })
-      .catch(() => {
+      } catch {
         if (active) {
           setSvgMarkup(null);
         }
-      });
+      }
+    })();
 
     return () => {
       active = false;
@@ -1163,51 +1176,78 @@ function MarkdownImage({
   const svgHtml = useMemo(() => {
     const content = svgMarkup
       ? svgMarkup
-      : `<img src="${src.replace(/"/g, "&quot;")}" style="max-width:100%;height:auto;" />`;
-    return `<!doctype html><html><body style="margin:0;padding:0;background:transparent;display:flex;align-items:center;justify-content:center;">${content}</body></html>`;
+      : `<img src="${src.replace(/"/g, "&quot;")}" style="display:block;width:100%;height:auto;max-width:100%;vertical-align:top;" />`;
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" /><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;}svg,img{display:block;width:100%;height:auto;max-width:100%;vertical-align:top;}*{box-sizing:border-box;}</style></head><body>${content}</body></html>`;
   }, [src, svgMarkup]);
 
-  return (
-    <LazyFadeIn visible={isReady}>
-      {isReady ? (
-        isSvg ? (
-          <View
-            style={[
-              styles.image,
-              styles.svgImage,
-              styles.svgImageContainer,
-              {
-                width: maxWidth,
-                maxWidth: "100%",
-                backgroundColor: colors.surfaceAlt,
-              },
-            ]}
-          >
-            <WebView
-              originWhitelist={["*"]}
-              source={{ html: svgHtml }}
-              style={[styles.svgWebView, !isSvgLoaded && styles.hidden]}
-              scrollEnabled={false}
-              onLoadEnd={() => setIsSvgLoaded(true)}
-            />
-            {!isSvgLoaded ? (
-              <View style={styles.svgLoadingOverlay}>
-                <ActivityIndicator size="small" color={colors.muted} />
-              </View>
-            ) : null}
-          </View>
-        ) : (
-          <FadeInImage
-            source={{ uri: src }}
-            resizeMode="contain"
-            style={[
-              styles.image,
-              { width: maxWidth, maxWidth: "100%", aspectRatio },
-            ]}
-          />
-        )
+  return isSvg ? (
+    <View
+      style={[
+        styles.image,
+        styles.svgImage,
+        styles.svgImageContainer,
+        {
+          width: maxWidth,
+          maxWidth: "100%",
+          aspectRatio,
+          backgroundColor: "transparent",
+        },
+      ]}
+    >
+      <WebView
+        originWhitelist={["*"]}
+        source={{ html: svgHtml }}
+        style={[styles.svgWebView, !isSvgLoaded && styles.hidden]}
+        scrollEnabled={false}
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        setSupportMultipleWindows={false}
+        onLoadEnd={() => setIsSvgLoaded(true)}
+      />
+      {!isSvgLoaded ? (
+        <View style={styles.svgLoadingOverlay}>
+          <ActivityIndicator size="small" color={colors.muted} />
+        </View>
       ) : null}
-    </LazyFadeIn>
+    </View>
+  ) : (
+    <View
+      style={[
+        styles.image,
+        styles.rasterImageContainer,
+        {
+          width: maxWidth,
+          maxWidth: "100%",
+          aspectRatio,
+          borderColor: colors.border,
+          backgroundColor: colors.surfaceAlt,
+        },
+      ]}
+    >
+      <FadeInImage
+        source={{ uri: src }}
+        resizeMode="contain"
+        onLoad={(event) => {
+          const width = event.nativeEvent?.source?.width ?? 0;
+          const height = event.nativeEvent?.source?.height ?? 0;
+          if (width > 0 && height > 0) {
+            const ratio = width / height;
+            imageAspectRatioCache.set(src, ratio);
+            setAspectRatio(ratio);
+          }
+        }}
+        onLoadEnd={() => {
+          setIsRasterLoaded(true);
+        }}
+        style={styles.rasterImage}
+      />
+      {!isRasterLoaded ? (
+        <View style={styles.svgLoadingOverlay}>
+          <ActivityIndicator size="small" color={colors.muted} />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -1283,7 +1323,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   svgImage: {
-    height: 220,
     backgroundColor: "transparent",
   },
   svgWebView: {
@@ -1294,6 +1333,14 @@ const styles = StyleSheet.create({
   svgImageContainer: {
     borderRadius: 10,
     overflow: "hidden",
+  },
+  rasterImageContainer: {
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  rasterImage: {
+    width: "100%",
+    height: "100%",
   },
   svgLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,

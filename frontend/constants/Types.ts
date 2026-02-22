@@ -79,6 +79,9 @@ export interface UserSettings {
     visualizationIntensity?: number;
     linkOpenMode: "asTyped" | "promptScheme";
     hasSeenWelcomeTour?: boolean;
+    hasPromptedMediaLibraryPermission?: boolean;
+    mediaLibraryPermissionGranted?: boolean;
+    mediaLibraryPermissionUpdatedAt?: string;
 }
 
 export interface AuthLoginRequest {

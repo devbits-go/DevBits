@@ -11,8 +11,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { updateUser } from "@/services/api";
 
 const PREFS_KEY = "devbits.preferences";
+const sanitizeSecureStoreSegment = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "anonymous";
+  }
+  const sanitized = trimmed.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return sanitized || "anonymous";
+};
 const prefsKeyForUser = (username?: string | null) =>
-  username ? `${PREFS_KEY}.${username}` : PREFS_KEY;
+  username ? `${PREFS_KEY}.${sanitizeSecureStoreSegment(username)}` : null;
 
 export type Preferences = {
   backgroundRefreshEnabled: boolean;
@@ -21,6 +29,7 @@ export type Preferences = {
   compactMode: boolean;
   textRenderEffect: "smooth" | "typewriter" | "wave" | "random" | "off";
   imageRevealEffect: "smooth" | "off";
+  pageTransitionEffect: "fade" | "default" | "none";
   accentColor: string;
   rgbShiftEnabled: boolean;
   rgbShiftSpeedMs: number;
@@ -49,6 +58,7 @@ const defaultPreferences: Preferences = {
   compactMode: false,
   textRenderEffect: "smooth",
   imageRevealEffect: "smooth",
+  pageTransitionEffect: "fade",
   accentColor: "",
   rgbShiftEnabled: false,
   rgbShiftSpeedMs: 3200,
@@ -115,23 +125,21 @@ export function PreferencesProvider({
     useState<Preferences>(defaultPreferences);
   const [isLoading, setIsLoading] = useState(true);
   const isHydratingRef = useRef(false);
+  const key = useMemo(() => prefsKeyForUser(user?.username), [user?.username]);
 
   useEffect(() => {
     let isActive = true;
     const loadPreferences = async () => {
-      isHydratingRef.current = true;
-      setIsLoading(true);
-
-      if (!user?.username) {
+      if (!key) {
         setPreferences(defaultPreferences);
         setIsLoading(false);
-        isHydratingRef.current = false;
         return;
       }
 
-      const stored = await SecureStore.getItemAsync(
-        prefsKeyForUser(user.username),
-      );
+      isHydratingRef.current = true;
+      setIsLoading(true);
+
+      const stored = await SecureStore.getItemAsync(key);
       if (!isActive) {
         return;
       }
@@ -147,7 +155,7 @@ export function PreferencesProvider({
       setPreferences(
         sanitizePreferences({
           ...parsed,
-          ...(user.settings ?? {}),
+          ...(user?.settings ?? {}),
         }),
       );
       setIsLoading(false);
@@ -158,7 +166,7 @@ export function PreferencesProvider({
     return () => {
       isActive = false;
     };
-  }, [user?.settings, user?.username]);
+  }, [key, user?.settings]);
 
   const updatePreferences = async (updates: Partial<Preferences>) => {
     const next = sanitizePreferences({ ...preferences, ...updates });
@@ -168,11 +176,8 @@ export function PreferencesProvider({
       return;
     }
 
-    if (user?.username) {
-      await SecureStore.setItemAsync(
-        prefsKeyForUser(user.username),
-        JSON.stringify(next),
-      );
+    if (user?.username && key) {
+      await SecureStore.setItemAsync(key, JSON.stringify(next));
       try {
         const response = await updateUser(user.username, { settings: next });
         const serverSettings = response?.user?.settings as
@@ -181,16 +186,11 @@ export function PreferencesProvider({
         if (serverSettings) {
           const merged = sanitizePreferences({ ...next, ...serverSettings });
           setPreferences(merged);
-          await SecureStore.setItemAsync(
-            prefsKeyForUser(user.username),
-            JSON.stringify(merged),
-          );
+          await SecureStore.setItemAsync(key, JSON.stringify(merged));
         }
       } catch {
         // keep local preferences if backend fails
       }
-    } else {
-      await SecureStore.setItemAsync(PREFS_KEY, JSON.stringify(next));
     }
   };
 

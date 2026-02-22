@@ -32,6 +32,19 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Secrets and credentials
+*service-account*.json
+devbits-*.json
+devbits-play-service-account.json
+google-services.json
+GoogleService-Info.plist
+fastlane/credentials.json
+
+# Ignore any exported keys
+*.key
+*.jks
+*.keystore
+
 # typescript
 *.tsbuildinfo
 

@@ -177,7 +177,7 @@ export default function MarkdownHelpScreen() {
                       },
                     ]}
                   >
-                    <MarkdownText>{sample.code}</MarkdownText>
+                    <MarkdownText preferStatic>{sample.code}</MarkdownText>
                   </View>
                 ) : null}
               </View>

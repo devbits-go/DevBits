@@ -9,7 +9,6 @@ import {
   Animated,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -388,18 +387,12 @@ export default function StreamDetailScreen() {
   }, [projectIdNumber, savedProjectIds]);
 
   useEffect(() => {
-    if (!project) {
-      return;
-    }
-    setSaveCount(project.saves ?? 0);
-  }, [project?.id, project?.saves]);
+    setSaveCount(project?.saves ?? 0);
+  }, [project?.saves]);
 
   useEffect(() => {
-    if (!project) {
-      return;
-    }
-    setLikeCount(project.likes ?? 0);
-  }, [project?.id, project?.likes]);
+    setLikeCount(project?.likes ?? 0);
+  }, [project?.likes]);
 
   const handleToggleSave = async () => {
     if (!user?.username || projectIdNumber == null || isSaving) {
@@ -591,8 +584,8 @@ export default function StreamDetailScreen() {
                       <Pressable
                         onPress={() =>
                           router.push({
-                            pathname: "/manage-streams",
-                            params: { editId: String(projectIdNumber) },
+                            pathname: "/manage-stream/[projectId]",
+                            params: { projectId: String(projectIdNumber) },
                           })
                         }
                         style={({ pressed }) => [

@@ -140,7 +140,7 @@ export function InAppNotificationBanner({
         timeoutRef.current = null;
       }
     };
-  }, [dragY, onDismiss, opacity, translateY, visible]);
+  }, [dragY, enterEase, onDismiss, opacity, translateY, visible]);
 
   if (!isRendered) {
     return null;

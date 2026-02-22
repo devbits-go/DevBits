@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import * as FileSystem from "expo-file-system";
 import { Platform } from "react-native";
 import {
   ApiPost,
@@ -16,13 +17,40 @@ import {
   UpdateUserRequest,
 } from "@/constants/Types";
 
-const userCache = new Map<number, ApiUser>();
-const projectCache = new Map<number, ApiProject>();
+type ApiUserWire = ApiUser & {
+  creation_date?: string;
+  links?: unknown;
+};
+
+type CachedEntry<T> = {
+  value: T;
+  cachedAt: number;
+};
+
+export type ApiDirectMessageThread = {
+  peer_username: string;
+  last_content: string;
+  last_at: string;
+};
+
+const userCache = new Map<number, CachedEntry<ApiUser>>();
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
 const MAX_USER_CACHE_ENTRIES = 300;
-const MAX_PROJECT_CACHE_ENTRIES = 300;
 const MAX_INFLIGHT_GET_ENTRIES = 200;
+const USER_CACHE_TTL_MS = 5_000;
 let authToken: string | null = null;
+const REQUEST_TIMEOUT_MS = 120000;
+const UPLOAD_TIMEOUT_MS = 30000;
+const HEALTHCHECK_TIMEOUT_MS = 4000;
+const LARGE_REQUEST_TIMEOUT_MS = 300000;
+const MAX_INLINE_MEDIA_FALLBACK_BYTES = 64 * 1024 * 1024;
+const REFRESH_READ_WINDOW_MS = 2500;
+let forceFreshReadsUntil = 0;
+
+type RequestOptions = {
+  timeoutMs?: number;
+  forceFresh?: boolean;
+};
 
 const trimMapToSize = <K, V>(map: Map<K, V>, maxEntries: number) => {
   if (map.size <= maxEntries) {
@@ -47,6 +75,44 @@ const setWithLimit = <K, V>(map: Map<K, V>, key: K, value: V, maxEntries: number
   trimMapToSize(map, maxEntries);
 };
 
+const getFreshUserCache = (userId: number) => {
+  const cached = userCache.get(userId);
+  if (!cached) {
+    return null;
+  }
+  if (Date.now() - cached.cachedAt > USER_CACHE_TTL_MS) {
+    userCache.delete(userId);
+    return null;
+  }
+  return cached.value;
+};
+
+const setUserCache = (user: ApiUser) => {
+  if (typeof user?.id !== "number" || !Number.isFinite(user.id)) {
+    return;
+  }
+  setWithLimit(
+    userCache,
+    user.id,
+    {
+      value: user,
+      cachedAt: Date.now(),
+    },
+    MAX_USER_CACHE_ENTRIES,
+  );
+};
+
+export const upsertCachedUser = (user: ApiUser | null | undefined) => {
+  if (!user) {
+    return;
+  }
+  setUserCache(user);
+};
+
+export const invalidateCachedUserById = (userId: number) => {
+  userCache.delete(userId);
+};
+
 export const setAuthToken = (token: string | null) => {
   const changed = authToken !== token;
   authToken = token;
@@ -58,9 +124,16 @@ export const setAuthToken = (token: string | null) => {
 
 export const clearApiCache = () => {
   userCache.clear();
-  projectCache.clear();
   inFlightGetRequests.clear();
 };
+
+export const beginFreshReadWindow = (durationMs = REFRESH_READ_WINDOW_MS) => {
+  const windowMs = Math.max(300, durationMs);
+  forceFreshReadsUntil = Date.now() + windowMs;
+  inFlightGetRequests.clear();
+};
+
+const isFreshReadWindowActive = () => Date.now() <= forceFreshReadsUntil;
 
 const getHostFromUri = (uri?: string | null) => {
   if (!uri) {
@@ -72,31 +145,286 @@ const getHostFromUri = (uri?: string | null) => {
 };
 
 const getDefaultBaseUrl = () => {
-  const legacyConstants = Constants as unknown as {
-    manifest?: { debuggerHost?: string };
-    manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
-  };
+  // In development, use the local server.
+  if (__DEV__) {
+    const legacyConstants = Constants as unknown as {
+      manifest?: { debuggerHost?: string };
+      manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
+    };
 
-  const hostUri =
-    Constants.expoConfig?.hostUri ??
-    legacyConstants.manifest?.debuggerHost ??
-    legacyConstants.manifest2?.extra?.expoClient?.hostUri ??
-    null;
+    const hostUri =
+      Constants.expoConfig?.hostUri ??
+      legacyConstants.manifest?.debuggerHost ??
+      legacyConstants.manifest2?.extra?.expoClient?.hostUri ??
+      null;
 
-  const host = getHostFromUri(hostUri);
-  if (host) {
-    return `http://${host}:8080`;
+    const host = getHostFromUri(hostUri);
+    if (host) {
+      return `http://${host}`;
+    }
+
+    if (Platform.OS === "android") {
+      return "http://10.0.2.2";
+    }
+
+    return "http://localhost";
   }
 
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:8080";
-  }
-
-  return "http://localhost:8080";
+  // In production, use the live server.
+  return "https://devbits.ddns.net";
 };
 
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || getDefaultBaseUrl();
+const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, "");
+
+export const API_BASE_URL = normalizeBaseUrl(
+  process.env.EXPO_PUBLIC_API_URL?.trim() || getDefaultBaseUrl(),
+);
+
+const API_FALLBACK_URL = normalizeBaseUrl(
+  process.env.EXPO_PUBLIC_API_FALLBACK_URL?.trim() || "https://devbits.ddns.net",
+);
+
+const API_UPLOAD_BASE_URLS =
+  API_FALLBACK_URL && API_FALLBACK_URL !== API_BASE_URL
+    ? [API_BASE_URL, API_FALLBACK_URL]
+    : [API_BASE_URL];
+
+const isTransientUploadError = (error: unknown) => {
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("network") ||
+    message.includes("timed out") ||
+    message.includes("failed to fetch") ||
+    message.includes("connection")
+  );
+};
+
+const fetchUploadWithFallback = async (
+  path: string,
+  init: RequestInit,
+) => {
+  let lastError: unknown = null;
+
+  for (const baseUrl of API_UPLOAD_BASE_URLS) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        ...init,
+        signal: controller.signal,
+      });
+      // Return even non-2xx responses — let callers handle status codes.
+      return response;
+    } catch (error) {
+      lastError = error;
+      // Always try the next URL before giving up.
+      continue;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  if (lastError instanceof Error && lastError.name === "AbortError") {
+    throw new Error(
+      `Upload timed out after ${UPLOAD_TIMEOUT_MS / 1000}s. Check API connectivity to ${API_BASE_URL}.`,
+    );
+  }
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Upload failed while connecting to ${API_BASE_URL}: ${detail}`);
+};
+
+const uploadMultipartWithFallback = async (
+  path: string,
+  body: FormData,
+  headers: Headers,
+) => {
+  let lastError: unknown = null;
+
+  for (const baseUrl of API_UPLOAD_BASE_URLS) {
+    const targetUrl = `${baseUrl}${path}`;
+
+    try {
+      const result = await new Promise<{
+        status: number;
+        responseText: string;
+      }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        let settled = false;
+        let watchdog: ReturnType<typeof setTimeout> | null = null;
+
+        const finalize = (
+          callback: () => void,
+        ) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          if (watchdog) {
+            clearTimeout(watchdog);
+            watchdog = null;
+          }
+          xhr.onload = null;
+          xhr.onerror = null;
+          xhr.ontimeout = null;
+          xhr.onabort = null;
+          callback();
+        };
+
+        xhr.open("POST", targetUrl);
+        xhr.timeout = UPLOAD_TIMEOUT_MS;
+
+        headers.forEach((value, key) => {
+          if (key.toLowerCase() !== "content-type") {
+            xhr.setRequestHeader(key, value);
+          }
+        });
+
+        xhr.onload = () =>
+          finalize(() => {
+            resolve({
+              status: xhr.status,
+              responseText: xhr.responseText ?? "",
+            });
+          });
+
+        xhr.onerror = () =>
+          finalize(() => reject(new Error(`Upload network error for ${targetUrl}`)));
+        xhr.ontimeout = () =>
+          finalize(() =>
+            reject(
+              new Error(
+                `Upload timed out after ${UPLOAD_TIMEOUT_MS / 1000}s. Check API connectivity to ${baseUrl}.`,
+              ),
+            ),
+          );
+        xhr.onabort = () => finalize(() => reject(new Error(`Upload aborted for ${targetUrl}`)));
+
+        watchdog = setTimeout(() => {
+          try {
+            xhr.abort();
+          } catch {
+            // Ignore abort errors; we still reject below.
+          }
+          finalize(() =>
+            reject(
+              new Error(
+                `Upload watchdog timeout after ${UPLOAD_TIMEOUT_MS / 1000}s for ${baseUrl}.`,
+              ),
+            ),
+          );
+        }, UPLOAD_TIMEOUT_MS + 1500);
+
+        xhr.send(body);
+      });
+
+      return result;
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
+  }
+
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Upload failed while connecting to ${API_BASE_URL}: ${detail}`);
+};
+
+const guessMimeTypeFromFilename = (name: string, fallbackType: string) => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".heic")) return "image/heic";
+  if (lower.endsWith(".mov")) return "video/quicktime";
+  if (lower.endsWith(".mp4")) return "video/mp4";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  return fallbackType || "application/octet-stream";
+};
+
+const buildInlineMediaFallback = async (file: {
+  uri: string;
+  name: string;
+  type: string;
+}) => {
+  const normalizedUri = normalizeUploadUri(file.uri);
+  if (!/^file:|^content:/i.test(normalizedUri)) {
+    throw new Error("Inline fallback requires a local file URI");
+  }
+
+  const info = await FileSystem.getInfoAsync(normalizedUri);
+  if (!info.exists) {
+    throw new Error("Inline fallback source file not found");
+  }
+
+  const fileSize = typeof (info as { size?: number }).size === "number"
+    ? (info as { size?: number }).size
+    : undefined;
+
+  if (typeof fileSize === "number" && fileSize > MAX_INLINE_MEDIA_FALLBACK_BYTES) {
+    throw new Error(
+      `Media file too large for inline fallback (${Math.round(fileSize / (1024 * 1024))}MB).`,
+    );
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(normalizedUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  const mimeType = guessMimeTypeFromFilename(file.name, file.type);
+  return {
+    url: `data:${mimeType};base64,${base64}`,
+    filename: file.name,
+    contentType: mimeType,
+    size: fileSize,
+  };
+};
+
+const toLocalAwareApiUrl = (input: string) => {
+  try {
+    const parsed = new URL(input);
+    const apiBase = new URL(API_BASE_URL);
+    const localHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+    if (!localHosts.has(parsed.hostname.toLowerCase())) {
+      return input;
+    }
+
+    parsed.protocol = apiBase.protocol;
+    parsed.hostname = apiBase.hostname;
+    parsed.port = apiBase.port;
+    return parsed.toString();
+  } catch {
+    return input;
+  }
+};
+
+export const checkApiConnection = async (): Promise<void> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), HEALTHCHECK_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Health check failed (${response.status})`);
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `Cannot reach API (${API_BASE_URL}). Health check timed out after ${HEALTHCHECK_TIMEOUT_MS / 1000}s.`,
+      );
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Cannot reach API (${API_BASE_URL}): ${detail}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 export const resolveMediaUrl = (value?: string | null) => {
   if (!value) {
@@ -107,21 +435,43 @@ export const resolveMediaUrl = (value?: string | null) => {
     return "";
   }
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
-    return trimmed;
+    return toLocalAwareApiUrl(trimmed);
   }
+
+  // Treat leading-slash paths as server-root references and return
+  // an absolute URL so consumers (Image, fetch, WebView) receive
+  // a valid absolute URL instead of a bare path like `/image/foo.svg`.
+  if (trimmed.startsWith("/")) {
+    return `${API_BASE_URL}${trimmed}`;
+  }
+
   const normalized = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
   if (normalized.startsWith("uploads/")) {
     return `${API_BASE_URL}/${normalized}`;
   }
+
   return trimmed;
 };
 
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+const request = async <T>(
+  path: string,
+  init?: RequestInit,
+  options?: RequestOptions,
+): Promise<T> => {
   const method = (init?.method ?? "GET").toUpperCase();
   const isGetRequest = method === "GET" && !init?.body;
+  const forceFresh = !!options?.forceFresh || isFreshReadWindowActive();
+  const requestPath =
+    forceFresh && isGetRequest
+      ? `${path}${path.includes("?") ? "&" : "?"}_rf=${Date.now()}`
+      : path;
   const inFlightKey = `${authToken ?? ""}::${path}`;
+  const timeoutMs =
+    typeof options?.timeoutMs === "number"
+      ? Math.max(0, options.timeoutMs)
+      : REQUEST_TIMEOUT_MS;
 
-  if (isGetRequest) {
+  if (isGetRequest && !forceFresh) {
     const existing = inFlightGetRequests.get(inFlightKey);
     if (existing) {
       return existing as Promise<T>;
@@ -129,34 +479,81 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   }
 
   const execute = async (): Promise<T> => {
-  const authHeader = authToken ? { Authorization: `Bearer ${authToken}` } : {};
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader,
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+    const headers = new Headers(init?.headers as HeadersInit | undefined);
+    // Only set JSON content-type for requests with a body that is not FormData
+    const hasBody = !!init?.body;
+    const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+    if (hasBody && !isFormData && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    if (authToken) {
+      headers.set("Authorization", `Bearer ${authToken}`);
+    }
+    if (isGetRequest) {
+      headers.set("Cache-Control", "no-cache");
+      headers.set("Pragma", "no-cache");
+    }
 
-  const text = await response.text();
+    const controller = new AbortController();
+    const timeoutId =
+      timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
-  if (!response.ok) {
-    throw new Error(text || `Request failed (${response.status})`);
-  }
+    const requestBaseUrls =
+      API_FALLBACK_URL && API_FALLBACK_URL !== API_BASE_URL
+        ? [API_BASE_URL, API_FALLBACK_URL]
+        : [API_BASE_URL];
 
-  if (!text) {
-    return null as T;
-  }
+    let response: Response | null = null;
+    let lastError: unknown = null;
 
-  try {
-    return JSON.parse(text) as T;
-  } catch (error) {
-    throw new Error(`Invalid JSON response: ${text}`);
-  }
+    for (const baseUrl of requestBaseUrls) {
+      try {
+        response = await fetch(`${baseUrl}${requestPath}`, {
+          ...init,
+          headers,
+          signal: controller.signal,
+        });
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        continue;
+      }
+    }
+
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    if (!response) {
+      if (lastError instanceof Error && lastError.name === "AbortError") {
+        throw new Error(
+          `Request timed out after ${timeoutMs / 1000}s. Check API connectivity to ${API_BASE_URL}.`,
+        );
+      }
+      const detail =
+        lastError instanceof Error ? lastError.message : String(lastError);
+      throw new Error(`Network error connecting to ${API_BASE_URL}: ${detail}`);
+    }
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(text || `Request failed (${response.status})`);
+    }
+
+    if (!text) {
+      return (null as unknown) as T;
+    }
+
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new Error(`Invalid JSON response: ${text}`);
+    }
   };
 
-  if (!isGetRequest) {
+  if (!isGetRequest || forceFresh) {
     return execute();
   }
 
@@ -171,6 +568,67 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   );
   return pending;
 };
+
+const normalizeLinks = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).filter(
+      (item): item is string => typeof item === "string",
+    );
+  }
+  return [];
+};
+
+const normalizeUserIdList = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const toId = (entry: unknown) => {
+    if (typeof entry === "number" && Number.isFinite(entry)) {
+      return Math.trunc(entry);
+    }
+    if (entry && typeof entry === "object") {
+      const raw = (entry as { id?: unknown }).id;
+      if (typeof raw === "number" && Number.isFinite(raw)) {
+        return Math.trunc(raw);
+      }
+      if (typeof raw === "string" && raw.trim()) {
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed)) {
+          return Math.trunc(parsed);
+        }
+      }
+    }
+    return null;
+  };
+
+  const ids = value
+    .map(toId)
+    .filter((id): id is number => typeof id === "number" && id > 0);
+
+  return Array.from(new Set(ids));
+};
+
+const normalizeUser = (user: ApiUserWire): ApiUser => {
+  const created =
+    (typeof user.created_on === "string" && user.created_on) ||
+    (typeof user.creation_date === "string" && user.creation_date) ||
+    "";
+
+  return {
+    ...user,
+    created_on: created,
+    links: normalizeLinks(user.links),
+  };
+};
+
+const normalizeAuthResponse = (response: AuthResponse): AuthResponse => ({
+  ...response,
+  user: normalizeUser(response.user as ApiUserWire),
+});
 
 export type FeedSort = "time" | "likes" | "new" | "recent" | "popular" | "hot";
 
@@ -195,19 +653,28 @@ export const getSavedPostsFeed = (
 ) =>
   request<ApiPost[]>(`/feed/posts/saved/${username}?start=${start}&count=${count}&sort=${sort}`);
 
-export const registerUser = (payload: AuthRegisterRequest) =>
-  request<AuthResponse>("/auth/register", {
+export const registerUser = async (payload: AuthRegisterRequest) => {
+  const response = await request<AuthResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+  return normalizeAuthResponse(response);
+};
 
-export const loginUser = (payload: AuthLoginRequest) =>
-  request<AuthResponse>("/auth/login", {
+export const loginUser = async (payload: AuthLoginRequest) => {
+  const response = await request<AuthResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+  return normalizeAuthResponse(response);
+};
 
-export const getMe = () => request<ApiUser>("/auth/me");
+export const getMe = async () => {
+  const user = await request<ApiUserWire>("/auth/me");
+  const normalized = normalizeUser(user);
+  setUserCache(normalized);
+  return normalized;
+};
 
 export const getProjectsFeed = (
   type: FeedSort,
@@ -235,28 +702,50 @@ export const getSavedProjectsFeed = (
     `/feed/projects/saved/${username}?start=${start}&count=${count}&sort=${sort}`,
   );
 
-export const getUserByUsername = (username: string) =>
-  request<ApiUser>(`/users/${username}`);
+export const getUserByUsername = async (username: string) => {
+  const user = await request<ApiUserWire>(`/users/${username}`);
+  const normalized = normalizeUser(user);
+  setUserCache(normalized);
+  return normalized;
+};
 
 export const getUserById = async (userId: number) => {
-  if (userCache.has(userId)) {
-    return userCache.get(userId)!;
+  const cached = isFreshReadWindowActive() ? null : getFreshUserCache(userId);
+  if (cached) {
+    return cached;
   }
-  const user = await request<ApiUser>(`/users/id/${userId}`);
-  setWithLimit(userCache, userId, user, MAX_USER_CACHE_ENTRIES);
+  const wireUser = await request<ApiUserWire>(`/users/id/${userId}`, undefined, {
+    forceFresh: isFreshReadWindowActive(),
+  });
+  const user = normalizeUser(wireUser);
+  setUserCache(user);
   return user;
 };
 
-export const getAllUsers = (start = 0, count = 50) =>
-  request<ApiUser[]>(`/users?start=${start}&count=${count}`);
+export type ManagedMediaItem = {
+  filename: string;
+  url: string;
+};
+
+export const getMyManagedMedia = (username: string) =>
+  request<{ items: ManagedMediaItem[] }>(`/users/${username}/media`);
+
+export const deleteMyManagedMedia = (
+  username: string,
+  payload: { filenames?: string[]; deleteAll?: boolean },
+) =>
+  request<{ message: string; removed: number }>(`/users/${username}/media`, {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+
+export const getAllUsers = async (start = 0, count = 50) => {
+  const users = await request<ApiUserWire[]>(`/users?start=${start}&count=${count}`);
+  return users.map(normalizeUser);
+};
 
 export const getProjectById = async (projectId: number) => {
-  if (projectCache.has(projectId)) {
-    return projectCache.get(projectId)!;
-  }
-  const project = await request<ApiProject>(`/projects/${projectId}`);
-  setWithLimit(projectCache, projectId, project, MAX_PROJECT_CACHE_ENTRIES);
-  return project;
+  return request<ApiProject>(`/projects/${projectId}`);
 };
 
 export const getProjectsByUserId = (userId: number) =>
@@ -335,11 +824,15 @@ export const unlikeComment = (username: string, commentId: number) =>
 export const isCommentLiked = (username: string, commentId: number) =>
   request<{ status: boolean }>(`/comments/does-like/${username}/${commentId}`);
 
-export const getUsersFollowers = (username: string) =>
-  request<number[]>(`/users/${username}/followers`);
+export const getUsersFollowers = async (username: string) => {
+  const response = await request<unknown>(`/users/${username}/followers`);
+  return normalizeUserIdList(response);
+};
 
-export const getUsersFollowing = (username: string) =>
-  request<number[]>(`/users/${username}/follows`);
+export const getUsersFollowing = async (username: string) => {
+  const response = await request<unknown>(`/users/${username}/follows`);
+  return normalizeUserIdList(response);
+};
 
 export const getUsersFollowersUsernames = async (username: string) => {
   const response = await request<{ followers?: string[] }>(
@@ -403,11 +896,25 @@ export const unlikeProject = (username: string, projectId: number) =>
 export const isProjectLiked = (username: string, projectId: number) =>
   request<{ status: boolean }>(`/projects/does-like/${username}/${projectId}`);
 
-export const updateUser = (username: string, payload: UpdateUserRequest) =>
-  request<{ message: string; user: ApiUser }>(`/users/${username}`, {
-    method: "PUT",
+export const updateUser = async (username: string, payload: UpdateUserRequest) => {
+  const pictureValue = typeof payload.picture === "string" ? payload.picture.trim() : "";
+  const timeoutMs = pictureValue.startsWith("data:")
+    ? LARGE_REQUEST_TIMEOUT_MS
+    : REQUEST_TIMEOUT_MS;
+  // Use POST /users/:username/update instead of PUT /users/:username
+  // because iOS CFNetwork intermittently drops PUT request bodies,
+  // causing silent 400 errors.  POST bodies are delivered reliably.
+  const response = await request<{ message: string; user: ApiUserWire }>(`/users/${username}/update`, {
+    method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, { timeoutMs });
+  const normalizedUser = normalizeUser(response.user);
+  setUserCache(normalizedUser);
+  return {
+    ...response,
+    user: normalizedUser,
+  };
+};
 
 export const deleteUser = (username: string) =>
   request<{ message: string }>(`/users/${username}`, {
@@ -510,6 +1017,18 @@ export const getDirectChatPeers = async (username: string) => {
   return response?.peers ?? [];
 };
 
+export const getDirectMessageThreads = async (
+  username: string,
+  start = 0,
+  count = 50,
+) => {
+  const response = await request<{
+    message?: string;
+    threads?: ApiDirectMessageThread[];
+  }>(`/messages/${username}/threads?start=${start}&count=${count}`);
+  return response?.threads ?? [];
+};
+
 export const getDirectMessages = (
   username: string,
   other: string,
@@ -533,43 +1052,108 @@ export const createDirectMessage = (
     },
   );
 
+const normalizeUploadUri = (uri: string) => {
+  const source = uri.trim();
+  if (!source) {
+    return source;
+  }
+  if (/^file:\/\/\/var\/mobile\//i.test(source)) {
+    return encodeURI(source);
+  }
+  if (/^file:\/var\/mobile\//i.test(source)) {
+    const normalized = source.replace(/^file:\/+/, "");
+    return encodeURI(`file:///${normalized}`);
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(source)) {
+    return /^file:/i.test(source) ? encodeURI(source) : source;
+  }
+  if (source.startsWith("//")) {
+    return `file:${source}`;
+  }
+  if (source.startsWith("/")) {
+    return `file://${source}`;
+  }
+  return source;
+};
+
 export const uploadMedia = async (file: {
   uri: string;
   name: string;
   type: string;
-}) => {
-  const authHeader = authToken ? { Authorization: `Bearer ${authToken}` } : {};
-  const body = new FormData();
-  body.append("file", {
-    uri: file.uri,
-    name: file.name,
-    type: file.type,
-  } as unknown as Blob);
+}): Promise<{
+  url: string;
+  filename: string;
+  contentType?: string;
+  size?: number;
+}> => {
+  const normalizedUri = normalizeUploadUri(file.uri);
 
-  const response = await fetch(`${API_BASE_URL}/media/upload`, {
-    method: "POST",
-    headers: {
-      ...authHeader,
-    },
-    body,
-  });
+  const headers = new Headers();
+  if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
+  headers.set("Accept", "application/json");
 
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(text || `Request failed (${response.status})`);
+  // Retry a few times for transient network issues only.
+  const MAX_RETRIES = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const body = new FormData();
+    (body as any).append("file", {
+      uri: normalizedUri,
+      name: file.name,
+      type: file.type,
+    });
+
+    try {
+      const response = await uploadMultipartWithFallback("/media/upload", body, headers);
+
+      const text = response.responseText;
+      if (response.status < 200 || response.status >= 300) {
+        const detail = text || `Upload failed (${response.status})`;
+        const retryable = response.status >= 500 || response.status === 429;
+        const error = new Error(detail) as Error & { retryable?: boolean };
+        error.retryable = retryable;
+        throw error;
+      }
+      if (!text) {
+        throw new Error("Empty upload response");
+      }
+      const parsed = JSON.parse(text) as {
+        url: string;
+        filename: string;
+        contentType?: string;
+        size?: number;
+      };
+      return {
+        ...parsed,
+        url: resolveMediaUrl(parsed.url),
+      };
+    } catch (err) {
+      lastError = err;
+      const retryableError =
+        (err as { retryable?: boolean } | null)?.retryable === true ||
+        isTransientUploadError(err);
+
+      if (attempt < MAX_RETRIES && retryableError) {
+        await new Promise((r) => setTimeout(r, 250));
+        continue;
+      }
+
+      break;
+    }
   }
-  if (!text) {
-    return null as {
-      url: string;
-      filename: string;
-      contentType?: string;
-      size?: number;
-    };
+
+  try {
+    return await buildInlineMediaFallback(file);
+  } catch (fallbackError) {
+    const primaryDetail =
+      lastError instanceof Error ? (lastError as Error).message : String(lastError);
+    const fallbackDetail =
+      fallbackError instanceof Error
+        ? fallbackError.message
+        : String(fallbackError);
+    throw new Error(
+      `Upload failed. Multipart: ${primaryDetail}. Fallback: ${fallbackDetail}`,
+    );
   }
-  return JSON.parse(text) as {
-    url: string;
-    filename: string;
-    contentType?: string;
-    size?: number;
-  };
 };

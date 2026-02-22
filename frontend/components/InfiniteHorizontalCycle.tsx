@@ -6,6 +6,8 @@ type InfiniteHorizontalCycleProps<T> = {
   itemWidth: number;
   itemGap?: number;
   sidePadding?: number;
+  repeat?: boolean;
+  minRepeatCount?: number;
   keyExtractor: (item: T, index: number) => string;
   renderItem: (item: T, index: number) => React.ReactElement;
   showsHorizontalScrollIndicator?: boolean;
@@ -16,29 +18,35 @@ export function InfiniteHorizontalCycle<T>({
   itemWidth,
   itemGap = 12,
   sidePadding = 16,
+  repeat = true,
+  minRepeatCount = 2,
   keyExtractor,
   renderItem,
   showsHorizontalScrollIndicator = false,
 }: InfiniteHorizontalCycleProps<T>) {
   const listRef = useRef<FlatList<T>>(null);
   const itemSpan = itemWidth + itemGap;
+  const shouldRepeat = repeat && data.length >= minRepeatCount;
 
   const cycleData = useMemo(() => {
     if (data.length === 0) {
       return [];
     }
+    if (!shouldRepeat) {
+      return data;
+    }
     return [...data, ...data, ...data];
-  }, [data]);
+  }, [data, shouldRepeat]);
 
   const centerOffset = useMemo(() => {
-    if (data.length === 0) {
+    if (!shouldRepeat || data.length === 0) {
       return 0;
     }
     return itemSpan * data.length;
-  }, [data.length, itemSpan]);
+  }, [data.length, itemSpan, shouldRepeat]);
 
   useEffect(() => {
-    if (data.length === 0) {
+    if (!shouldRepeat || data.length === 0) {
       return;
     }
     const task = setTimeout(() => {
@@ -49,10 +57,10 @@ export function InfiniteHorizontalCycle<T>({
     }, 0);
 
     return () => clearTimeout(task);
-  }, [centerOffset, data.length]);
+  }, [centerOffset, data.length, shouldRepeat]);
 
   const recenterIfNeeded = (offsetX: number) => {
-    if (data.length === 0) {
+    if (!shouldRepeat || data.length === 0) {
       return;
     }
     const totalSpan = itemSpan * data.length;

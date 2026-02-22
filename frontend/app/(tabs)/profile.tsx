@@ -16,6 +16,7 @@ import {
 } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { Feather } from "@expo/vector-icons";
 import { ApiUser, UserProps } from "@/constants/Types";
 import { ProjectCard } from "@/components/ProjectCard";
 import { InfiniteHorizontalCycle } from "@/components/InfiniteHorizontalCycle";
@@ -27,13 +28,14 @@ import { Post } from "@/components/Post";
 import User from "@/components/User";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { TopBlur } from "@/components/TopBlur";
+import { UnifiedLoadingList } from "@/components/UnifiedLoading";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  clearApiCache,
+  beginFreshReadWindow,
   getPostById,
   getPostsByUserId,
   getProjectById,
@@ -87,8 +89,6 @@ export default function ProfileScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFollowersOpen, setIsFollowersOpen] = useState(false);
   const [isFollowingOpen, setIsFollowingOpen] = useState(false);
-  const [followersList, setFollowersList] = useState<string[]>([]);
-  const [followingList, setFollowingList] = useState<string[]>([]);
   const [isFollowersLoading, setIsFollowersLoading] = useState(false);
   const [isFollowingLoading, setIsFollowingLoading] = useState(false);
   const [followerUsers, setFollowerUsers] = useState<ApiUser[]>([]);
@@ -104,6 +104,7 @@ export default function ProfileScreen() {
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
   const hasLoadedRef = useRef(false);
+  const hasFocusedRef = useRef(false);
   const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
 
@@ -380,7 +381,6 @@ export default function ProfileScreen() {
     try {
       const list = await getUsersFollowersUsernames(authUser.username);
       const names = Array.isArray(list) ? list : [];
-      setFollowersList(names);
       const users = await Promise.all(
         names.map((name) => getUserByUsername(name).catch(() => null)),
       );
@@ -402,7 +402,6 @@ export default function ProfileScreen() {
     try {
       const list = await getUsersFollowingUsernames(authUser.username);
       const names = Array.isArray(list) ? list : [];
-      setFollowingList(names);
       const users = await Promise.all(
         names.map((name) => getUserByUsername(name).catch(() => null)),
       );
@@ -444,7 +443,6 @@ export default function ProfileScreen() {
   };
 
   useEffect(() => {
-    clearApiCache();
     fetchUser();
   }, [fetchUser]);
 
@@ -537,12 +535,10 @@ export default function ProfileScreen() {
   );
 
   useEffect(() => {
-    clearApiCache();
     loadSaved();
   }, [loadSaved]);
 
   useEffect(() => {
-    clearApiCache();
     loadSavedStreams();
   }, [loadSavedStreams]);
 
@@ -591,10 +587,21 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      clearApiCache();
-      fetchUser({ silent: true });
-      loadSaved(false);
-      loadSavedStreams(false);
+      if (!hasFocusedRef.current) {
+        hasFocusedRef.current = true;
+        return;
+      }
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        beginFreshReadWindow();
+        void fetchUser({ silent: true });
+        void loadSaved(false);
+        void loadSavedStreams(false);
+      });
+
+      return () => {
+        task.cancel?.();
+      };
     }, [fetchUser, loadSaved, loadSavedStreams]),
   );
 
@@ -608,7 +615,7 @@ export default function ProfileScreen() {
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    clearApiCache();
+    beginFreshReadWindow();
     await refreshProfile();
     setIsRefreshing(false);
   }, [refreshProfile]);
@@ -659,12 +666,31 @@ export default function ProfileScreen() {
               ],
             }}
           >
-            <ThemedText type="display" style={styles.title}>
-              Profile
-            </ThemedText>
-            <ThemedText type="default" style={{ color: colors.muted }}>
-              Your stream log, bytes, and community signals.
-            </ThemedText>
+            <View style={styles.headerRow}>
+              <View style={styles.headerTextWrap}>
+                <ThemedText type="display" style={styles.title}>
+                  Profile
+                </ThemedText>
+                <ThemedText type="default" style={{ color: colors.muted }}>
+                  Hello World!
+                </ThemedText>
+              </View>
+              <Pressable
+                hitSlop={10}
+                style={({ pressed }) => [
+                  styles.headerSettingsButton,
+                  {
+                    borderColor: colors.tint,
+                    backgroundColor: colors.surfaceAlt,
+                    shadowColor: colors.tint,
+                    opacity: pressed ? 0.82 : 1,
+                  },
+                ]}
+                onPress={() => router.push("/settings")}
+              >
+                <Feather name="settings" size={18} color={colors.tint} />
+              </Pressable>
+            </View>
           </Animated.View>
 
           <View
@@ -732,17 +758,6 @@ export default function ProfileScreen() {
                   </Pressable>
                   <StatPill label="Ships" value={shipsCount} />
                 </View>
-                <Pressable
-                  style={[
-                    styles.settingsButton,
-                    { borderColor: colors.border },
-                  ]}
-                  onPress={() => router.push("/settings")}
-                >
-                  <ThemedText type="caption" style={{ color: colors.muted }}>
-                    Settings
-                  </ThemedText>
-                </Pressable>
               </>
             ) : (
               <View style={styles.emptyState}>
@@ -763,25 +778,13 @@ export default function ProfileScreen() {
             />
             <View style={styles.streamSectionBody}>
               {isLoading ? (
-                <View style={styles.skeletonStack}>
-                  {[0, 1].map((key) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.skeletonCard,
-                        {
-                          backgroundColor: colors.surfaceAlt,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
+                <UnifiedLoadingList rows={2} cardHeight={188} cardRadius={14} />
               ) : projects.length ? (
                 <View style={styles.edgeToEdgeRail}>
                   <InfiniteHorizontalCycle
                     data={visibleProjects}
                     itemWidth={246}
+                    repeat={false}
                     keyExtractor={(project) => String(project.id)}
                     renderItem={(project) => (
                       <View style={styles.projectCardSlot}>
@@ -811,25 +814,13 @@ export default function ProfileScreen() {
             />
             <View style={styles.streamSectionBody}>
               {isSavedStreamsLoading ? (
-                <View style={styles.skeletonStack}>
-                  {[0, 1].map((key) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.skeletonCard,
-                        {
-                          backgroundColor: colors.surfaceAlt,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
+                <UnifiedLoadingList rows={2} cardHeight={188} cardRadius={14} />
               ) : savedStreams.length ? (
                 <View style={styles.edgeToEdgeRail}>
                   <InfiniteHorizontalCycle
                     data={visibleSavedStreams}
                     itemWidth={246}
+                    repeat={false}
                     keyExtractor={(project) => String(project.id)}
                     renderItem={(project) => (
                       <View style={styles.projectCardSlot}>
@@ -866,20 +857,7 @@ export default function ProfileScreen() {
             />
             <View style={styles.postSectionBody}>
               {isLoading ? (
-                <View style={styles.skeletonStack}>
-                  {[0, 1].map((key) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.skeletonCard,
-                        {
-                          backgroundColor: colors.surfaceAlt,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
+                <UnifiedLoadingList rows={2} cardHeight={124} cardRadius={14} />
               ) : posts.length ? (
                 visiblePosts.map((post) => <Post key={post.id} {...post} />)
               ) : (
@@ -900,20 +878,7 @@ export default function ProfileScreen() {
             />
             <View style={styles.postSectionBody}>
               {isSavedLoading ? (
-                <View style={styles.skeletonStack}>
-                  {[0, 1].map((key) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.skeletonCard,
-                        {
-                          backgroundColor: colors.surfaceAlt,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
+                <UnifiedLoadingList rows={2} cardHeight={124} cardRadius={14} />
               ) : savedPosts.length ? (
                 visibleSavedPosts.map((post) => (
                   <Post key={post.id} {...post} />
@@ -1085,6 +1050,29 @@ const styles = StyleSheet.create({
     fontSize: 26,
     lineHeight: 30,
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  headerTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  headerSettingsButton: {
+    borderWidth: 1,
+    borderRadius: 10,
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 2,
+    marginRight: 24,
+  },
   profileCard: {
     borderRadius: 16,
     padding: 14,
@@ -1145,13 +1133,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-  },
-  settingsButton: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
   },
   projectCardSlot: {
     width: 246,

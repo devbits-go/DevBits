@@ -35,6 +35,7 @@ import { useMotionConfig } from "@/hooks/useMotionConfig";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { MediaGallery } from "@/components/MediaGallery";
+import { MarkdownText } from "@/components/MarkdownText";
 
 export default function CreateByteScreen() {
   const colors = useAppColors();
@@ -293,6 +294,26 @@ export default function CreateByteScreen() {
                       />
                     </View>
 
+                    {content.trim() ? (
+                      <View
+                        style={[
+                          styles.previewRow,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: colors.surface,
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          type="caption"
+                          style={[styles.previewLabel, { color: colors.muted }]}
+                        >
+                          Preview
+                        </ThemedText>
+                        <MarkdownText preferStatic>{content}</MarkdownText>
+                      </View>
+                    ) : null}
+
                     <View style={styles.mediaSection}>
                       <ThemedText
                         type="caption"
@@ -426,6 +447,15 @@ const styles = StyleSheet.create({
   input: {
     fontFamily: "SpaceMono",
     fontSize: 15,
+  },
+  previewRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  previewLabel: {
+    marginBottom: 6,
   },
   button: {
     borderRadius: 12,

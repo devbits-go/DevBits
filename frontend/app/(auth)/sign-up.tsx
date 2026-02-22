@@ -16,6 +16,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { checkApiConnection } from "@/services/api";
 
 export default function SignUpScreen() {
   const colors = useAppColors();
@@ -53,9 +54,14 @@ export default function SignUpScreen() {
     setIsSubmitting(true);
     setErrorMessage("");
     try {
+      await checkApiConnection();
       await signUp({ username, password });
     } catch (error) {
-      setErrorMessage("Sign up failed. Try a new username.");
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Sign up failed. Try a new username or check connection.",
+      );
     } finally {
       setIsSubmitting(false);
     }

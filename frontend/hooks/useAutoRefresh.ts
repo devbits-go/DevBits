@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { beginFreshReadWindow } from "@/services/api";
 
 type AutoRefreshOptions = {
   focusRefresh?: boolean;
@@ -24,6 +25,7 @@ export const useAutoRefresh = (
       return;
     }
     isRunningRef.current = true;
+    beginFreshReadWindow();
     if (!options?.silent) {
       setIsRefreshing(true);
     }
@@ -39,8 +41,11 @@ export const useAutoRefresh = (
 
   useFocusEffect(
     useCallback(() => {
+      const skipInitialFocusRefresh =
+        options.skipInitialFocusRefresh ?? true;
+
       if (options.focusRefresh !== false) {
-        if (!hasFocusedRef.current && options.skipInitialFocusRefresh) {
+        if (!hasFocusedRef.current && skipInitialFocusRefresh) {
           hasFocusedRef.current = true;
         } else {
           hasFocusedRef.current = true;

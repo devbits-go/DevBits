@@ -11,6 +11,7 @@ import Constants from "expo-constants";
 import { AppState, Platform } from "react-native";
 import { ApiNotification } from "@/constants/Types";
 import {
+  beginFreshReadWindow,
   clearNotifications,
   deleteNotification,
   getNotificationCount,
@@ -76,12 +77,13 @@ export function NotificationsProvider({
     payload: Record<string, unknown>;
   } | null>(null);
   const pageSize = 40;
-  const pollIntervalMs = 2500;
+  const pollIntervalMs = 4000;
   const isRegisteringRef = useRef(false);
   const notificationsModuleRef = useRef<NotificationsModule | null>(null);
   const hasHydratedRef = useRef(false);
   const latestTopIdRef = useRef<number | undefined>(undefined);
   const latestUnreadRef = useRef(0);
+  const appStateRef = useRef(AppState.currentState);
   const expoGo = useMemo(() => isExpoGoRuntime(), []);
 
   useEffect(() => {
@@ -262,23 +264,43 @@ export function NotificationsProvider({
     loadNotifications();
   }, [loadNotifications]);
 
+  const pollUnreadCount = useCallback(async () => {
+    if (!user?.username) {
+      return;
+    }
+    try {
+      const count = await getNotificationCount();
+      const nextUnread = count?.count ?? 0;
+      const previousUnread = latestUnreadRef.current;
+      setUnreadCount(nextUnread);
+      if (nextUnread > previousUnread) {
+        await loadNotifications(false);
+      }
+    } catch {
+      // ignore polling failures
+    }
+  }, [loadNotifications, user?.username]);
+
   useEffect(() => {
     if (!user?.username) {
       return;
     }
     const intervalId = setInterval(() => {
-      void loadNotifications(false);
+      if (appStateRef.current === "active") {
+        void pollUnreadCount();
+      }
     }, pollIntervalMs);
     return () => {
       clearInterval(intervalId);
     };
-  }, [loadNotifications, pollIntervalMs, user?.username]);
+  }, [pollIntervalMs, pollUnreadCount, user?.username]);
 
   useEffect(() => {
     if (!user?.username) {
       return;
     }
     const subscription = AppState.addEventListener("change", (nextState) => {
+      appStateRef.current = nextState;
       if (nextState === "active") {
         void loadNotifications(false);
       }
@@ -328,6 +350,15 @@ export function NotificationsProvider({
       }
 
       try {
+        if (Platform.OS === "android") {
+          await Notifications.setNotificationChannelAsync("default", {
+            name: "default",
+            importance: Notifications.AndroidImportance.HIGH,
+            vibrationPattern: [0, 180, 120, 180],
+            lightColor: "#FF231F7C",
+          });
+        }
+
         const tokenResponse = await Notifications.getExpoPushTokenAsync({
           projectId,
         });
@@ -404,6 +435,7 @@ export function NotificationsProvider({
   ]);
 
   const refresh = useCallback(async () => {
+    beginFreshReadWindow();
     await loadNotifications();
   }, [loadNotifications]);
 

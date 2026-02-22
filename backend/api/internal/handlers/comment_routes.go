@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"backend/api/internal/database"
-	"backend/api/internal/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -128,14 +127,14 @@ func GetCommentsByCommentId(context *gin.Context) {
 }
 
 // CreateCommentOnPost handles POST requests to create a new comment on a post
-// It expects a JSON payload that can be bound to a `types.Comment` object.
+// It expects a JSON payload that can be bound to a `database.Comment` object.
 // Validates the provided owner's ID, verifies the post, and ensures the user exists.
 // Returns:
 // - 400 Bad Request if the JSON payload is invalid or the user/post cannot be verified.
 // - 500 Internal Server Error if there is a database error.
 // On success, responds with a 201 Created status and the new comment ID in JSON format.
 func CreateCommentOnPost(context *gin.Context) {
-	var newComment types.Comment
+	var newComment database.Comment
 	err := context.BindJSON(&newComment)
 	authUserID, ok := GetAuthUserID(context)
 	if ok && authUserID != newComment.User {
@@ -148,6 +147,15 @@ func CreateCommentOnPost(context *gin.Context) {
 		return
 	}
 
+	if len(newComment.Media) > 0 {
+		normalizedMedia, mediaErr := materializeMediaList(newComment.Media)
+		if mediaErr != nil {
+			RespondWithError(context, http.StatusBadRequest, "Invalid media reference")
+			return
+		}
+		newComment.Media = normalizedMedia
+	}
+
 	strId := context.Param("post_id")
 	postId, err := strconv.Atoi(strId)
 	if err != nil {
@@ -156,13 +164,13 @@ func CreateCommentOnPost(context *gin.Context) {
 	}
 
 	// Verify the owner
-	username, err := database.GetUsernameById(newComment.User)
+	user, err := database.GetUserById(int(newComment.User))
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify comment ownership: %v", err))
 		return
 	}
 
-	if username == "" {
+	if user == nil {
 		RespondWithError(context, http.StatusBadRequest, "Failed to verify comment ownership. User could not be found")
 		return
 	}
@@ -189,7 +197,7 @@ func CreateCommentOnPost(context *gin.Context) {
 	if post.User != newComment.User {
 		postID64 := int64(post.ID)
 		commentID64 := int64(id)
-		actorName, _ := database.GetUsernameById(newComment.User)
+		actor, _ := database.GetUserById(int(newComment.User))
 		createAndPushNotification(
 			int64(post.User),
 			int64(newComment.User),
@@ -197,7 +205,7 @@ func CreateCommentOnPost(context *gin.Context) {
 			&postID64,
 			nil,
 			&commentID64,
-			notificationBody(actorName, "commented on your byte"),
+			notificationBody(actor.Username, "commented on your byte"),
 		)
 	}
 
@@ -205,14 +213,14 @@ func CreateCommentOnPost(context *gin.Context) {
 }
 
 // CreateCommentOnProject handles POST requests to create a new comment on a project
-// It expects a JSON payload that can be bound to a `types.Comment` object.
+// It expects a JSON payload that can be bound to a `database.Comment` object.
 // Validates the provided owner's ID, verifies the project, and ensures the user exists.
 // Returns:
 // - 400 Bad Request if the JSON payload is invalid or the user/project cannot be verified.
 // - 500 Internal Server Error if there is a database error.
 // On success, responds with a 201 Created status and the new comment ID in JSON format.
 func CreateCommentOnProject(context *gin.Context) {
-	var newComment types.Comment
+	var newComment database.Comment
 	err := context.BindJSON(&newComment)
 	authUserID, ok := GetAuthUserID(context)
 	if ok && authUserID != newComment.User {
@@ -225,6 +233,15 @@ func CreateCommentOnProject(context *gin.Context) {
 		return
 	}
 
+	if len(newComment.Media) > 0 {
+		normalizedMedia, mediaErr := materializeMediaList(newComment.Media)
+		if mediaErr != nil {
+			RespondWithError(context, http.StatusBadRequest, "Invalid media reference")
+			return
+		}
+		newComment.Media = normalizedMedia
+	}
+
 	strId := context.Param("project_id")
 	projId, err := strconv.Atoi(strId)
 	if err != nil {
@@ -233,13 +250,13 @@ func CreateCommentOnProject(context *gin.Context) {
 	}
 
 	// Verify the owner
-	username, err := database.GetUsernameById(newComment.User)
+	user, err := database.GetUserById(int(newComment.User))
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify comment ownership: %v", err))
 		return
 	}
 
-	if username == "" {
+	if user == nil {
 		RespondWithError(context, http.StatusBadRequest, "Failed to verify comment ownership. User could not be found")
 		return
 	}
@@ -267,14 +284,14 @@ func CreateCommentOnProject(context *gin.Context) {
 }
 
 // CreateCommentOnComment handles POST requests to create a new reply (comment) to another comment
-// It expects a JSON payload that can be bound to a `types.Comment` object.
+// It expects a JSON payload that can be bound to a `database.Comment` object.
 // Validates the provided owner's ID, verifies the parent comment, and ensures the user exists.
 // Returns:
 // - 400 Bad Request if the JSON payload is invalid or the user/parent comment cannot be verified.
 // - 500 Internal Server Error if there is a database error.
 // On success, responds with a 201 Created status and the new reply (comment) ID in JSON format.
 func CreateCommentOnComment(context *gin.Context) {
-	var newComment types.Comment
+	var newComment database.Comment
 	err := context.BindJSON(&newComment)
 	authUserID, ok := GetAuthUserID(context)
 	if ok && authUserID != newComment.User {
@@ -287,6 +304,15 @@ func CreateCommentOnComment(context *gin.Context) {
 		return
 	}
 
+	if len(newComment.Media) > 0 {
+		normalizedMedia, mediaErr := materializeMediaList(newComment.Media)
+		if mediaErr != nil {
+			RespondWithError(context, http.StatusBadRequest, "Invalid media reference")
+			return
+		}
+		newComment.Media = normalizedMedia
+	}
+
 	strId := context.Param("comment_id")
 	commId, err := strconv.Atoi(strId)
 	if err != nil {
@@ -295,13 +321,13 @@ func CreateCommentOnComment(context *gin.Context) {
 	}
 
 	// Verify the owner
-	username, err := database.GetUsernameById(newComment.User)
+	user, err := database.GetUserById(int(newComment.User))
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify comment ownership: %v", err))
 		return
 	}
 
-	if username == "" {
+	if user == nil {
 		RespondWithError(context, http.StatusBadRequest, "Failed to verify comment ownership. User could not be found")
 		return
 	}
@@ -418,7 +444,12 @@ func UpdateCommentContent(context *gin.Context) {
 		"content": requestData.Content,
 	}
 	if requestData.Media != nil {
-		updatedData["media"] = requestData.Media
+		normalizedMedia, mediaErr := materializeMediaList(requestData.Media)
+		if mediaErr != nil {
+			RespondWithError(context, http.StatusBadRequest, "Invalid media reference")
+			return
+		}
+		updatedData["media"] = normalizedMedia
 	}
 
 	httpcode, err := database.QueryUpdateComment(id, updatedData)

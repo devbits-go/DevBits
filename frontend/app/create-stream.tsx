@@ -113,7 +113,7 @@ export default function CreateStreamScreen() {
         media,
       });
       router.replace("/(tabs)");
-    } catch (error) {
+    } catch {
       setErrorMessage("Failed to create stream. Try again.");
     } finally {
       setIsSubmitting(false);
@@ -232,6 +232,26 @@ export default function CreateStreamScreen() {
                       style={[styles.input, { color: colors.text }]}
                     />
                   </View>
+
+                  {aboutMd.trim() ? (
+                    <View
+                      style={[
+                        styles.previewRow,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.surface,
+                        },
+                      ]}
+                    >
+                      <ThemedText
+                        type="caption"
+                        style={[styles.previewLabel, { color: colors.muted }]}
+                      >
+                        Body preview
+                      </ThemedText>
+                      <MarkdownText preferStatic>{aboutMd}</MarkdownText>
+                    </View>
+                  ) : null}
 
                   <View
                     style={[

@@ -91,6 +91,7 @@ func ExecUpdate(query string, args ...interface{}) (int64, error) {
 func BuildUpdateQuery(updatedData map[string]interface{}) (string, []interface{}, error) {
 	var query string
 	var args []interface{}
+	placeholderIndex := 1
 
 	// dynamically add fields to the query based on the available data in updatedData
 	for key, value := range updatedData {
@@ -108,11 +109,13 @@ func BuildUpdateQuery(updatedData map[string]interface{}) (string, []interface{}
 			if err != nil {
 				return "", nil, fmt.Errorf("Error marshaling list data for key `%v`: %v", key, err)
 			}
-			query += fmt.Sprintf("%v = ?, ", key)
+			query += fmt.Sprintf("%v = $%d, ", key, placeholderIndex)
 			args = append(args, string(jsonData))
+			placeholderIndex++
 		default:
-			query += fmt.Sprintf("%v = ?, ", key)
+			query += fmt.Sprintf("%v = $%d, ", key, placeholderIndex)
 			args = append(args, value)
+			placeholderIndex++
 		}
 	}
 

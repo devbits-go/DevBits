@@ -70,7 +70,10 @@ export function MyHeader() {
     <View style={styles.container}>
       <View style={styles.brandRow}>
         <View>
-          <ThemedText type="display" style={styles.logoText}>
+          <ThemedText
+            type="display"
+            style={[styles.logoText, { color: colors.text }]}
+          >
             DevBits
           </ThemedText>
           <ThemedText

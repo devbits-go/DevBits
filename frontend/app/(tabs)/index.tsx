@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   InteractionManager,
   Platform,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -13,12 +11,11 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRootNavigationState, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import {
-  clearApiCache,
+  beginFreshReadWindow,
   getPostsFeed,
-  getProjectById,
   getProjectBuilders,
   getProjectsByBuilderId,
   getProjectsFeed,
@@ -38,6 +35,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { ThemedText } from "@/components/ThemedText";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { TopBlur } from "@/components/TopBlur";
+import { UnifiedLoadingList } from "@/components/UnifiedLoading";
 import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { subscribeToPostEvents } from "@/services/postEvents";
 import {
@@ -61,6 +59,7 @@ export default function HomeScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
   const { user } = useAuth();
   const { savedProjectIds } = useSavedStreams();
   const [posts, setPosts] = useState([] as ReturnType<typeof mapPostToUi>[]);
@@ -76,6 +75,7 @@ export default function HomeScreen() {
   const hyprMotion = useHyprMotion();
   const requestGuard = useRequestGuard();
   const scrollRef = useRef<Animated.ScrollView>(null);
+  const hasFocusedRef = useRef(false);
   const { scrollY, onScroll } = useTopBlurScroll();
   const heroProgress = useSharedValue(0.08);
   const streamsProgress = useSharedValue(0.08);
@@ -131,15 +131,24 @@ export default function HomeScreen() {
   }, [cursorOpacity, hyprMotion.pulseDuration, motion.prefersReducedMotion]);
 
   useEffect(() => {
-    router.prefetch("/streams");
-    router.prefetch("/bytes");
-    router.prefetch("/terminal");
-  }, [router]);
+    if (!rootNavigationState?.key) {
+      return;
+    }
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      router.prefetch("/streams");
+      router.prefetch("/bytes");
+      router.prefetch("/terminal");
+    });
+
+    return () => {
+      task.cancel?.();
+    };
+  }, [rootNavigationState?.key, router]);
 
   const loadFeed = useCallback(
     async (showLoader = true) => {
       const requestId = requestGuard.beginRequest();
-      const loadStart = Date.now();
       try {
         if (showLoader && requestGuard.isMounted()) {
           setIsLoading(true);
@@ -180,13 +189,13 @@ export default function HomeScreen() {
 
         const uiPosts = await Promise.all(
           selectedPosts.map(async (post) => {
-            const [user, project] = await Promise.all([
+            const [postUser, project] = await Promise.all([
               getUserById(post.user).catch(() => null),
               projectMap.get(post.project)
                 ? Promise.resolve(projectMap.get(post.project)!)
-                : getProjectById(post.project).catch(() => null),
+                : Promise.resolve(null),
             ]);
-            return mapPostToUi(post, user, project);
+            return mapPostToUi(post, postUser, project);
           }),
         );
 
@@ -201,14 +210,6 @@ export default function HomeScreen() {
             tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1),
           ),
         );
-
-        if (!requestGuard.isActive(requestId)) {
-          return;
-        }
-
-        await new Promise<void>((resolve) => {
-          InteractionManager.runAfterInteractions(() => resolve());
-        });
 
         if (!requestGuard.isActive(requestId)) {
           return;
@@ -233,11 +234,6 @@ export default function HomeScreen() {
         setHasError(true);
       } finally {
         if (showLoader && requestGuard.isMounted()) {
-          const elapsed = Date.now() - loadStart;
-          const remaining = Math.max(0, 180 - elapsed);
-          if (remaining > 0) {
-            await new Promise((resolve) => setTimeout(resolve, remaining));
-          }
           setIsLoading(false);
         }
       }
@@ -249,12 +245,10 @@ export default function HomeScreen() {
       homeVisibleProjectsCount,
       requestGuard,
       user?.id,
-      user?.username,
     ],
   );
 
   useEffect(() => {
-    clearApiCache();
     loadFeed();
   }, [loadFeed]);
 
@@ -299,14 +293,25 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      clearApiCache();
-      loadFeed(false);
+      if (!hasFocusedRef.current) {
+        hasFocusedRef.current = true;
+        return;
+      }
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        beginFreshReadWindow();
+        void loadFeed(false);
+      });
+
+      return () => {
+        task.cancel?.();
+      };
     }, [loadFeed]),
   );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    clearApiCache();
+    beginFreshReadWindow();
     await loadFeed(false);
     setIsRefreshing(false);
   }, [loadFeed]);
@@ -380,7 +385,7 @@ export default function HomeScreen() {
             >
               <View style={styles.shipTopRow}>
                 <ThemedText type="label" style={{ color: colors.muted }}>
-                  TODAY'S SHIP LOG
+                  TODAY&apos;S SHIP LOG
                 </ThemedText>
                 <View
                   style={[styles.shipDot, { backgroundColor: colors.tint }]}
@@ -454,33 +459,15 @@ export default function HomeScreen() {
               actionOnPress={() => router.push("/streams")}
             />
             {isLoading ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.edgeToEdgeRail}
-                nestedScrollEnabled
-                directionalLockEnabled={false}
-              >
-                <View style={styles.carouselRow}>
-                  {[0, 1, 2, 3].map((key) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.carouselCard,
-                        {
-                          backgroundColor: colors.surfaceAlt,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <View style={styles.edgeToEdgeRail}>
+                <UnifiedLoadingList rows={2} cardHeight={196} cardRadius={16} />
+              </View>
             ) : projects.length ? (
               <View style={styles.edgeToEdgeRail}>
                 <InfiniteHorizontalCycle
                   data={projects}
                   itemWidth={260}
+                  minRepeatCount={8}
                   keyExtractor={(project) => String(project.id)}
                   renderItem={(project) => (
                     <View style={styles.carouselCardWrap}>
@@ -512,33 +499,15 @@ export default function HomeScreen() {
               actionOnPress={() => router.push("/bytes")}
             />
             {isLoading ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.edgeToEdgeRail}
-                nestedScrollEnabled
-                directionalLockEnabled={false}
-              >
-                <View style={styles.carouselRow}>
-                  {[0, 1, 2].map((key) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.carouselPost,
-                        {
-                          backgroundColor: colors.surfaceAlt,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <View style={styles.edgeToEdgeRail}>
+                <UnifiedLoadingList rows={2} cardHeight={246} cardRadius={16} />
+              </View>
             ) : posts.length ? (
               <View style={styles.edgeToEdgeRail}>
                 <InfiniteHorizontalCycle
                   data={posts}
                   itemWidth={300}
+                  minRepeatCount={8}
                   keyExtractor={(post) => String(post.id)}
                   renderItem={(post) => (
                     <View style={styles.carouselPostWrap}>
@@ -562,7 +531,11 @@ export default function HomeScreen() {
       <TopBlur scrollY={scrollY} />
       <FloatingScrollTopButton
         scrollY={scrollY}
-        onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        onPress={() =>
+          (scrollRef.current as any)
+            ?.getNode?.()
+            .scrollTo({ y: 0, animated: true })
+        }
         bottomOffset={insets.bottom + 20}
       />
       <CreatePost />

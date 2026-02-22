@@ -178,6 +178,15 @@ export function BootScreen({ onDone }: BootScreenProps) {
         .filter((line) => line.length > 0 || line === ""),
     [],
   );
+  const finishRef = useRef(false);
+
+  const finishBoot = React.useCallback(() => {
+    if (finishRef.current) {
+      return;
+    }
+    finishRef.current = true;
+    onDone();
+  }, [onDone]);
 
   useEffect(() => {
     if (phase !== "boot") {
@@ -214,7 +223,7 @@ export function BootScreen({ onDone }: BootScreenProps) {
             useNativeDriver: true,
           }).start(({ finished }) => {
             if (finished) {
-              onDone();
+              finishBoot();
             }
           });
         }, 110);
@@ -237,7 +246,25 @@ export function BootScreen({ onDone }: BootScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [containerOpacity, lines, onDone, phase]);
+  }, [containerOpacity, finishBoot, lines, phase]);
+
+  useEffect(() => {
+    const hardTimeout = setTimeout(() => {
+      if (finishRef.current) {
+        return;
+      }
+
+      Animated.timing(containerOpacity, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(() => {
+        finishBoot();
+      });
+    }, 5000);
+
+    return () => clearTimeout(hardTimeout);
+  }, [containerOpacity, finishBoot]);
 
   useEffect(() => {
     if (phase !== "boot") {

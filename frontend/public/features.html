@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <title>DevBits Features</title>
+    <meta
+      name="description"
+      content="Explore DevBits features for sharing project progress and discovering builders."
+    />
+    <style>
+      :root {
+        --bg: #05070a;
+        --surface: #10141a;
+        --text: #f0f3f7;
+        --muted: #94a0af;
+        --border: #1f2732;
+        --tint: #00f329;
+        --accent: #0a0d12;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial;
+        color: var(--text);
+        background:
+          radial-gradient(
+            circle at 20% 10%,
+            rgba(0, 243, 41, 0.13),
+            transparent 35%
+          ),
+          radial-gradient(
+            circle at 78% 72%,
+            rgba(0, 243, 41, 0.08),
+            transparent 34%
+          ),
+          var(--bg);
+      }
+
+      .glow-grid {
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 34px 34px;
+        mask-image: radial-gradient(
+          circle at center,
+          black 35%,
+          transparent 75%
+        );
+        pointer-events: none;
+      }
+
+      .orb,
+      .orb2 {
+        position: fixed;
+        width: 320px;
+        height: 320px;
+        border-radius: 50%;
+        filter: blur(36px);
+        pointer-events: none;
+        animation: float 11s ease-in-out infinite;
+      }
+
+      .orb {
+        background: rgba(0, 243, 41, 0.09);
+        top: -120px;
+        left: -90px;
+      }
+
+      .orb2 {
+        background: rgba(0, 243, 41, 0.07);
+        right: -90px;
+        bottom: -130px;
+        animation-delay: -5s;
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translate3d(0, 0, 0);
+        }
+        50% {
+          transform: translate3d(0, -16px, 0);
+        }
+      }
+
+      .container {
+        width: min(1080px, 100% - 32px);
+        margin: 0 auto;
+      }
+
+      .page-shell {
+        width: min(980px, 100%);
+        margin: 26px auto 34px;
+        border: 1px solid rgba(180, 255, 196, 0.18);
+        border-radius: 22px;
+        padding: 2px 20px 12px;
+        background: rgba(12, 16, 22, 0.62);
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 0 18px rgba(0, 243, 41, 0.05),
+          inset 0 0 26px rgba(0, 243, 41, 0.03);
+        position: relative;
+        z-index: 1;
+      }
+
+      .topbar {
+        border-bottom: 1px solid rgba(180, 255, 196, 0.2);
+        background: linear-gradient(
+          180deg,
+          rgba(13, 18, 26, 0.86) 0%,
+          rgba(8, 11, 16, 0.72) 100%
+        );
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 10px 24px rgba(0, 0, 0, 0.28),
+          inset 0 0 20px rgba(0, 243, 41, 0.04);
+        position: sticky;
+        top: 0;
+        z-index: 30;
+      }
+
+      .topbar-inner {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .brand-logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        object-fit: cover;
+        box-shadow: 0 0 14px rgba(0, 243, 41, 0.18);
+      }
+
+      .nav {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .nav a {
+        color: var(--muted);
+        text-decoration: none;
+      }
+
+      .nav a:hover,
+      .nav a.active {
+        color: var(--tint);
+      }
+
+      .hero {
+        margin: 28px 0 16px;
+        border: 1px solid rgba(180, 255, 196, 0.18);
+        border-radius: 16px;
+        background: rgba(15, 20, 28, 0.58);
+        padding: 24px;
+        backdrop-filter: blur(12px);
+        box-shadow:
+          0 0 16px rgba(0, 243, 41, 0.04),
+          inset 0 0 22px rgba(0, 243, 41, 0.02);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 42px);
+      }
+
+      p {
+        color: #d8e0ea;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 12px;
+        margin: 14px 0 0;
+      }
+
+      .feature-card {
+        border: 1px solid rgba(180, 255, 196, 0.18);
+        border-radius: 14px;
+        background: rgba(15, 20, 28, 0.56);
+        padding: 14px;
+        backdrop-filter: blur(12px);
+        box-shadow:
+          0 0 14px rgba(0, 243, 41, 0.035),
+          inset 0 0 18px rgba(0, 243, 41, 0.02);
+      }
+
+      .feature-icon {
+        width: 58px;
+        height: 58px;
+        border-radius: 14px;
+        margin-bottom: 10px;
+        display: block;
+      }
+
+      .section {
+        margin: 24px 0;
+      }
+
+      .release-card {
+        border: 1px solid rgba(180, 255, 196, 0.18);
+        border-radius: 14px;
+        background: rgba(12, 16, 22, 0.58);
+        padding: 16px;
+        backdrop-filter: blur(12px);
+        box-shadow:
+          0 0 16px rgba(0, 243, 41, 0.04),
+          inset 0 0 20px rgba(0, 243, 41, 0.02);
+      }
+
+      .release-card strong {
+        color: var(--tint);
+      }
+
+      .btn-row {
+        margin-top: 14px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        text-decoration: none;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-weight: 700;
+      }
+
+      .btn-primary {
+        background: var(--tint);
+        color: var(--accent);
+      }
+
+      .btn-secondary {
+        border: 1px solid var(--tint);
+        color: var(--tint);
+      }
+
+      .footer {
+        margin: 30px 0;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        padding-top: 14px;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          width: min(1080px, 100% - 20px);
+        }
+
+        .topbar-inner {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 12px 0;
+        }
+
+        .nav {
+          width: 100%;
+          gap: 10px 12px;
+        }
+
+        .nav a {
+          font-size: 14px;
+        }
+
+        .page-shell {
+          margin: 18px auto 24px;
+          padding: 0 14px 10px;
+          border-radius: 18px;
+        }
+
+        .hero {
+          margin: 20px 0 12px;
+          padding: 16px;
+        }
+
+        h1 {
+          font-size: clamp(24px, 8vw, 34px);
+        }
+
+        .features-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .section {
+          margin: 18px 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow-grid"></div>
+    <div class="orb"></div>
+    <div class="orb2"></div>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <a
+          class="brand"
+          href="https://play.google.com/apps/testing/com.devbits.frontend"
+          aria-label="Open DevBits on Google Play"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img class="brand-logo" src="/icon.png" alt="DevBits logo" />
+        </a>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="/">Home</a>
+          <a class="active" href="/features">Features</a>
+          <a href="/tester-application">Tester</a>
+          <a href="/about">About</a>
+          <a href="/privacy-policy">Privacy</a>
+          <a href="/account-deletion">Deletion</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container page-shell">
+      <section class="hero">
+        <h1>Features built for builders</h1>
+        <p>
+          DevBits keeps updates focused: post progress, follow projects, and
+          save useful posts without noisy distractions.
+        </p>
+      </section>
+
+      <section class="section">
+        <div class="features-grid">
+          <article class="feature-card">
+            <img class="feature-icon" src="/icon.png" alt="DevBits icon" />
+            <strong>Project Streams</strong>
+            <p class="muted">
+              Create project streams and track progress over time.
+            </p>
+          </article>
+          <article class="feature-card">
+            <img
+              class="feature-icon"
+              src="/adaptive-icon.png"
+              alt="Adaptive icon"
+            />
+            <strong>Bytes Feed</strong>
+            <p class="muted">
+              Share updates, media, and milestones in one feed.
+            </p>
+          </article>
+          <article class="feature-card">
+            <img
+              class="feature-icon"
+              src="/Devbits_Icons.png"
+              alt="DevBits logo icon"
+            />
+            <strong>Discovery</strong>
+            <p class="muted">
+              Find projects and builders by activity and tags.
+            </p>
+          </article>
+          <article class="feature-card">
+            <img
+              class="feature-icon"
+              src="/splash-icon.png"
+              alt="Splash icon"
+            />
+            <strong>Save & Revisit</strong>
+            <p class="muted">
+              Keep a personal library of useful posts and ideas.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section release-card">
+        <h2>Why testers matter before release</h2>
+        <p>
+          <strong>Tester coverage is required</strong> so we can catch
+          onboarding, feed, upload, and device-specific issues before public
+          launch.
+        </p>
+        <p class="muted">
+          More real testers means better stability, safer rollout, and faster
+          store approval confidence.
+        </p>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="/tester-application"
+            >Become a Tester</a
+          >
+          <a
+            class="btn btn-secondary"
+            href="https://play.google.com/apps/testing/com.devbits.frontend"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Install Test Build</a
+          >
+        </div>
+      </section>
+
+      <footer class="footer">
+        <a style="color: var(--muted); text-decoration: none" href="/"
+          >← Back to Home</a
+        >
+      </footer>
+    </main>
+  </body>
+</html>

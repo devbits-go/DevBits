@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 
 	"backend/api/internal/database"
 	"backend/api/internal/handlers"
@@ -10,13 +11,40 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	_ "github.com/lib/pq" // PostgreSQL driver
 	_ "modernc.org/sqlite"
 )
 
 const debugEnvKey = "DEVBITS_DEBUG"
+const corsOriginsEnvKey = "DEVBITS_CORS_ORIGINS"
 
 func isDebugMode() bool {
 	return os.Getenv(debugEnvKey) == "1"
+}
+
+func getAllowedOrigins() []string {
+	originsCsv := strings.TrimSpace(os.Getenv(corsOriginsEnvKey))
+	if originsCsv != "" {
+		parts := strings.Split(originsCsv, ",")
+		origins := make([]string, 0, len(parts))
+		for _, part := range parts {
+			origin := strings.TrimSpace(part)
+			if origin != "" {
+				origins = append(origins, origin)
+			}
+		}
+		if len(origins) > 0 {
+			return origins
+		}
+	}
+
+	return []string{
+		"https://devbits.ddns.net",
+		"http://localhost:8081",
+		"http://localhost:19006",
+		"http://127.0.0.1:8081",
+		"http://127.0.0.1:19006",
+	}
 }
 
 func HealthCheck(context *gin.Context) {
@@ -32,8 +60,31 @@ func main() {
 	log.SetOutput(os.Stdout)
 	logger.InitLogger()
 
+	// Initialize the database connection
+	database.Connect()
+
 	router := gin.New()
+	router.MaxMultipartMemory = 64 << 20
 	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(func(context *gin.Context) {
+		path := context.Request.URL.Path
+		if strings.HasPrefix(path, "/uploads/") {
+			// Uploaded media is content-addressed (random hex filenames) so
+			// it is safe to aggressively cache on the client.
+			context.Header("Cache-Control", "public, max-age=31536000, immutable")
+			context.Next()
+			return
+		}
+		if path == "/account-deletion" || path == "/privacy-policy" {
+			context.Next()
+			return
+		}
+
+		context.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		context.Header("Pragma", "no-cache")
+		context.Header("Expires", "0")
+		context.Next()
+	})
 	router.HandleMethodNotAllowed = true
 	if err := router.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		log.Printf("WARN: could not set trusted proxies: %v", err)
@@ -48,16 +99,15 @@ func main() {
 	if isDebugMode() {
 		corsConfig.AllowOriginFunc = func(origin string) bool { return true }
 	} else {
-		corsConfig.AllowOrigins = []string{
-			"http://localhost:8081",
-			"http://localhost:19006",
-			"http://127.0.0.1:8081",
-			"http://127.0.0.1:19006",
-		}
+		corsConfig.AllowOrigins = getAllowedOrigins()
 	}
 	router.Use(cors.New(corsConfig))
 
 	router.Static("/uploads", "./uploads")
+
+	router.GET("/", func(c *gin.Context) {
+		c.String(200, "Welcome to the DevBits API! Everything is running correctly.")
+	})
 
 	router.GET("/health", HealthCheck)
 
@@ -72,6 +122,10 @@ func main() {
 	router.GET("/users/id/:user_id", handlers.GetUserById)
 	router.POST("/users", handlers.RequireAuth(), handlers.CreateUser)
 	router.PUT("/users/:username", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.UpdateUserInfo)
+	router.POST("/users/:username/update", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.UpdateUserInfo)
+	router.PUT("/users/:username/profile-picture", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.UpdateProfilePicture)
+	router.GET("/users/:username/media", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetUserManagedMedia)
+	router.DELETE("/users/:username/media", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.DeleteUserManagedMedia)
 	router.DELETE("/users/:username", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.DeleteUser)
 
 	router.GET("/users/:username/followers", handlers.GetUsersFollowers)
@@ -83,6 +137,7 @@ func main() {
 	router.POST("/users/:username/unfollow/:unfollow", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.UnfollowUser)
 
 	router.GET("/messages/:username/peers", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectChatPeers)
+	router.GET("/messages/:username/threads", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectMessageThreads)
 	router.GET("/messages/:username/with/:other", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectMessages)
 	router.POST("/messages/:username/with/:other", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.CreateDirectMessage)
 	router.GET("/messages/:username/stream", handlers.StreamDirectMessages)
@@ -155,24 +210,6 @@ func main() {
 	router.POST("/notifications/:notification_id/read", handlers.RequireAuth(), handlers.MarkNotificationRead)
 	router.DELETE("/notifications/:notification_id", handlers.RequireAuth(), handlers.DeleteNotification)
 	router.DELETE("/notifications", handlers.RequireAuth(), handlers.ClearNotifications)
-
-	var dbinfo, dbtype string
-	if isDebugMode() {
-		dbinfo = "./api/internal/database/dev.sqlite3"
-		dbtype = "sqlite"
-	} else {
-		dbinfo = os.Getenv("DB_INFO")
-		dbtype = os.Getenv("DB_TYPE")
-		if dbinfo == "" {
-			log.Println("WARN: DB_INFO missing, falling back to local sqlite")
-			dbinfo = "./api/internal/database/dev.sqlite3"
-		}
-		if dbtype == "" {
-			log.Println("WARN: DB_TYPE missing, defaulting to sqlite")
-			dbtype = "sqlite"
-		}
-	}
-	database.Connect(dbinfo, dbtype)
 
 	if err := router.Run("0.0.0.0:8080"); err != nil {
 		log.Printf("ERROR: failed to start API server on 0.0.0.0:8080: %v", err)

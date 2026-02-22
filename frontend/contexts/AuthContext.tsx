@@ -25,6 +25,7 @@ type AuthContextValue = {
   signUp: (payload: AuthRegisterRequest) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  setUserDirect: (user: ApiUser) => void;
   acknowledgeSignUp: () => void;
 };
 
@@ -88,6 +89,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
   }, []);
 
+  const setUserDirect = useCallback((u: ApiUser) => {
+    setUser(u);
+  }, []);
+
   const acknowledgeSignUp = useCallback(() => {
     setJustSignedUp(false);
   }, []);
@@ -129,6 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       signOut,
       refreshUser,
+      setUserDirect,
       acknowledgeSignUp,
     }),
     [
@@ -140,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       signOut,
       refreshUser,
+      setUserDirect,
       acknowledgeSignUp,
     ],
   );

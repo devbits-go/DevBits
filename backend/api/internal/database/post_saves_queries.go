@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 func QuerySavePost(username string, postID string) (int, error) {
@@ -26,8 +25,8 @@ func QuerySavePost(username string, postID string) (int, error) {
 		return http.StatusNotFound, fmt.Errorf("Post with id %v does not exist", intPostID)
 	}
 
-	query := `INSERT OR IGNORE INTO PostSaves (post_id, user_id, creation_date) VALUES (?, ?, ?);`
-	rowsAffected, err := ExecUpdate(query, intPostID, userID, time.Now().UTC())
+	query := `INSERT INTO postsaves (user_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;`
+	rowsAffected, err := ExecUpdate(query, userID, intPostID)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("An error occurred saving post: %v", err)
 	}
@@ -49,7 +48,7 @@ func QueryUnsavePost(username string, postID string) (int, error) {
 		return http.StatusInternalServerError, fmt.Errorf("An error occurred parsing post id: %v", postID)
 	}
 
-	query := `DELETE FROM PostSaves WHERE post_id = ? AND user_id = ?;`
+	query := `DELETE FROM postsaves WHERE post_id = $1 AND user_id = $2;`
 	rowsAffected, err := ExecUpdate(query, intPostID, userID)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("An error occurred unsaving post: %v", err)
@@ -67,7 +66,7 @@ func QuerySavedPostsByUser(username string) ([]int, int, error) {
 		return nil, http.StatusNotFound, fmt.Errorf("Cannot find user with username '%v'", username)
 	}
 
-	query := `SELECT post_id FROM PostSaves WHERE user_id = ? ORDER BY creation_date DESC;`
+	query := `SELECT post_id FROM postsaves WHERE user_id = $1 ORDER BY post_id DESC;`
 	rows, err := DB.Query(query, userID)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err

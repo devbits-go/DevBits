@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"backend/api/internal/database"
-	"backend/api/internal/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -75,7 +74,7 @@ func GetPostsFeed(context *gin.Context) {
 	if count > maxCount {
 		count = maxCount
 	}
-	var posts []types.Post = []types.Post{}
+	var posts []database.Post = []database.Post{}
 	var code int
 	posts, code, err = database.GetPostFeedBySort(start, count, feedSort)
 	if err != nil {
@@ -136,7 +135,7 @@ func GetProjectsFeed(context *gin.Context) {
 	if count > maxCount {
 		count = maxCount
 	}
-	var projects []types.Project = []types.Project{}
+	var projects []database.Project = []database.Project{}
 	var code int
 	projects, code, err = database.GetProjectFeedBySort(start, count, feedSort)
 	if err != nil {

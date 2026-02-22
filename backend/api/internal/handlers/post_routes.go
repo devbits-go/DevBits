@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"backend/api/internal/database"
-	"backend/api/internal/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -84,19 +83,28 @@ func GetPostsByProjectId(context *gin.Context) {
 }
 
 // CreatePost handles POST requests to create a new post
-// It expects a JSON payload that can be bound to a `types.Post` object.
+// It expects a JSON payload that can be bound to a `database.Post` object.
 // Validates the provided owner's ID and ensures the user and project exist.
 // Returns:
 // - 400 Bad Request if the JSON payload is invalid or the owner/project cannot be verified.
 // - 500 Internal Server Error if there is a database error.
 // On success, responds with a 201 Created status and the new post ID in JSON format.
 func CreatePost(context *gin.Context) {
-	var newPost types.Post
+	var newPost database.Post
 	err := context.BindJSON(&newPost)
 
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to bind to JSON: %v", err))
 		return
+	}
+
+	if len(newPost.Media) > 0 {
+		normalizedMedia, mediaErr := materializeMediaList(newPost.Media)
+		if mediaErr != nil {
+			RespondWithError(context, http.StatusBadRequest, "Invalid media reference")
+			return
+		}
+		newPost.Media = normalizedMedia
 	}
 
 	authUserID, ok := GetAuthUserID(context)
@@ -106,13 +114,13 @@ func CreatePost(context *gin.Context) {
 	}
 
 	// verify the owner
-	username, err := database.GetUsernameById(newPost.User)
+	user, err := database.GetUserById(int(newPost.User))
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to verify post ownership: %v", err))
 		return
 	}
 
-	if username == "" {
+	if user == nil {
 		RespondWithError(context, http.StatusBadRequest, "Failed to verify post ownership. User could not be found")
 		return
 	}
@@ -238,8 +246,8 @@ func UpdatePostInfo(context *gin.Context) {
 			RespondWithError(context, http.StatusBadRequest, "Invalid owner id format")
 			return
 		}
-		username, err := database.GetUsernameById(int64(ownerID))
-		if err != nil || username == "" {
+		user, err := database.GetUserById(int(ownerID))
+		if err != nil || user == nil {
 			RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Invalid owner id: %v", ownerID))
 			return
 		}
@@ -267,6 +275,20 @@ func UpdatePostInfo(context *gin.Context) {
 			RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Field '%v' is not allowed for updates", key))
 			return
 		}
+	}
+
+	if rawMedia, exists := updatedData["media"]; exists {
+		mediaList, ok := coerceStringSlice(rawMedia)
+		if !ok {
+			RespondWithError(context, http.StatusBadRequest, "Invalid media format")
+			return
+		}
+		normalizedMedia, mediaErr := materializeMediaList(mediaList)
+		if mediaErr != nil {
+			RespondWithError(context, http.StatusBadRequest, "Invalid media reference")
+			return
+		}
+		updatedData["media"] = normalizedMedia
 	}
 
 	err = database.QueryUpdatePost(id, updatedData)
@@ -302,7 +324,7 @@ func LikePost(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to like post: %v", err))
 		return
 	}
-	context.JSON(http.StatusCreated, gin.H{"message": fmt.Sprintf("%v likes post %v", username, postId)})
+	context.JSON(httpcode, gin.H{"message": fmt.Sprintf("%v likes post %v", username, postId)})
 }
 
 // UnlikePost handles POST requests to unlike a post.
@@ -319,7 +341,7 @@ func UnlikePost(context *gin.Context) {
 		RespondWithError(context, httpcode, fmt.Sprintf("Failed to unlike post: %v", err))
 		return
 	}
-	context.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%v unliked post %v", username, postId)})
+	context.JSON(httpcode, gin.H{"message": fmt.Sprintf("%v unliked post %v", username, postId)})
 }
 
 // IsPostLiked handles GET requests to query for a post like.

@@ -24,6 +24,8 @@ export function UserCard({
 }: UserCardProps) {
   const colors = useAppColors();
   const resolvedPicture = resolveMediaUrl(picture ?? "");
+  const [picFailed, setPicFailed] = React.useState(false);
+  const showPicture = Boolean(resolvedPicture) && !picFailed;
   const initial = username?.[0]?.toUpperCase() ?? "?";
 
   return (
@@ -42,10 +44,11 @@ export function UserCard({
             { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
           ]}
         >
-          {resolvedPicture ? (
+          {showPicture ? (
             <FadeInImage
               source={{ uri: resolvedPicture }}
               style={styles.avatarImage}
+              onLoadFailed={() => setPicFailed(true)}
             />
           ) : (
             <ThemedText type="caption" style={{ color: colors.muted }}>

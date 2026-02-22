@@ -11,7 +11,6 @@ import {
   Modal,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -76,8 +75,6 @@ export default function UserProfileScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFollowersOpen, setIsFollowersOpen] = useState(false);
   const [isFollowingOpen, setIsFollowingOpen] = useState(false);
-  const [followersList, setFollowersList] = useState<string[]>([]);
-  const [followingList, setFollowingList] = useState<string[]>([]);
   const [isFollowersLoading, setIsFollowersLoading] = useState(false);
   const [isFollowingLoading, setIsFollowingLoading] = useState(false);
   const [followerUsers, setFollowerUsers] = useState<UserProps[]>([]);
@@ -284,7 +281,6 @@ export default function UserProfileScreen() {
     try {
       const list = await getUsersFollowersUsernames(profileUser.username);
       const names = Array.isArray(list) ? list : [];
-      setFollowersList(names);
       const users = await Promise.all(
         names.map((name) => getUserByUsername(name).catch(() => null)),
       );
@@ -310,7 +306,6 @@ export default function UserProfileScreen() {
     try {
       const list = await getUsersFollowingUsernames(profileUser.username);
       const names = Array.isArray(list) ? list : [];
-      setFollowingList(names);
       const users = await Promise.all(
         names.map((name) => getUserByUsername(name).catch(() => null)),
       );

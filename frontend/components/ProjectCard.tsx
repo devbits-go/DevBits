@@ -350,7 +350,9 @@ export function ProjectCard({
           <View style={[styles.stageDot, { backgroundColor: colors.tint }]} />
         </View>
         <View style={styles.summary}>
-          <MarkdownText>{summaryText}</MarkdownText>
+          <MarkdownText compact preferStatic>
+            {summaryText}
+          </MarkdownText>
         </View>
         <View style={styles.tagRow}>
           {isCreator ? (

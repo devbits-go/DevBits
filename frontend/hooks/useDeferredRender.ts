@@ -5,18 +5,24 @@ type DeferredOptions = {
   enabled?: boolean;
   delayMs?: number;
   deferUntilInteractions?: boolean;
+  runOnce?: boolean;
 };
 
 export function useDeferredRender({
   enabled = true,
   delayMs = 0,
   deferUntilInteractions = false,
+  runOnce = false,
 }: DeferredOptions = {}) {
   const [ready, setReady] = useState(!enabled);
 
   useEffect(() => {
     if (!enabled) {
       setReady(true);
+      return;
+    }
+
+    if (runOnce && ready) {
       return;
     }
 
@@ -57,7 +63,7 @@ export function useDeferredRender({
       }
       task?.cancel?.();
     };
-  }, [deferUntilInteractions, delayMs, enabled]);
+  }, [deferUntilInteractions, delayMs, enabled, ready, runOnce]);
 
   return ready;
 }

@@ -14,6 +14,7 @@ import { LazyFadeIn } from "@/components/LazyFadeIn";
 import { ThemedText } from "@/components/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { resolveMediaUrl } from "@/services/api";
 
 type MediaGalleryProps = {
   media?: string[];
@@ -60,8 +61,6 @@ function VideoItem({ source }: VideoItemProps) {
     />
   );
 }
-import { resolveMediaUrl } from "@/services/api";
-
 function SvgItem({ source, isReady }: SvgItemProps) {
   const colors = useAppColors();
   const [svgMarkup, setSvgMarkup] = React.useState<string | null>(null);
@@ -98,8 +97,8 @@ function SvgItem({ source, isReady }: SvgItemProps) {
   const html = React.useMemo(() => {
     const content = svgMarkup
       ? svgMarkup
-      : `<img src="${source}" style="max-width:100%;height:auto;" />`;
-    return `<!doctype html><html><body style="margin:0;padding:0;background:transparent;display:flex;align-items:center;justify-content:center">${content}</body></html>`;
+      : `<img src="${source}" style="display:block;width:100%;height:auto;max-width:100%;vertical-align:top;" />`;
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" /><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;}svg,img{display:block;width:100%;height:auto;max-width:100%;vertical-align:top;}*{box-sizing:border-box;}</style></head><body>${content}</body></html>`;
   }, [source, svgMarkup]);
 
   return (
@@ -110,7 +109,7 @@ function SvgItem({ source, isReady }: SvgItemProps) {
             styles.media,
             styles.svg,
             styles.svgContainer,
-            { backgroundColor: colors.surfaceAlt },
+            { backgroundColor: "transparent" },
           ]}
         >
           <WebView
@@ -118,6 +117,10 @@ function SvgItem({ source, isReady }: SvgItemProps) {
             source={{ html }}
             style={[styles.svgWebView, !isLoaded && styles.hidden]}
             scrollEnabled={false}
+            bounces={false}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            setSupportMultipleWindows={false}
             onLoadEnd={() => setIsLoaded(true)}
           />
           {!isLoaded ? (
@@ -213,10 +216,10 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 200,
     borderRadius: 12,
-    backgroundColor: "#000000",
+    backgroundColor: "transparent",
   },
   video: {
-    backgroundColor: "#000000",
+    backgroundColor: "transparent",
   },
   svg: {
     height: 180,

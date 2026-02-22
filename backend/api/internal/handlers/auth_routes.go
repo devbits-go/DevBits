@@ -3,10 +3,10 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"backend/api/internal/auth"
 	"backend/api/internal/database"
-	"backend/api/internal/types"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -26,8 +26,8 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token string     `json:"token"`
-	User  types.User `json:"user"`
+	Token string           `json:"token"`
+	User  database.ApiUser `json:"user"`
 }
 
 func Register(context *gin.Context) {
@@ -42,7 +42,7 @@ func Register(context *gin.Context) {
 		return
 	}
 
-	existing, err := database.QueryUsername(request.Username)
+	existing, err := database.GetUserByUsername(request.Username)
 	if err != nil {
 		RespondWithError(context, http.StatusInternalServerError, "Failed to check user")
 		return
@@ -58,26 +58,57 @@ func Register(context *gin.Context) {
 		return
 	}
 
-	newUser := &types.User{
+	newUser := &database.ApiUser{
 		Username: request.Username,
 		Bio:      request.Bio,
-		Links:    request.Links,
+		Links:    map[string]interface{}{}, // Initialize empty map
 		Picture:  request.Picture,
+		Settings: map[string]interface{}{}, // Initialize empty map
 	}
 
-	createdUser, err := database.QueryCreateUserWithLogin(newUser, string(passwordHash))
+	if strings.TrimSpace(newUser.Picture) != "" {
+		storedPicture, err := materializeMediaReference(newUser.Picture)
+		if err != nil {
+			RespondWithError(context, http.StatusBadRequest, "Invalid picture media reference")
+			return
+		}
+		newUser.Picture = storedPicture
+	}
+
+	// Convert links slice to map
+	if request.Links != nil {
+		linksMap := make(map[string]interface{})
+		for i, link := range request.Links {
+			linksMap[fmt.Sprintf("link%d", i+1)] = link
+		}
+		newUser.Links = linksMap
+	}
+
+	id, err := database.CreateUser(newUser)
 	if err != nil {
 		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to create user: %v", err))
 		return
 	}
+	newUser.Id = id
 
-	token, err := auth.GenerateToken(createdUser.ID, createdUser.Username)
+	loginInfo := &database.UserLoginInfo{
+		Username:     request.Username,
+		PasswordHash: string(passwordHash),
+	}
+	err = database.CreateUserLoginInfo(loginInfo)
+	if err != nil {
+		// Consider rolling back user creation
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to create login info: %v", err))
+		return
+	}
+
+	token, err := auth.GenerateToken(int64(newUser.Id), newUser.Username)
 	if err != nil {
 		RespondWithError(context, http.StatusInternalServerError, "Failed to issue token")
 		return
 	}
 
-	context.JSON(http.StatusCreated, AuthResponse{Token: token, User: *createdUser})
+	context.JSON(http.StatusCreated, AuthResponse{Token: token, User: *newUser})
 }
 
 func Login(context *gin.Context) {
@@ -87,28 +118,28 @@ func Login(context *gin.Context) {
 		return
 	}
 
-	storedHash, err := database.QueryGetPasswordHash(request.Username)
+	loginInfo, err := database.GetUserLoginInfo(request.Username)
 	if err != nil {
 		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to login: %v", err))
 		return
 	}
-	if storedHash == "" {
+	if loginInfo == nil {
 		RespondWithError(context, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(request.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(loginInfo.PasswordHash), []byte(request.Password)); err != nil {
 		RespondWithError(context, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 
-	user, err := database.QueryUsername(request.Username)
+	user, err := database.GetUserByUsername(request.Username)
 	if err != nil || user == nil {
 		RespondWithError(context, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 
-	token, err := auth.GenerateToken(user.ID, user.Username)
+	token, err := auth.GenerateToken(int64(user.Id), user.Username)
 	if err != nil {
 		RespondWithError(context, http.StatusInternalServerError, "Failed to issue token")
 		return
@@ -124,7 +155,7 @@ func GetMe(context *gin.Context) {
 		return
 	}
 
-	user, err := database.QueryUsername(username)
+	user, err := database.GetUserByUsername(username)
 	if err != nil || user == nil {
 		RespondWithError(context, http.StatusUnauthorized, "Unauthorized")
 		return

@@ -1,11 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Animated, RefreshControl, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -99,7 +93,7 @@ export default function SavedStreamsScreen() {
         }
       }
     },
-    [savedProjectIds],
+    [removeSavedProjectIds, savedProjectIds],
   );
 
   useEffect(() => {

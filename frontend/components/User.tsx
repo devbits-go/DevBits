@@ -19,9 +19,11 @@ export default function User({
   const colors = useAppColors();
   const { preferences } = usePreferences();
   const creationDate = new Date(created_on);
+  const hasValidCreationDate = !Number.isNaN(creationDate.getTime());
   const safeLinks = Array.isArray(links) ? links : [];
   const resolvedPicture = resolveMediaUrl(picture);
-  const hasPicture = Boolean(resolvedPicture);
+  const [pictureFailed, setPictureFailed] = useState(false);
+  const hasPicture = Boolean(resolvedPicture) && !pictureFailed;
   const [isImageOpen, setIsImageOpen] = useState(false);
   const openUrlSafe = async (url: string) => {
     const trimmed = url.trim();
@@ -74,6 +76,7 @@ export default function User({
             <FadeInImage
               source={{ uri: resolvedPicture }}
               style={styles.avatar}
+              onLoadFailed={() => setPictureFailed(true)}
             />
           </Pressable>
         ) : (
@@ -92,10 +95,12 @@ export default function User({
           <ThemedText type="title">{username}</ThemedText>
           <ThemedText type="caption" style={{ color: colors.muted }}>
             Joined{" "}
-            {creationDate.toLocaleDateString("en-US", {
-              month: "long",
-              year: "numeric",
-            })}
+            {hasValidCreationDate
+              ? creationDate.toLocaleDateString("en-US", {
+                  month: "long",
+                  year: "numeric",
+                })
+              : "Unknown"}
           </ThemedText>
         </View>
       </View>

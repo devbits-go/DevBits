@@ -11,15 +11,15 @@ import (
 
 	"backend/api/internal/auth"
 	"backend/api/internal/database"
-	"backend/api/internal/types"
+	"backend/api/internal/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
 type directMessageStreamEvent struct {
-	Type          string              `json:"type"`
-	DirectMessage types.DirectMessage `json:"direct_message"`
+	Type          string                `json:"type"`
+	DirectMessage database.DirectMessage `json:"direct_message"`
 }
 
 type directMessageHub struct {
@@ -68,7 +68,7 @@ func (h *directMessageHub) unsubscribe(username string, channel chan directMessa
 	}
 }
 
-func (h *directMessageHub) publish(message types.DirectMessage) {
+func (h *directMessageHub) publish(message database.DirectMessage) {
 	event := directMessageStreamEvent{
 		Type:          "direct_message",
 		DirectMessage: message,
@@ -228,8 +228,28 @@ func StreamDirectMessages(context *gin.Context) {
 		return
 	}
 
+	if !websocket.IsWebSocketUpgrade(context.Request) {
+		logger.Log.WithFields(map[string]interface{}{
+			"path":       context.Request.URL.Path,
+			"upgrade":    context.GetHeader("Upgrade"),
+			"connection": context.GetHeader("Connection"),
+			"user_agent": context.GetHeader("User-Agent"),
+		}).Warn("Direct message stream request missing websocket upgrade headers")
+		RespondWithError(context, http.StatusBadRequest, "Failed to establish stream")
+		return
+	}
+
 	connection, err := wsUpgrader.Upgrade(context.Writer, context.Request, nil)
 	if err != nil {
+		logger.Log.WithFields(map[string]interface{}{
+			"path":                 context.Request.URL.Path,
+			"upgrade":              context.GetHeader("Upgrade"),
+			"connection":           context.GetHeader("Connection"),
+			"sec_websocket_key":    context.GetHeader("Sec-WebSocket-Key") != "",
+			"sec_websocket_version": context.GetHeader("Sec-WebSocket-Version"),
+			"user_agent":           context.GetHeader("User-Agent"),
+			"error":                err.Error(),
+		}).Warn("Direct message stream websocket upgrade failed")
 		RespondWithError(context, http.StatusBadRequest, "Failed to establish stream")
 		return
 	}
@@ -288,4 +308,32 @@ func GetDirectChatPeers(context *gin.Context) {
 	}
 
 	context.JSON(http.StatusOK, gin.H{"message": "Successfully got chat peers", "peers": peers})
+}
+
+func GetDirectMessageThreads(context *gin.Context) {
+	username := context.Param("username")
+
+	start := 0
+	count := 50
+	if raw := context.Query("start"); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 0 {
+			start = value
+		}
+	}
+	if raw := context.Query("count"); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+			if value > 200 {
+				value = 200
+			}
+			count = value
+		}
+	}
+
+	threads, status, err := database.QueryDirectMessageThreads(username, start, count)
+	if err != nil {
+		RespondWithError(context, status, fmt.Sprintf("Failed to fetch direct message threads: %v", err))
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"message": "Successfully got message threads", "threads": threads})
 }

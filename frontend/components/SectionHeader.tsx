@@ -19,7 +19,10 @@ export function SectionHeader({
 
   return (
     <View style={styles.container}>
-      <ThemedText type="subtitle" style={styles.title}>
+      <ThemedText
+        type="subtitle"
+        style={[styles.title, { color: colors.text }]}
+      >
         {title}
       </ThemedText>
       {actionLabel ? (
@@ -27,10 +30,10 @@ export function SectionHeader({
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           onPress={actionOnPress}
         >
-          <ThemedText type="caption" style={{ color: colors.muted }}>
+          <ThemedText type="caption" style={{ color: colors.tint }}>
             {actionLabel}
           </ThemedText>
-          <Feather name="arrow-up-right" size={12} color={colors.muted} />
+          <Feather name="arrow-up-right" size={12} color={colors.tint} />
         </Pressable>
       ) : null}
     </View>

@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Animated,
+  InteractionManager,
   Keyboard,
   Pressable,
   RefreshControl,
@@ -27,7 +28,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { FadeInImage } from "@/components/FadeInImage";
 import { UiPerson } from "@/constants/Types";
 import {
-  clearApiCache,
+  beginFreshReadWindow,
   followUser,
   getAllUsers,
   getPostsFeed,
@@ -38,6 +39,7 @@ import {
   getUserById,
   getUsersFollowing,
   getPostsByUserId,
+  resolveMediaUrl,
   unfollowUser,
 } from "@/services/api";
 import { mapPostToUi, mapProjectToUi } from "@/services/mappers";
@@ -49,6 +51,7 @@ import { TagChip } from "@/components/TagChip";
 import { ThemedText } from "@/components/ThemedText";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { TopBlur } from "@/components/TopBlur";
+import { UnifiedLoadingList } from "@/components/UnifiedLoading";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
@@ -97,6 +100,7 @@ export default function ExploreScreen() {
   const motion = useMotionConfig();
   const requestGuard = useRequestGuard();
   const reveal = useRef(new Animated.Value(0.08)).current;
+  const hasFocusedRef = useRef(false);
   const scrollRef = useRef<Animated.ScrollView>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
 
@@ -177,7 +181,7 @@ export default function ExploreScreen() {
           name: item.username,
           title: "",
           focus: item.bio ?? "",
-          picture: item.picture,
+          picture: item.picture ? resolveMediaUrl(item.picture) : undefined,
         }));
 
         if (!requestGuard.isActive(requestId)) {
@@ -213,7 +217,6 @@ export default function ExploreScreen() {
   );
 
   useEffect(() => {
-    clearApiCache();
     loadExplore();
   }, [loadExplore]);
 
@@ -252,14 +255,25 @@ export default function ExploreScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      clearApiCache();
-      loadExplore(false);
+      if (!hasFocusedRef.current) {
+        hasFocusedRef.current = true;
+        return;
+      }
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        beginFreshReadWindow();
+        void loadExplore(false);
+      });
+
+      return () => {
+        task.cancel?.();
+      };
     }, [loadExplore]),
   );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    clearApiCache();
+    beginFreshReadWindow();
     await loadExplore(false);
     setIsRefreshing(false);
   }, [loadExplore]);
@@ -720,26 +734,13 @@ export default function ExploreScreen() {
                   actionOnPress={() => router.push("/streams")}
                 />
                 {isLoading ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.edgeToEdgeRail}
-                  >
-                    <View style={styles.projectRow}>
-                      {[0, 1, 2].map((key) => (
-                        <View
-                          key={key}
-                          style={[
-                            styles.skeletonCard,
-                            {
-                              backgroundColor: colors.surfaceAlt,
-                              borderColor: colors.border,
-                            },
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  </ScrollView>
+                  <View style={styles.edgeToEdgeRail}>
+                    <UnifiedLoadingList
+                      rows={2}
+                      cardHeight={196}
+                      cardRadius={16}
+                    />
+                  </View>
                 ) : filteredProjects.length ? (
                   <View style={styles.edgeToEdgeRail}>
                     <InfiniteHorizontalCycle
@@ -771,20 +772,11 @@ export default function ExploreScreen() {
                   actionOnPress={() => router.push("/bytes")}
                 />
                 {isLoading ? (
-                  <View style={styles.skeletonStack}>
-                    {[0, 1, 2].map((key) => (
-                      <View
-                        key={key}
-                        style={[
-                          styles.skeletonCard,
-                          {
-                            backgroundColor: colors.surfaceAlt,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
+                  <UnifiedLoadingList
+                    rows={3}
+                    cardHeight={120}
+                    cardRadius={14}
+                  />
                 ) : filteredPosts.length ? (
                   filteredPosts.map((post) => <Post key={post.id} {...post} />)
                 ) : (
@@ -894,21 +886,11 @@ export default function ExploreScreen() {
                   Tap a tag to search.
                 </ThemedText>
                 {isLoading ? (
-                  <View style={styles.tagGrid}>
-                    {[0, 1, 2, 3].map((key) => (
-                      <View
-                        key={key}
-                        style={[
-                          styles.skeletonChip,
-                          {
-                            backgroundColor: colors.surfaceAlt,
-                            borderColor: colors.border,
-                            borderWidth: 1,
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
+                  <UnifiedLoadingList
+                    rows={1}
+                    cardHeight={72}
+                    cardRadius={14}
+                  />
                 ) : tags.length ? (
                   <View style={styles.tagGrid}>
                     {tags.map((tag) => (

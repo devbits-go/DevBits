@@ -17,7 +17,7 @@ func createAndPushNotification(userID int64, actorID int64, nType string, postID
 		return
 	}
 
-	SendNotificationPush(userID, notification, body)
+	go SendNotificationPush(userID, notification, body)
 }
 
 func notificationBody(actorName string, text string) string {

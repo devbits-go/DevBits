@@ -14,7 +14,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   TextInput,
   TouchableWithoutFeedback,
@@ -385,7 +384,7 @@ export default function PostDetailScreen() {
       );
       setComments(commentStates);
       emitPostStats(post.id, { comments: commentStates.length });
-    } catch (error) {
+    } catch {
       setErrorMessage("Failed to post comment.");
     } finally {
       setIsSubmitting(false);
@@ -592,6 +591,22 @@ export default function PostDetailScreen() {
         await likePost(user.username, post.id);
       } else {
         await unlikePost(user.username, post.id);
+      }
+
+      try {
+        const [serverStatus, serverPost] = await Promise.all([
+          isPostLiked(user.username, post.id),
+          getPostById(post.id),
+        ]);
+        const normalizedLikes = Math.max(0, serverPost.likes ?? nextLikes);
+        setPostLiked(serverStatus.status);
+        setPostLikeCount(normalizedLikes);
+        emitPostStats(post.id, {
+          likes: normalizedLikes,
+          isLiked: serverStatus.status,
+        });
+      } catch {
+        // Keep optimistic state if sync fails.
       }
     } catch {
       setPostLiked(previousLiked);
@@ -942,6 +957,27 @@ export default function PostDetailScreen() {
                             ]}
                             multiline
                           />
+                          {postDraft.trim() ? (
+                            <View
+                              style={[
+                                styles.previewBox,
+                                {
+                                  borderColor: colors.border,
+                                  backgroundColor: colors.surfaceAlt,
+                                },
+                              ]}
+                            >
+                              <ThemedText
+                                type="caption"
+                                style={{ color: colors.muted }}
+                              >
+                                Preview
+                              </ThemedText>
+                              <MarkdownText preferStatic>
+                                {postDraft}
+                              </MarkdownText>
+                            </View>
+                          ) : null}
                           <View style={styles.commentMediaSection}>
                             <View style={styles.commentMediaActions}>
                               <Pressable
@@ -1116,6 +1152,7 @@ export default function PostDetailScreen() {
                           placeholder="Add a comment"
                           placeholderTextColor={colors.muted}
                           style={[styles.input, { color: colors.text }]}
+                          multiline
                         />
                         <Pressable
                           onPress={handleSubmit}
@@ -1187,6 +1224,25 @@ export default function PostDetailScreen() {
                         ) : null}
                         <MediaGallery media={commentMedia} />
                       </View>
+                      {content.trim() ? (
+                        <View
+                          style={[
+                            styles.previewBox,
+                            {
+                              borderColor: colors.border,
+                              backgroundColor: colors.surface,
+                            },
+                          ]}
+                        >
+                          <ThemedText
+                            type="caption"
+                            style={{ color: colors.muted }}
+                          >
+                            Preview
+                          </ThemedText>
+                          <MarkdownText preferStatic>{content}</MarkdownText>
+                        </View>
+                      ) : null}
                       {errorMessage ? (
                         <ThemedText
                           type="caption"
@@ -1297,6 +1353,27 @@ export default function PostDetailScreen() {
                                   ]}
                                   multiline
                                 />
+                                {editingCommentText.trim() ? (
+                                  <View
+                                    style={[
+                                      styles.previewBox,
+                                      {
+                                        borderColor: colors.border,
+                                        backgroundColor: colors.surfaceAlt,
+                                      },
+                                    ]}
+                                  >
+                                    <ThemedText
+                                      type="caption"
+                                      style={{ color: colors.muted }}
+                                    >
+                                      Preview
+                                    </ThemedText>
+                                    <MarkdownText preferStatic>
+                                      {editingCommentText}
+                                    </MarkdownText>
+                                  </View>
+                                ) : null}
                                 <View style={styles.commentMediaSection}>
                                   <View style={styles.commentMediaActions}>
                                     <Pressable
@@ -1637,5 +1714,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 6,
+  },
+  previewBox: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
   },
 });

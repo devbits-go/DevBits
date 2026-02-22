@@ -6,7 +6,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
 } from "react-native";
@@ -15,7 +14,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
 import { FloatingScrollTopButton } from "@/components/FloatingScrollTopButton";
 import { ThemedText } from "@/components/ThemedText";
 import { TopBlur } from "@/components/TopBlur";
@@ -31,56 +30,22 @@ import {
   getProjectBuilders,
   getProjectsByBuilderId,
   removeProjectBuilder,
-  updateProject,
-  uploadMedia,
 } from "@/services/api";
 import { ApiProject } from "@/constants/Types";
 import { TagChip } from "@/components/TagChip";
 import { MediaGallery } from "@/components/MediaGallery";
 import { MarkdownText } from "@/components/MarkdownText";
-import Markdown from "react-native-markdown-display";
-import {
-  emitProjectDeleted,
-  emitProjectUpdated,
-} from "@/services/projectEvents";
-import * as DocumentPicker from "expo-document-picker";
-import * as ImagePicker from "expo-image-picker";
+import { emitProjectDeleted } from "@/services/projectEvents";
 
 export default function ManageStreamsScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { editId } = useLocalSearchParams<{ editId?: string }>();
-  const editTargetId = Number(editId);
-  const getMediaLabel = (url: string) => {
-    const trimmed = url.split("?")[0].split("#")[0];
-    return trimmed.split("/").pop() || "attachment";
-  };
+  const router = useRouter();
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [builderMap, setBuilderMap] = useState<Record<number, string[]>>({});
-  const [editMap, setEditMap] = useState<Record<number, boolean>>({});
-  const [draftMap, setDraftMap] = useState<
-    Record<
-      number,
-      {
-        name: string;
-        description: string;
-        about_md: string;
-        tags: string;
-        links: string;
-        status: number;
-        media: string[];
-      }
-    >
-  >({});
   const [builderDrafts, setBuilderDrafts] = useState<Record<number, string>>(
     {},
-  );
-  const [updatingProjectId, setUpdatingProjectId] = useState<number | null>(
-    null,
-  );
-  const [uploadingProjectId, setUploadingProjectId] = useState<number | null>(
-    null,
   );
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(
     null,
@@ -93,89 +58,6 @@ export default function ManageStreamsScreen() {
   const reveal = useRef(new Animated.Value(0.08)).current;
   const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
-  const toOneLine = (value: string) => value.replace(/\s+/g, " ").trim();
-  const inlineMarkdownRules = {
-    paragraph: (node: { key?: string }, children: React.ReactNode[]) => (
-      <Text
-        key={node.key}
-        style={styles.inlineNameText}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-      >
-        {children}
-      </Text>
-    ),
-    text: (node: { content?: string }) => node.content,
-    strong: (node: { key?: string }, children: React.ReactNode[]) => (
-      <Text key={node.key} style={styles.inlineStrong}>
-        {children}
-      </Text>
-    ),
-    em: (node: { key?: string }, children: React.ReactNode[]) => (
-      <Text key={node.key} style={styles.inlineEm}>
-        {children}
-      </Text>
-    ),
-    s: (node: { key?: string }, children: React.ReactNode[]) => (
-      <Text key={node.key} style={styles.inlineStrike}>
-        {children}
-      </Text>
-    ),
-    code_inline: (node: { key?: string; content?: string }) => (
-      <Text
-        key={node.key}
-        style={[
-          styles.inlineCode,
-          { backgroundColor: colors.tint, color: colors.background },
-        ]}
-      >
-        {` ${node.content} `}
-      </Text>
-    ),
-  } as const;
-  const inlineMarkdownStyle = {
-    body: {
-      color: colors.text,
-      fontSize: 15,
-      lineHeight: 20,
-      fontWeight: "600",
-      fontFamily: "SpaceMono",
-    },
-    paragraph: { marginTop: 0, marginBottom: 0 },
-  } as const;
-  const inlineSummaryStyle = {
-    ...inlineMarkdownStyle,
-    body: {
-      color: colors.muted,
-      fontSize: 13,
-      lineHeight: 18,
-      fontFamily: "SpaceMono",
-    },
-  } as const;
-  const renderInlineMarkdown = (value: string, variant: "name" | "summary") => (
-    <Markdown
-      rules={{
-        ...inlineMarkdownRules,
-        paragraph: (node: { key?: string }, children: React.ReactNode[]) => (
-          <Text
-            key={node.key}
-            style={
-              variant === "name"
-                ? [styles.inlineNameText, { color: colors.text }]
-                : [styles.inlineSummaryText, { color: colors.muted }]
-            }
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {children}
-          </Text>
-        ),
-      }}
-      style={variant === "name" ? inlineMarkdownStyle : inlineSummaryStyle}
-    >
-      {toOneLine(value)}
-    </Markdown>
-  );
 
   useEffect(() => {
     if (motion.prefersReducedMotion) {
@@ -213,23 +95,6 @@ export default function ManageStreamsScreen() {
           }),
         );
         setBuilderMap(Object.fromEntries(builders));
-        setDraftMap((prev) => {
-          const next = { ...prev };
-          safeProjects.forEach((project) => {
-            if (!next[project.id]) {
-              next[project.id] = {
-                name: project.name,
-                description: project.description ?? "",
-                about_md: project.about_md ?? "",
-                tags: (project.tags ?? []).join(", "),
-                links: (project.links ?? []).join(", "),
-                status: project.status ?? 0,
-                media: project.media ?? [],
-              };
-            }
-          });
-          return next;
-        });
         setHasError(false);
       } catch {
         setProjects([]);
@@ -247,22 +112,6 @@ export default function ManageStreamsScreen() {
     loadStreams();
   }, [loadStreams]);
 
-  useEffect(() => {
-    if (!editId || Number.isNaN(editTargetId)) {
-      return;
-    }
-    if (!projects.length) {
-      return;
-    }
-    const exists = projects.some((project) => project.id === editTargetId);
-    if (!exists) {
-      return;
-    }
-    setEditMap((prev) =>
-      prev[editTargetId] ? prev : { ...prev, [editTargetId]: true },
-    );
-  }, [editId, editTargetId, projects]);
-
   useFocusEffect(
     useCallback(() => {
       clearApiCache();
@@ -278,137 +127,6 @@ export default function ManageStreamsScreen() {
   }, [loadStreams]);
 
   useAutoRefresh(() => loadStreams(false), { focusRefresh: false });
-
-  const handleToggleEdit = (projectId: number) => {
-    setEditMap((prev) => ({ ...prev, [projectId]: !prev[projectId] }));
-  };
-
-  const handleSaveProject = async (project: ApiProject) => {
-    const draft = draftMap[project.id];
-    if (!draft) {
-      return;
-    }
-    setUpdatingProjectId(project.id);
-    try {
-      const payload = {
-        name: draft.name.trim(),
-        description: draft.description.trim(),
-        about_md: draft.about_md.trim(),
-        tags: draft.tags
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-        links: draft.links
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-        status: draft.status,
-        media: draft.media,
-      };
-      const response = await updateProject(project.id, payload);
-      const updated = response.project;
-      emitProjectUpdated(updated.id, {
-        name: updated.name,
-        summary: updated.description ?? "",
-        about_md: updated.about_md ?? "",
-        stage:
-          updated.status === 2
-            ? "launch"
-            : updated.status === 1
-              ? "beta"
-              : "alpha",
-        tags: updated.tags ?? [],
-        media: updated.media ?? [],
-        updated_on: updated.creation_date,
-        likes: updated.likes,
-        saves: updated.saves ?? 0,
-      });
-      setProjects((prev) =>
-        prev.map((item) => (item.id === project.id ? updated : item)),
-      );
-      setEditMap((prev) => ({ ...prev, [project.id]: false }));
-    } finally {
-      setUpdatingProjectId(null);
-    }
-  };
-
-  const handleAddProjectMedia = async (
-    projectId: number,
-    source: "file" | "library",
-  ) => {
-    if (uploadingProjectId) {
-      return;
-    }
-    setUploadingProjectId(projectId);
-    try {
-      let files: { uri: string; name: string; type: string }[] = [];
-      if (source === "library") {
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ["images", "videos"],
-          quality: 0.9,
-        });
-        if (!result.canceled && result.assets?.length) {
-          files = result.assets.map((asset) => ({
-            uri: asset.uri,
-            name: asset.fileName ?? `media-${Date.now()}`,
-            type: asset.type ?? "application/octet-stream",
-          }));
-        }
-      } else {
-        const result = await DocumentPicker.getDocumentAsync({
-          type: "*/*",
-          copyToCacheDirectory: true,
-        });
-        if (!result.canceled) {
-          files = [
-            {
-              uri: result.assets[0].uri,
-              name: result.assets[0].name,
-              type: result.assets[0].mimeType ?? "application/octet-stream",
-            },
-          ];
-        }
-      }
-
-      if (!files.length) {
-        return;
-      }
-
-      const uploads = await Promise.all(files.map((file) => uploadMedia(file)));
-      const urls = uploads.map((item) => item.url);
-      setDraftMap((prev) => {
-        const current = prev[projectId];
-        if (!current) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [projectId]: {
-            ...current,
-            media: [...current.media, ...urls],
-          },
-        };
-      });
-    } finally {
-      setUploadingProjectId(null);
-    }
-  };
-
-  const handleRemoveProjectMedia = (projectId: number, url: string) => {
-    setDraftMap((prev) => {
-      const current = prev[projectId];
-      if (!current) {
-        return prev;
-      }
-      return {
-        ...prev,
-        [projectId]: {
-          ...current,
-          media: current.media.filter((item) => item !== url),
-        },
-      };
-    });
-  };
 
   const handleDeleteProject = (projectId: number) => {
     if (deletingProjectId) {
@@ -555,7 +273,6 @@ export default function ManageStreamsScreen() {
           ) : projects.length ? (
             <View style={styles.list}>
               {projects.map((project) => {
-                const draft = draftMap[project.id];
                 const builders = builderMap[project.id] ?? [];
                 const isOwner = project.owner === user?.id;
                 const stageLabel =
@@ -578,7 +295,9 @@ export default function ManageStreamsScreen() {
                   >
                     <View style={styles.cardHeader}>
                       <View>
-                        {renderInlineMarkdown(project.name, "name")}
+                        <MarkdownText compact preferStatic>
+                          {project.name.replace(/\s+/g, " ").trim()}
+                        </MarkdownText>
                         <ThemedText
                           type="caption"
                           style={{ color: colors.muted }}
@@ -589,225 +308,19 @@ export default function ManageStreamsScreen() {
                       <TagChip label={stageLabel} tone="accent" />
                     </View>
 
-                    {editMap[project.id] && draft ? (
-                      <View style={styles.editBlock}>
-                        <TextInput
-                          value={draft.name}
-                          onChangeText={(value) =>
-                            setDraftMap((prev) => ({
-                              ...prev,
-                              [project.id]: { ...draft, name: value },
-                            }))
-                          }
-                          placeholder="Stream name"
-                          placeholderTextColor={colors.muted}
-                          style={[
-                            styles.input,
-                            {
-                              color: colors.text,
-                              borderColor: colors.border,
-                              backgroundColor: colors.surfaceAlt,
-                            },
-                          ]}
-                        />
-                        <TextInput
-                          value={draft.description}
-                          onChangeText={(value) =>
-                            setDraftMap((prev) => ({
-                              ...prev,
-                              [project.id]: { ...draft, description: value },
-                            }))
-                          }
-                          placeholder="Summary"
-                          placeholderTextColor={colors.muted}
-                          style={[
-                            styles.input,
-                            {
-                              color: colors.text,
-                              borderColor: colors.border,
-                              backgroundColor: colors.surfaceAlt,
-                            },
-                          ]}
-                          multiline
-                        />
-                        <TextInput
-                          value={draft.about_md}
-                          onChangeText={(value) =>
-                            setDraftMap((prev) => ({
-                              ...prev,
-                              [project.id]: { ...draft, about_md: value },
-                            }))
-                          }
-                          placeholder="Markdown body"
-                          placeholderTextColor={colors.muted}
-                          style={[
-                            styles.input,
-                            styles.textArea,
-                            {
-                              color: colors.text,
-                              borderColor: colors.border,
-                              backgroundColor: colors.surfaceAlt,
-                            },
-                          ]}
-                          multiline
-                        />
-                        <TextInput
-                          value={draft.tags}
-                          onChangeText={(value) =>
-                            setDraftMap((prev) => ({
-                              ...prev,
-                              [project.id]: { ...draft, tags: value },
-                            }))
-                          }
-                          placeholder="Tags"
-                          placeholderTextColor={colors.muted}
-                          style={[
-                            styles.input,
-                            {
-                              color: colors.text,
-                              borderColor: colors.border,
-                              backgroundColor: colors.surfaceAlt,
-                            },
-                          ]}
-                        />
-                        <TextInput
-                          value={draft.links}
-                          onChangeText={(value) =>
-                            setDraftMap((prev) => ({
-                              ...prev,
-                              [project.id]: { ...draft, links: value },
-                            }))
-                          }
-                          placeholder="Links"
-                          placeholderTextColor={colors.muted}
-                          style={[
-                            styles.input,
-                            {
-                              color: colors.text,
-                              borderColor: colors.border,
-                              backgroundColor: colors.surfaceAlt,
-                            },
-                          ]}
-                        />
-                        <View style={styles.mediaSection}>
-                          <ThemedText
-                            type="caption"
-                            style={{ color: colors.muted }}
-                          >
-                            Edit attachments
-                          </ThemedText>
-                          <View style={styles.mediaActions}>
-                            <Pressable
-                              onPress={() =>
-                                handleAddProjectMedia(project.id, "library")
-                              }
-                              style={[
-                                styles.mediaButton,
-                                { borderColor: colors.border },
-                              ]}
-                              disabled={uploadingProjectId === project.id}
-                            >
-                              <ThemedText
-                                type="caption"
-                                style={{ color: colors.muted }}
-                              >
-                                Add photo/video
-                              </ThemedText>
-                            </Pressable>
-                            <Pressable
-                              onPress={() =>
-                                handleAddProjectMedia(project.id, "file")
-                              }
-                              style={[
-                                styles.mediaButton,
-                                { borderColor: colors.border },
-                              ]}
-                              disabled={uploadingProjectId === project.id}
-                            >
-                              <ThemedText
-                                type="caption"
-                                style={{ color: colors.muted }}
-                              >
-                                Add file
-                              </ThemedText>
-                            </Pressable>
-                          </View>
-                          {uploadingProjectId === project.id ? (
-                            <View style={styles.uploadingRow}>
-                              <ThemedText
-                                type="caption"
-                                style={{ color: colors.muted }}
-                              >
-                                Uploading...
-                              </ThemedText>
-                            </View>
-                          ) : null}
-                          {draft.media.length ? (
-                            <View style={styles.mediaChips}>
-                              {draft.media.map((item) => (
-                                <Pressable
-                                  key={item}
-                                  onPress={() =>
-                                    handleRemoveProjectMedia(project.id, item)
-                                  }
-                                  style={[
-                                    styles.mediaChip,
-                                    { borderColor: colors.border },
-                                  ]}
-                                >
-                                  <ThemedText
-                                    type="caption"
-                                    style={{ color: colors.muted }}
-                                  >
-                                    {getMediaLabel(item)} ×
-                                  </ThemedText>
-                                </Pressable>
-                              ))}
-                            </View>
-                          ) : null}
-                          <MediaGallery media={draft.media} />
-                        </View>
-                        <View style={styles.actionRow}>
-                          <Pressable
-                            onPress={() => handleToggleEdit(project.id)}
-                            style={[
-                              styles.actionButton,
-                              { borderColor: colors.border },
-                            ]}
-                          >
-                            <ThemedText
-                              type="caption"
-                              style={{ color: colors.muted }}
-                            >
-                              Cancel
-                            </ThemedText>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleSaveProject(project)}
-                            style={[
-                              styles.actionButton,
-                              { backgroundColor: colors.tint },
-                            ]}
-                            disabled={updatingProjectId === project.id}
-                          >
-                            <ThemedText
-                              type="caption"
-                              style={{ color: colors.onTint }}
-                            >
-                              Save
-                            </ThemedText>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : (
-                      <View style={styles.previewBlock}>
-                        {renderInlineMarkdown(project.description, "summary")}
-                        {project.about_md ? (
-                          <MarkdownText>{project.about_md}</MarkdownText>
-                        ) : null}
-                        <MediaGallery media={project.media} />
-                      </View>
-                    )}
+                    <View style={styles.previewBlock}>
+                      <MarkdownText compact preferStatic>
+                        {(project.description ?? "")
+                          .replace(/\s+/g, " ")
+                          .trim()}
+                      </MarkdownText>
+                      {project.about_md ? (
+                        <MarkdownText preferStatic>
+                          {project.about_md}
+                        </MarkdownText>
+                      ) : null}
+                      <MediaGallery media={project.media} />
+                    </View>
 
                     <View style={styles.builderBlock}>
                       <ThemedText
@@ -883,7 +396,12 @@ export default function ManageStreamsScreen() {
 
                     <View style={styles.actionRow}>
                       <Pressable
-                        onPress={() => handleToggleEdit(project.id)}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/manage-stream/[projectId]",
+                            params: { projectId: String(project.id) },
+                          })
+                        }
                         style={[
                           styles.actionButton,
                           { borderColor: colors.border },
@@ -893,7 +411,7 @@ export default function ManageStreamsScreen() {
                           type="caption"
                           style={{ color: colors.muted }}
                         >
-                          {editMap[project.id] ? "Close" : "Edit"}
+                          Edit
                         </ThemedText>
                       </Pressable>
                       {isOwner ? (
@@ -988,64 +506,6 @@ const styles = StyleSheet.create({
   previewBlock: {
     gap: 8,
   },
-  editBlock: {
-    gap: 10,
-  },
-  inlineCode: {
-    fontFamily: "SpaceMono",
-    borderRadius: 6,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-  },
-  inlineNameText: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "600",
-    fontFamily: "SpaceMono",
-  },
-  inlineSummaryText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: "SpaceMono",
-  },
-  inlineStrong: {
-    fontWeight: "700",
-  },
-  inlineEm: {
-    fontStyle: "italic",
-  },
-  inlineStrike: {
-    textDecorationLine: "line-through",
-  },
-  mediaSection: {
-    gap: 10,
-  },
-  mediaActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  mediaButton: {
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  uploadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  mediaChips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  mediaChip: {
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
   input: {
     borderRadius: 10,
     borderWidth: 1,
@@ -1053,9 +513,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontFamily: "SpaceMono",
     fontSize: 14,
-  },
-  textArea: {
-    minHeight: 120,
   },
   actionRow: {
     flexDirection: "row",

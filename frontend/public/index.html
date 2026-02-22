@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <title>DevBits</title>
+    <meta name="description" content="DevBits — For your ideas" />
+    <style>
+      :root {
+        --bg: #05070a;
+        --text: #f0f3f7;
+        --muted: #9aa5b4;
+        --tint: #00f329;
+        --tint-soft: rgba(0, 243, 41, 0.14);
+        --border: rgba(180, 255, 196, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial;
+        color: var(--text);
+        background:
+          radial-gradient(
+            circle at 20% 10%,
+            rgba(0, 243, 41, 0.13),
+            transparent 35%
+          ),
+          radial-gradient(
+            circle at 78% 72%,
+            rgba(0, 243, 41, 0.1),
+            transparent 34%
+          ),
+          var(--bg);
+        overflow: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(
+          480px circle at var(--mx, 50%) var(--my, 50%),
+          rgba(0, 243, 41, 0.12),
+          rgba(0, 243, 41, 0.02) 34%,
+          transparent 62%
+        );
+        pointer-events: none;
+        transition: background 120ms linear;
+      }
+
+      .glow-grid {
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 34px 34px;
+        mask-image: radial-gradient(
+          circle at center,
+          black 35%,
+          transparent 75%
+        );
+        pointer-events: none;
+      }
+
+      .topbar {
+        border-bottom: 1px solid rgba(180, 255, 196, 0.2);
+        background: linear-gradient(
+          180deg,
+          rgba(13, 18, 26, 0.86) 0%,
+          rgba(8, 11, 16, 0.72) 100%
+        );
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 10px 24px rgba(0, 0, 0, 0.28),
+          inset 0 0 20px rgba(0, 243, 41, 0.04);
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+
+      .topbar-inner {
+        width: min(1080px, 100% - 32px);
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .brand-logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        object-fit: cover;
+        box-shadow: 0 0 14px rgba(0, 243, 41, 0.18);
+      }
+
+      .nav {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .nav a {
+        color: var(--muted);
+        text-decoration: none;
+      }
+
+      .nav a:hover,
+      .nav a.active {
+        color: var(--tint);
+      }
+
+      .orb,
+      .orb2,
+      .orb3 {
+        position: absolute;
+        width: 340px;
+        height: 340px;
+        border-radius: 50%;
+        filter: blur(36px);
+        pointer-events: none;
+        animation: float 10s ease-in-out infinite;
+      }
+
+      .orb {
+        background: rgba(0, 243, 41, 0.1);
+        top: -120px;
+        left: -90px;
+      }
+
+      .orb2 {
+        background: rgba(0, 243, 41, 0.08);
+        bottom: -150px;
+        right: -80px;
+        animation-delay: -4s;
+      }
+
+      .orb3 {
+        background: rgba(0, 243, 41, 0.06);
+        width: 280px;
+        height: 280px;
+        top: 28%;
+        right: 24%;
+        animation-delay: -2s;
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translate3d(0, 0, 0) scale(1);
+        }
+        50% {
+          transform: translate3d(0, -18px, 0) scale(1.06);
+        }
+      }
+
+      main {
+        min-height: 100%;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        position: relative;
+      }
+
+      .brand-shell {
+        width: min(840px, 100%);
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        padding: 38px 28px;
+        text-align: center;
+        background: rgba(12, 16, 22, 0.56);
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 0 24px rgba(0, 243, 41, 0.07),
+          inset 0 0 28px rgba(0, 243, 41, 0.035);
+        animation: pulse 4.2s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          box-shadow:
+            0 0 20px rgba(0, 243, 41, 0.05),
+            inset 0 0 24px rgba(0, 243, 41, 0.025);
+        }
+        50% {
+          box-shadow:
+            0 0 28px rgba(0, 243, 41, 0.09),
+            inset 0 0 30px rgba(0, 243, 41, 0.045);
+        }
+      }
+
+      .logo-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 84px;
+        height: 84px;
+        margin: 0 auto 18px;
+        border-radius: 22px;
+        padding: 8px;
+        background: linear-gradient(
+          145deg,
+          rgba(0, 243, 41, 0.2) 0%,
+          rgba(19, 33, 22, 0.58) 55%,
+          rgba(0, 243, 41, 0.12) 100%
+        );
+        border: 1px solid rgba(180, 255, 196, 0.34);
+        box-shadow:
+          0 0 20px rgba(0, 243, 41, 0.22),
+          0 0 56px rgba(0, 243, 41, 0.16),
+          inset 0 0 18px rgba(0, 243, 41, 0.15);
+        isolation: isolate;
+        animation: relicPulse 3.8s ease-in-out infinite;
+      }
+
+      .logo-wrap::before,
+      .logo-wrap::after {
+        content: "";
+        position: absolute;
+        inset: -10px;
+        border-radius: 28px;
+        pointer-events: none;
+      }
+
+      .logo-wrap::before {
+        border: 1px solid rgba(0, 243, 41, 0.34);
+        box-shadow:
+          0 0 22px rgba(0, 243, 41, 0.3),
+          inset 0 0 16px rgba(0, 243, 41, 0.08);
+        animation: haloSpin 9s linear infinite;
+      }
+
+      .logo-wrap::after {
+        inset: -22px;
+        border-radius: 36px;
+        background: radial-gradient(
+          circle,
+          rgba(0, 243, 41, 0.22) 0%,
+          rgba(0, 243, 41, 0.1) 36%,
+          transparent 72%
+        );
+        filter: blur(10px);
+        opacity: 0.72;
+        z-index: -1;
+        animation: haloBreathe 4.2s ease-in-out infinite;
+      }
+
+      .logo-wrap img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 16px;
+        box-shadow:
+          0 0 18px rgba(0, 243, 41, 0.24),
+          0 0 30px rgba(0, 243, 41, 0.14);
+      }
+
+      @keyframes relicPulse {
+        0%,
+        100% {
+          box-shadow:
+            0 0 18px rgba(0, 243, 41, 0.18),
+            0 0 44px rgba(0, 243, 41, 0.12),
+            inset 0 0 16px rgba(0, 243, 41, 0.12);
+        }
+        50% {
+          box-shadow:
+            0 0 24px rgba(0, 243, 41, 0.3),
+            0 0 64px rgba(0, 243, 41, 0.2),
+            inset 0 0 22px rgba(0, 243, 41, 0.2);
+        }
+      }
+
+      @keyframes haloSpin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes haloBreathe {
+        0%,
+        100% {
+          transform: scale(0.96);
+          opacity: 0.56;
+        }
+        50% {
+          transform: scale(1.08);
+          opacity: 0.9;
+        }
+      }
+
+      .brand-title {
+        margin: 0;
+        font-size: clamp(46px, 12vw, 120px);
+        line-height: 0.95;
+        letter-spacing: -0.045em;
+        text-transform: uppercase;
+        position: relative;
+        display: inline-block;
+        background: linear-gradient(
+          92deg,
+          #dcf8e3 0%,
+          #8be9a6 34%,
+          #00f329 60%,
+          #d2f5dc 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow:
+          0 0 9px rgba(0, 243, 41, 0.2),
+          0 0 22px rgba(0, 243, 41, 0.12);
+      }
+
+      .brand-title span {
+        color: var(--tint);
+        -webkit-text-fill-color: var(--tint);
+        text-shadow:
+          0 0 8px rgba(0, 243, 41, 0.28),
+          0 0 16px rgba(0, 243, 41, 0.18);
+      }
+
+      .tag {
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 15px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .links {
+        margin-top: 28px;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .links a {
+        text-decoration: none;
+        color: var(--tint);
+        border: 1px solid rgba(0, 243, 41, 0.35);
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 13px;
+        letter-spacing: 0.04em;
+      }
+
+      .links a:hover {
+        background: rgba(0, 243, 41, 0.1);
+      }
+
+      @media (max-width: 768px) {
+        body {
+          overflow-x: hidden;
+          overflow-y: auto;
+        }
+
+        .topbar-inner {
+          width: min(1080px, 100% - 20px);
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 12px 0;
+        }
+
+        .nav {
+          width: 100%;
+          gap: 10px 12px;
+        }
+
+        .nav a {
+          font-size: 14px;
+        }
+
+        main {
+          min-height: calc(100dvh - 72px);
+          padding: 16px 12px 24px;
+        }
+
+        .brand-shell {
+          border-radius: 18px;
+          padding: 24px 16px;
+        }
+
+        .logo-wrap {
+          width: 72px;
+          height: 72px;
+          border-radius: 18px;
+          margin-bottom: 14px;
+        }
+
+        .brand-title {
+          font-size: clamp(34px, 16vw, 64px);
+          line-height: 1;
+        }
+
+        .tag {
+          font-size: 13px;
+          letter-spacing: 0.06em;
+          line-height: 1.35;
+        }
+
+        .links {
+          margin-top: 18px;
+          gap: 8px;
+        }
+
+        .links a {
+          padding: 7px 12px;
+          font-size: 12px;
+        }
+
+        .orb,
+        .orb2,
+        .orb3 {
+          width: 220px;
+          height: 220px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow-grid"></div>
+    <div class="orb"></div>
+    <div class="orb2"></div>
+    <div class="orb3"></div>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a
+          class="brand"
+          href="https://play.google.com/apps/testing/com.devbits.frontend"
+          aria-label="Open DevBits on Google Play"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img class="brand-logo" src="/icon.png" alt="DevBits logo" />
+        </a>
+        <nav class="nav" aria-label="Main navigation">
+          <a class="active" href="/">Home</a>
+          <a href="/features">Features</a>
+          <a href="/tester-application">Tester</a>
+          <a href="/about">About</a>
+          <a href="/privacy-policy">Privacy</a>
+          <a href="/account-deletion">Deletion</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="brand-shell" aria-label="DevBits brand intro">
+        <a
+          class="logo-wrap"
+          href="https://play.google.com/apps/testing/com.devbits.frontend"
+          aria-label="Open DevBits on Google Play"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img src="/icon.png" alt="DevBits logo" />
+        </a>
+        <h1 class="brand-title">Dev<span>Bits</span></h1>
+        <p class="tag">Add projects, see input, post updates, connect.</p>
+        <nav class="links" aria-label="Quick links">
+          <a href="/features">Features</a>
+          <a href="/tester-application">Tester</a>
+          <a href="/about">About</a>
+          <a href="/privacy-policy">Privacy</a>
+          <a href="/account-deletion">Deletion</a>
+        </nav>
+      </section>
+    </main>
+    <script>
+      (function () {
+        const root = document.documentElement;
+        function setFromEvent(event) {
+          const x = (event.clientX / window.innerWidth) * 100;
+          const y = (event.clientY / window.innerHeight) * 100;
+          root.style.setProperty("--mx", x + "%");
+          root.style.setProperty("--my", y + "%");
+        }
+        window.addEventListener("mousemove", setFromEvent, { passive: true });
+      })();
+    </script>
+  </body>
+</html>

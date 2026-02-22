@@ -8,10 +8,10 @@ INSERT INTO Users (username, picture, bio, links, settings, creation_date) VALUE
 
 -- Projects
 INSERT INTO Projects (name, description, status, likes, tags, links, owner, creation_date) VALUES
-    ('OpenAPI Toolkit', 'A toolkit for generating and testing OpenAPI specs.', 1, 120, '["OpenAPI", "Go", "Tooling"]', '["https://github.com/dev_user1/openapi-toolkit"]', (SELECT id FROM Users WHERE username = 'dev_user1'), '2023-06-13 00:00:00'),
-    ('DocuHelper', 'A library for streamlining technical documentation processes.', 2, 85, '["Documentation", "Python"]', '["https://github.com/tech_writer2/docuhelper"]', (SELECT id FROM Users WHERE username = 'tech_writer2'), '2021-12-13 00:00:00'),
-    ('ML Research', 'Research repository for various machine learning algorithms.', 1, 45, '["Machine Learning", "Python", "Research"]', '["https://github.com/data_scientist3/ml-research"]', (SELECT id FROM Users WHERE username = 'data_scientist3'), '2024-09-13 00:00:00'),
-    ('ScaleDB', 'A scalable database system for modern apps.', 1, 70, '["Database", "Scalability", "Backend"]', '["https://github.com/backend_guru4/scaledb"]', (SELECT id FROM Users WHERE username = 'backend_guru4'), '2024-03-15 00:00:00');
+    ('OpenAPI Toolkit', 'A toolkit for generating and testing OpenAPI specs.', 1, 120, '["OpenAPI", "Go", "Tooling"]', '["https://github.com/dev_user1/openapi-toolkit"]', 1, '2023-06-13 00:00:00'),
+    ('DocuHelper', 'A library for streamlining technical documentation processes.', 2, 85, '["Documentation", "Python"]', '["https://github.com/tech_writer2/docuhelper"]', 2, '2021-12-13 00:00:00'),
+    ('ML Research', 'Research repository for various machine learning algorithms.', 1, 45, '["Machine Learning", "Python", "Research"]', '["https://github.com/data_scientist3/ml-research"]', 3, '2024-09-13 00:00:00'),
+    ('ScaleDB', 'A scalable database system for modern apps.', 1, 70, '["Database", "Scalability", "Backend"]', '["https://github.com/backend_guru4/scaledb"]', 4, '2024-03-15 00:00:00');
 
 -- Posts
 INSERT INTO Posts (content, project_id, creation_date, user_id, likes) VALUES
@@ -102,7 +102,7 @@ INSERT INTO PostLikes (post_id, user_id) VALUES
      (SELECT id FROM Users WHERE username = 'ui_designer5'));
 
 -- User Follows (Additional follows between existing users)
-INSERT INTO UserFollows (follower_id, follows_id) VALUES
+INSERT INTO UserFollows (follower_id, followed_id) VALUES
     ((SELECT id FROM Users WHERE username = 'dev_user1'), 
      (SELECT id FROM Users WHERE username = 'data_scientist3')),
     ((SELECT id FROM Users WHERE username = 'tech_writer2'), 

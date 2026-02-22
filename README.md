@@ -132,3 +132,9 @@ From the project root, you can launch backend + frontend together:
 ```powershell
 ./run-all.ps1
 ```
+
+## Deployment DB scripts
+
+All deployment database script commands and usage are documented in:
+
+- [backend/scripts/README.md](backend/scripts/README.md)

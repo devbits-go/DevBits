@@ -1,70 +1,60 @@
 param(
-    [switch]$KeepBackend
+    [ValidateSet("live", "local-clean", "local-existing")]
+    [string]$Mode,
+    [switch]$UseLocalBackend,
+    [string]$ApiUrl = "https://devbits.ddns.net",
+    [switch]$KeepBackend,
+    [switch]$Rebuild,
+    [switch]$NoStart,
+    [switch]$NoPause
 )
 
 $ErrorActionPreference = "Stop"
 
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    $arguments = "& '" + $myinvocation.mycommand.definition + "'"
+    Start-Process powershell -Verb runAs -ArgumentList $arguments
+    exit
+}
+
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-function Test-PortListening([int]$Port) {
-    try {
-        $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop | Select-Object -First 1
-        return $null -ne $listener
+function Resolve-RunMode {
+    if ($Mode) {
+        return $Mode
     }
-    catch {
-        $netstatMatch = netstat -ano | Select-String -Pattern (":$Port\s+.*LISTENING") -SimpleMatch:$false
-        return $null -ne $netstatMatch
-    }
-}
 
-function Get-ListeningProcessName([int]$Port) {
-    try {
-        $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop | Select-Object -First 1
-        if ($null -eq $listener) {
-            return $null
-        }
-        $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
-        if ($process) {
-            return "$($process.ProcessName) (PID $($process.Id))"
-        }
-        return "PID $($listener.OwningProcess)"
+    if ($UseLocalBackend -and $KeepBackend) {
+        return "local-existing"
     }
-    catch {
-        return $null
+    if ($UseLocalBackend) {
+        return "local-clean"
     }
-}
 
-function Get-ListeningProcess([int]$Port) {
-    try {
-        $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop | Select-Object -First 1
-        if ($null -eq $listener) {
-            return $null
-        }
-        $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
-        if ($process) {
-            return [PSCustomObject]@{
-                Id   = $process.Id
-                Name = $process.ProcessName
-            }
-        }
-        return [PSCustomObject]@{
-            Id   = $listener.OwningProcess
-            Name = "unknown"
-        }
-    }
-    catch {
-        return $null
+    Write-Host "Select backend mode:" -ForegroundColor Cyan
+    Write-Host "  1) live          - connect frontend to deployed backend ($ApiUrl)"
+    Write-Host "  2) local-clean   - reset local docker backend to blank-slate then run"
+    Write-Host "  3) local-existing- use existing local docker backend without reset"
+
+    $selection = Read-Host "Enter 1, 2, or 3 (default 1)"
+    switch ($selection) {
+        "2" { return "local-clean" }
+        "3" { return "local-existing" }
+        default { return "live" }
     }
 }
 
 function Test-BackendHealthy {
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8080/health" -UseBasicParsing -TimeoutSec 3
-        return $response.StatusCode -eq 200 -and $response.Content -match "API is running"
+        $response = Invoke-WebRequest -Uri "http://localhost/health" -UseBasicParsing -TimeoutSec 5
+        if ($response.StatusCode -eq 200 -and $response.Content -match "API is running") {
+            return $true
+        }
     }
     catch {
-        return $false
+        # Will retry
     }
+    return $false
 }
 
 function Resolve-AndroidSdkPath {
@@ -194,80 +184,80 @@ else {
     }
 }
 
-$backendCommand = "`$env:DEVBITS_DEBUG=1; go run ./api"
-
-$frontendEnv = ""
-if ($androidSdkPath) {
-    $frontendEnv = "`$env:ANDROID_HOME='$androidSdkPath'; `$env:ANDROID_SDK_ROOT='$androidSdkPath'; "
-    $platformTools = Join-Path $androidSdkPath "platform-tools"
-    if (Test-Path $platformTools) {
-        $frontendEnv += "`$env:Path='$platformTools;' + `$env:Path; "
+function Wait-ForLocalBackendHealth {
+    Write-Host "Waiting for local backend to become healthy..."
+    $maxRetries = 15
+    $retryInterval = 2
+    $healthy = $false
+    for ($i = 0; $i -lt $maxRetries; $i++) {
+        if (Test-BackendHealthy) {
+            $healthy = $true
+            break
+        }
+        Start-Sleep -Seconds $retryInterval
     }
-    $emulatorPath = Join-Path $androidSdkPath "emulator"
-    if (Test-Path $emulatorPath) {
-        $frontendEnv += "`$env:Path='$emulatorPath;' + `$env:Path; "
-    }
-}
 
-$frontendCommand = "${frontendEnv}npm run frontend"
-
-$backendHealthy = Test-BackendHealthy
-$portInUse = Test-PortListening 8080
-
-$startBackend = $true
-
-if ($portInUse) {
-    $ownerInfo = Get-ListeningProcess 8080
-    $ownerLabel = if ($ownerInfo) { "$($ownerInfo.Name) (PID $($ownerInfo.Id))" } else { "unknown process" }
-
-    if ($KeepBackend -and $backendHealthy) {
-        Write-Host "Backend is healthy on http://localhost:8080; keeping existing process ($ownerLabel)." -ForegroundColor Yellow
-        $startBackend = $false
-    }
-    elseif ($ownerInfo -and ($ownerInfo.Name -match "^(api|go)$")) {
-        if ($backendHealthy) {
-            Write-Host "Restarting existing backend process on port 8080 ($ownerLabel)..." -ForegroundColor Yellow
-        }
-        else {
-            Write-Warning "Port 8080 is occupied by stale $ownerLabel and /health failed. Restarting backend process."
-        }
-
-        try {
-            Stop-Process -Id $ownerInfo.Id -Force -ErrorAction Stop
-            Start-Sleep -Milliseconds 700
-        }
-        catch {
-            Write-Warning "Could not stop $ownerLabel."
-        }
-
-        if (Test-PortListening 8080) {
-            Write-Warning "Port 8080 is still busy after stop attempt. Backend start aborted."
-            $startBackend = $false
-        }
-    }
-    elseif ($backendHealthy) {
-        Write-Host "Backend healthy on port 8080 via $ownerLabel; leaving existing service running." -ForegroundColor Yellow
-        $startBackend = $false
+    if ($healthy) {
+        Write-Host "Local backend is healthy at http://localhost/health" -ForegroundColor Green
     }
     else {
-        Write-Warning "Port 8080 is in use by $ownerLabel, and /health failed. Backend was not started to avoid killing unrelated processes."
-        $startBackend = $false
+        Write-Warning "Local backend did not become healthy in time. Check logs with 'docker compose -f backend/docker-compose.yml logs -f backend'."
     }
 }
 
-if ($startBackend) {
-    Write-Host "Starting backend..." -ForegroundColor Yellow
-    $backendProcess = Start-Process powershell -WorkingDirectory "$root\backend" -ArgumentList "-NoExit", "-Command", $backendCommand -PassThru
-    Start-Sleep -Seconds 2
-    if (Test-BackendHealthy) {
-        Write-Host "Backend started successfully (PID $($backendProcess.Id))." -ForegroundColor Green
+$runMode = Resolve-RunMode
+
+if ($runMode -eq "local-clean") {
+    Write-Host "Running in local-clean mode (fresh local backend)." -ForegroundColor Yellow
+    & "$root\backend\scripts\reset-deployment-db.ps1"
+    Wait-ForLocalBackendHealth
+}
+elseif ($runMode -eq "local-existing") {
+    Write-Host "Running in local-existing mode (no reset)." -ForegroundColor Yellow
+    Push-Location "$root\backend"
+    try {
+        $dockerArgs = "up", "-d"
+        if ($Rebuild) {
+            $dockerArgs += "--build"
+        }
+        docker compose $dockerArgs
     }
-    else {
-        Write-Warning "Backend process launched (PID $($backendProcess.Id)) but /health is not responding yet. Check the backend terminal window for errors."
+    finally {
+        Pop-Location
+    }
+    Wait-ForLocalBackendHealth
+}
+else {
+    Write-Host "Running in live mode (safe: no local DB reset)." -ForegroundColor Green
+    Write-Host "Using deployed backend API: $ApiUrl" -ForegroundColor Green
+}
+
+if (-not $NoStart) {
+    $frontendApiUrl = if ($runMode -eq "live") { $ApiUrl } else { "http://localhost" }
+    $frontendCommand = "`$env:EXPO_PUBLIC_API_URL='$frontendApiUrl'; `$env:EXPO_PUBLIC_API_FALLBACK_URL='$frontendApiUrl'; npm run frontend"
+    Start-Process powershell -WorkingDirectory "$root\frontend" -ArgumentList "-NoExit", "-Command", $frontendCommand
+
+    if ($androidSdkPath) {
+        Try-StartAndroidEmulator $androidSdkPath
     }
 }
-Start-Process powershell -WorkingDirectory "$root\frontend" -ArgumentList "-NoExit", "-Command", $frontendCommand
 
-if ($androidSdkPath) {
-    Try-StartAndroidEmulator $androidSdkPath
+$liveBackendState = "unavailable"
+try {
+    $composeFile = Join-Path $root "backend\docker-compose.yml"
+    $statusOutput = docker compose -f $composeFile ps backend 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $liveBackendState = if (($statusOutput | Out-String) -match "Up") { "running" } else { "not running" }
+    }
+}
+catch {}
+
+Write-Host ""
+Write-Host "===== Summary =====" -ForegroundColor Cyan
+Write-Host "Action: Run-all workflow executed in mode '$runMode'"
+Write-Host "Updated: Frontend startup and selected backend workflow applied"
+Write-Host "Live backend: $liveBackendState"
+
+if (-not $NoPause -and [Environment]::UserInteractive -and $Host.Name -eq "ConsoleHost") {
+    Read-Host "Press Enter to close"
 }

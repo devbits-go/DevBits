@@ -9,7 +9,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
@@ -17,14 +17,18 @@ import { Colors } from "@/constants/Colors";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SavedProvider } from "@/contexts/SavedContext";
 import { SavedStreamsProvider } from "@/contexts/SavedStreamsContext";
-import { PreferencesProvider } from "@/contexts/PreferencesContext";
-import { NotificationsProvider } from "@/contexts/NotificationsContext";
-import { useNotifications } from "@/contexts/NotificationsContext";
+import {
+  PreferencesProvider,
+  usePreferences,
+} from "@/contexts/PreferencesContext";
+import {
+  NotificationsProvider,
+  useNotifications,
+} from "@/contexts/NotificationsContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { HyprBackdrop } from "@/components/HyprBackdrop";
 import { BootScreen } from "@/components/BootScreen";
 import { InAppNotificationBanner } from "@/components/InAppNotificationBanner";
-import { usePreferences } from "@/contexts/PreferencesContext";
 // Prevent the splash screen from auto-hiding before asset loading is complete
 SplashScreen.preventAutoHideAsync();
 
@@ -36,7 +40,7 @@ const isExpoGoRuntime = () => {
   return ownership === "expo" || executionEnvironment === "storeClient";
 };
 
-let hasShownBoot = false;
+let hasShownBoot = __DEV__;
 
 const navLightTheme: Theme = {
   ...DefaultTheme,
@@ -97,54 +101,67 @@ function RootLayoutNav() {
     () => loaded && showBoot && !hasShownBoot,
     [loaded, showBoot],
   );
+  const stackAnimation = useMemo(() => {
+    switch (preferences.pageTransitionEffect) {
+      case "none":
+        return "none" as const;
+      case "default":
+        return "default" as const;
+      default:
+        return "fade" as const;
+    }
+  }, [preferences.pageTransitionEffect]);
 
-  const openFromPayload = (payload: Record<string, any>) => {
-    const type = String(payload?.type ?? "").toLowerCase();
-    const actorName = String(payload?.actor_name ?? "").trim();
-    const asNumber = (value: unknown) => {
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return value;
+  const openFromPayload = useCallback(
+    (payload: Record<string, any>) => {
+      const type = String(payload?.type ?? "").toLowerCase();
+      const actorName = String(payload?.actor_name ?? "").trim();
+      const asNumber = (value: unknown) => {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          return value;
+        }
+        if (typeof value === "string" && value.trim()) {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      };
+
+      if (type === "direct_message" && actorName) {
+        router.push({ pathname: "/terminal", params: { chat: actorName } });
+        return;
       }
-      if (typeof value === "string" && value.trim()) {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : null;
+
+      if (type === "follow_user" && actorName) {
+        router.push({
+          pathname: "/user/[username]",
+          params: { username: actorName },
+        });
+        return;
       }
-      return null;
-    };
 
-    if (type === "direct_message" && actorName) {
-      router.push({ pathname: "/terminal", params: { chat: actorName } });
-      return;
-    }
+      const projectId = asNumber(payload?.project_id);
+      if ((type === "save_project" || type === "builder_added") && projectId) {
+        router.push({
+          pathname: "/stream/[projectId]",
+          params: { projectId: String(projectId) },
+        });
+        return;
+      }
 
-    if (type === "follow_user" && actorName) {
-      router.push({
-        pathname: "/user/[username]",
-        params: { username: actorName },
-      });
-      return;
-    }
+      const postId = asNumber(payload?.post_id);
+      if ((type === "save_post" || type === "comment_post") && postId) {
+        router.push({
+          pathname: "/post/[postId]",
+          params: { postId: String(postId) },
+        });
+        return;
+      }
 
-    const projectId = asNumber(payload?.project_id);
-    if ((type === "save_project" || type === "builder_added") && projectId) {
-      router.push({
-        pathname: "/stream/[projectId]",
-        params: { projectId: String(projectId) },
-      });
-      return;
-    }
-
-    const postId = asNumber(payload?.post_id);
-    if ((type === "save_post" || type === "comment_post") && postId) {
-      router.push({
-        pathname: "/post/[postId]",
-        params: { postId: String(postId) },
-      });
-      return;
-    }
-
-    router.push("/notifications");
-  };
+      router.push("/notifications");
+    },
+    [router],
+  );
 
   useEffect(() => {
     if (loaded) {
@@ -224,7 +241,7 @@ function RootLayoutNav() {
       cancelled = true;
       subscription?.remove();
     };
-  }, [router]);
+  }, [openFromPayload]);
 
   // Render null if fonts are not loaded
   if (!loaded) {
@@ -240,6 +257,7 @@ function RootLayoutNav() {
         <Stack
           screenOptions={{
             headerShown: false,
+            animation: stackAnimation,
             contentStyle: {
               backgroundColor: Colors[colorScheme ?? "light"].background,
             },
@@ -247,8 +265,13 @@ function RootLayoutNav() {
         >
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="settings" />
           <Stack.Screen name="welcome" />
           <Stack.Screen name="markdown-help" />
+          <Stack.Screen
+            name="manage-stream/[projectId]"
+            options={{ presentation: "modal" }}
+          />
           <Stack.Screen name="+not-found" />
         </Stack>
         {shouldShowBoot ? (

@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSaved } from "@/contexts/SavedContext";
 import { useRouter } from "expo-router";
 import {
+  getPostById,
   getCommentsByPostId,
   isPostLiked,
   likePost,
@@ -182,6 +183,7 @@ export function Post({
   const [isDeleting, setIsDeleting] = useState(false);
   const likeScale = useRef(new Animated.Value(1)).current;
   const resolvedUserPicture = resolveMediaUrl(userPicture);
+  const [userPicFailed, setUserPicFailed] = useState(false);
   const longContentThreshold = 520;
   const previewCharLimit = 220;
   const likeMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
@@ -217,7 +219,6 @@ export function Post({
     day: "numeric",
   });
 
-  const canEdit = !!user?.id && userId === user.id;
   const handleOpenProfile = () => {
     if (!username) {
       return;
@@ -254,6 +255,10 @@ export function Post({
   }, [id, isSaved, savedPostIds]);
 
   useEffect(() => {
+    const pending = likeMutationRef.current;
+    if (pending && Date.now() - pending.ts < 1800) {
+      return;
+    }
     setLikeCount(likes);
   }, [likes]);
 
@@ -370,10 +375,36 @@ export function Post({
           await unlikePost(user.username, id);
         }
       }
+
+      try {
+        const [serverStatus, serverPost] = await Promise.all([
+          isPostLiked(user.username, id),
+          getPostById(id),
+        ]);
+        setIsLiked(serverStatus.status);
+        if (typeof serverPost?.likes === "number") {
+          const normalizedLikes = Math.max(0, serverPost.likes);
+          setLikeCount(normalizedLikes);
+          emitPostStats(id, {
+            likes: normalizedLikes,
+            isLiked: serverStatus.status,
+          });
+        }
+      } catch {}
     } catch {
       try {
-        const serverStatus = await isPostLiked(user.username, id);
+        const [serverStatus, serverPost] = await Promise.all([
+          isPostLiked(user.username, id),
+          getPostById(id),
+        ]);
         setIsLiked(serverStatus.status);
+        if (typeof serverPost?.likes === "number") {
+          setLikeCount(Math.max(0, serverPost.likes));
+          emitPostStats(id, {
+            likes: Math.max(0, serverPost.likes),
+            isLiked: serverStatus.status,
+          });
+        }
       } catch {}
     } finally {
       likeMutationRef.current = null;
@@ -438,12 +469,6 @@ export function Post({
       }),
     ]).start();
   }, [isLiked, likeScale]);
-
-  const handleStartEdit = () => {
-    setDraft(localContent);
-    setEditMedia(localMedia);
-    setIsEditing(true);
-  };
 
   const handleCancelEdit = () => {
     setDraft(localContent);
@@ -570,10 +595,11 @@ export function Post({
     >
       <View style={styles.header}>
         <View style={styles.headerMeta}>
-          {resolvedUserPicture ? (
+          {resolvedUserPicture && !userPicFailed ? (
             <FadeInImage
               source={{ uri: resolvedUserPicture }}
               style={styles.avatar}
+              onLoadFailed={() => setUserPicFailed(true)}
             />
           ) : (
             <View

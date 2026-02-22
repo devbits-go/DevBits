@@ -5,11 +5,25 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"backend/api/internal/types"
 )
 
-func QueryCreateDirectMessage(senderUsername string, recipientUsername string, content string) (*types.DirectMessage, int, error) {
+type DirectMessage struct {
+	ID            int64     `json:"id"`
+	SenderID      int64     `json:"sender_id"`
+	RecipientID   int64     `json:"recipient_id"`
+	SenderName    string    `json:"sender_name"`
+	RecipientName string    `json:"recipient_name"`
+	Content       string    `json:"content"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type DirectMessageThread struct {
+	PeerUsername string    `json:"peer_username"`
+	LastContent  string    `json:"last_content"`
+	LastAt       time.Time `json:"last_at"`
+}
+
+func QueryCreateDirectMessage(senderUsername string, recipientUsername string, content string) (*DirectMessage, int, error) {
 	if senderUsername == "" || recipientUsername == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("sender and recipient are required")
 	}
@@ -17,54 +31,50 @@ func QueryCreateDirectMessage(senderUsername string, recipientUsername string, c
 		return nil, http.StatusBadRequest, fmt.Errorf("message content is required")
 	}
 
-	senderID, err := GetUserIdByUsernameInsensitive(senderUsername)
+	senderID, err := GetUserIdByUsername(senderUsername)
 	if err != nil {
 		return nil, http.StatusNotFound, fmt.Errorf("sender '%s' not found", senderUsername)
 	}
-	recipientID, err := GetUserIdByUsernameInsensitive(recipientUsername)
+	recipientID, err := GetUserIdByUsername(recipientUsername)
 	if err != nil {
 		return nil, http.StatusNotFound, fmt.Errorf("recipient '%s' not found", recipientUsername)
 	}
 
 	createdAt := time.Now().UTC()
-	res, err := DB.Exec(
-		`INSERT INTO DirectMessages (sender_id, recipient_id, content, creation_date) VALUES (?, ?, ?, ?);`,
+	var messageID int64
+	err = DB.QueryRow(
+		`INSERT INTO directmessages (sender_id, recipient_id, content, creation_date) VALUES ($1, $2, $3, $4) RETURNING id;`,
 		senderID,
 		recipientID,
 		content,
 		createdAt,
-	)
+	).Scan(&messageID)
 	if err != nil {
 		return nil, http.StatusInternalServerError, fmt.Errorf("failed to insert direct message: %w", err)
 	}
 
-	messageID, err := res.LastInsertId()
-	if err != nil {
-		return nil, http.StatusInternalServerError, fmt.Errorf("failed to fetch direct message id: %w", err)
+	resolvedSender, senderErr := GetUserById(senderID)
+	if senderErr != nil || resolvedSender == nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to resolve sender username: %w", senderErr)
+	}
+	resolvedRecipient, recipientErr := GetUserById(recipientID)
+	if recipientErr != nil || resolvedRecipient == nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to resolve recipient username: %w", recipientErr)
 	}
 
-	resolvedSenderName, senderNameErr := GetUsernameById(int64(senderID))
-	if senderNameErr != nil || resolvedSenderName == "" {
-		resolvedSenderName = senderUsername
-	}
-	resolvedRecipientName, recipientNameErr := GetUsernameById(int64(recipientID))
-	if recipientNameErr != nil || resolvedRecipientName == "" {
-		resolvedRecipientName = recipientUsername
-	}
-
-	message := &types.DirectMessage{
+	message := &DirectMessage{
 		ID:            messageID,
 		SenderID:      int64(senderID),
 		RecipientID:   int64(recipientID),
-		SenderName:    resolvedSenderName,
-		RecipientName: resolvedRecipientName,
+		SenderName:    resolvedSender.Username,
+		RecipientName: resolvedRecipient.Username,
 		Content:       content,
 		CreatedAt:     createdAt,
 	}
 	return message, http.StatusCreated, nil
 }
 
-func QueryDirectMessages(username string, otherUsername string, start int, count int) ([]types.DirectMessage, int, error) {
+func QueryDirectMessages(username string, otherUsername string, start int, count int) ([]DirectMessage, int, error) {
 	if username == "" || otherUsername == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("username and other username are required")
 	}
@@ -72,11 +82,11 @@ func QueryDirectMessages(username string, otherUsername string, start int, count
 		return nil, http.StatusBadRequest, fmt.Errorf("invalid pagination params")
 	}
 
-	userID, err := GetUserIdByUsernameInsensitive(username)
+	userID, err := GetUserIdByUsername(username)
 	if err != nil {
 		return nil, http.StatusNotFound, fmt.Errorf("user '%s' not found", username)
 	}
-	otherID, err := GetUserIdByUsernameInsensitive(otherUsername)
+	otherID, err := GetUserIdByUsername(otherUsername)
 	if err != nil {
 		return nil, http.StatusNotFound, fmt.Errorf("user '%s' not found", otherUsername)
 	}
@@ -89,13 +99,13 @@ func QueryDirectMessages(username string, otherUsername string, start int, count
 		recipient.username,
 		dm.content,
 		dm.creation_date
-	FROM DirectMessages dm
-	JOIN Users sender ON sender.id = dm.sender_id
-	JOIN Users recipient ON recipient.id = dm.recipient_id
-	WHERE (dm.sender_id = ? AND dm.recipient_id = ?)
-	   OR (dm.sender_id = ? AND dm.recipient_id = ?)
+	FROM directmessages dm
+	JOIN users sender ON sender.id = dm.sender_id
+	JOIN users recipient ON recipient.id = dm.recipient_id
+	WHERE (dm.sender_id = $1 AND dm.recipient_id = $2)
+	   OR (dm.sender_id = $3 AND dm.recipient_id = $4)
 	ORDER BY dm.creation_date ASC
-	LIMIT ? OFFSET ?;`
+	LIMIT $5 OFFSET $6;`
 
 	rows, err := DB.Query(query, userID, otherID, otherID, userID, count, start)
 	if err != nil {
@@ -103,9 +113,9 @@ func QueryDirectMessages(username string, otherUsername string, start int, count
 	}
 	defer rows.Close()
 
-	messages := make([]types.DirectMessage, 0)
+	messages := make([]DirectMessage, 0)
 	for rows.Next() {
-		var message types.DirectMessage
+		var message DirectMessage
 		if err := rows.Scan(
 			&message.ID,
 			&message.SenderID,
@@ -131,18 +141,18 @@ func QueryDirectChatPeers(username string) ([]string, int, error) {
 		return nil, http.StatusBadRequest, fmt.Errorf("username is required")
 	}
 
-	userID, err := GetUserIdByUsernameInsensitive(username)
+	userID, err := GetUserIdByUsername(username)
 	if err != nil {
 		return nil, http.StatusNotFound, fmt.Errorf("user '%s' not found", username)
 	}
 
 	query := `SELECT DISTINCT u.username
-	FROM DirectMessages dm
-	JOIN Users u ON u.id = CASE
-		WHEN dm.sender_id = ? THEN dm.recipient_id
+	FROM directmessages dm
+	JOIN users u ON u.id = CASE
+		WHEN dm.sender_id = $1 THEN dm.recipient_id
 		ELSE dm.sender_id
 	END
-	WHERE dm.sender_id = ? OR dm.recipient_id = ?
+	WHERE dm.sender_id = $2 OR dm.recipient_id = $3
 	ORDER BY u.username ASC;`
 
 	rows, err := DB.Query(query, userID, userID, userID)
@@ -166,4 +176,63 @@ func QueryDirectChatPeers(username string) ([]string, int, error) {
 	}
 
 	return peers, http.StatusOK, nil
+}
+
+func QueryDirectMessageThreads(username string, start int, count int) ([]DirectMessageThread, int, error) {
+	if username == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("username is required")
+	}
+	if start < 0 || count <= 0 {
+		return nil, http.StatusBadRequest, fmt.Errorf("invalid pagination params")
+	}
+
+	userID, err := GetUserIdByUsername(username)
+	if err != nil {
+		return nil, http.StatusNotFound, fmt.Errorf("user '%s' not found", username)
+	}
+
+	query := `WITH ranked_threads AS (
+		SELECT
+			CASE
+				WHEN dm.sender_id = $1 THEN dm.recipient_id
+				ELSE dm.sender_id
+			END AS peer_id,
+			dm.content,
+			dm.creation_date,
+			ROW_NUMBER() OVER (
+				PARTITION BY CASE
+					WHEN dm.sender_id = $1 THEN dm.recipient_id
+					ELSE dm.sender_id
+				END
+				ORDER BY dm.creation_date DESC, dm.id DESC
+			) AS rank_in_thread
+		FROM directmessages dm
+		WHERE dm.sender_id = $1 OR dm.recipient_id = $1
+	)
+	SELECT u.username, rt.content, rt.creation_date
+	FROM ranked_threads rt
+	JOIN users u ON u.id = rt.peer_id
+	WHERE rt.rank_in_thread = 1
+	ORDER BY rt.creation_date DESC
+	LIMIT $2 OFFSET $3;`
+
+	rows, err := DB.Query(query, userID, count, start)
+	if err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to query direct message threads: %w", err)
+	}
+	defer rows.Close()
+
+	threads := make([]DirectMessageThread, 0)
+	for rows.Next() {
+		var thread DirectMessageThread
+		if err := rows.Scan(&thread.PeerUsername, &thread.LastContent, &thread.LastAt); err != nil {
+			return nil, http.StatusInternalServerError, fmt.Errorf("failed to scan direct message thread: %w", err)
+		}
+		threads = append(threads, thread)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("direct message thread rows error: %w", err)
+	}
+
+	return threads, http.StatusOK, nil
 }

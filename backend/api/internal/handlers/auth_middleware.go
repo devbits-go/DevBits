@@ -37,7 +37,7 @@ func RequireAuth() gin.HandlerFunc {
 
 func RequireSameUser() gin.HandlerFunc {
 	return func(context *gin.Context) {
-		paramUsername := context.Param("username")
+		paramUsername := strings.TrimSpace(context.Param("username"))
 		if paramUsername == "" {
 			context.Next()
 			return
@@ -50,7 +50,14 @@ func RequireSameUser() gin.HandlerFunc {
 			return
 		}
 
-		if paramUsername != authUsername.(string) {
+		authUsernameValue, ok := authUsername.(string)
+		if !ok {
+			RespondWithError(context, http.StatusUnauthorized, "Auth user missing")
+			context.Abort()
+			return
+		}
+
+		if !strings.EqualFold(paramUsername, strings.TrimSpace(authUsernameValue)) {
 			RespondWithError(context, http.StatusForbidden, "Forbidden")
 			context.Abort()
 			return

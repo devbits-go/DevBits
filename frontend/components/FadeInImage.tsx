@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Image, ImageProps } from "react-native";
+import { Animated, Image, ImageProps, View } from "react-native";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
 
 type FadeInImageProps = ImageProps & {
   duration?: number;
+  onLoadFailed?: () => void;
 };
 
 const prefetchedImageSources = new Set<string>();
@@ -13,6 +14,7 @@ export function FadeInImage({
   duration = 180,
   onLoad,
   onError,
+  onLoadFailed,
   onLoadEnd,
   style,
   ...props
@@ -25,6 +27,7 @@ export function FadeInImage({
   const scale = useRef(new Animated.Value(shouldAnimate ? 1.015 : 1)).current;
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasRevealedRef = useRef(false);
+  const [loadFailed, setLoadFailed] = React.useState(false);
   const sourceUri =
     typeof props.source === "object" &&
     props.source !== null &&
@@ -34,6 +37,7 @@ export function FadeInImage({
 
   useEffect(() => {
     hasRevealedRef.current = false;
+    setLoadFailed(false);
     if (!shouldAnimate) {
       opacity.setValue(1);
       scale.setValue(1);
@@ -52,9 +56,17 @@ export function FadeInImage({
       return;
     }
 
-    if (sourceUri && !prefetchedImageSources.has(sourceUri)) {
+    // Only prefetch http(s) URLs — file:// and content:// URIs are local
+    // and prefetching them can fail or is pointless.
+    if (
+      sourceUri &&
+      /^https?:\/\//i.test(sourceUri) &&
+      !prefetchedImageSources.has(sourceUri)
+    ) {
       prefetchedImageSources.add(sourceUri);
-      void Image.prefetch(sourceUri);
+      void Image.prefetch(sourceUri).catch(() => {
+        prefetchedImageSources.delete(sourceUri);
+      });
     }
 
     fallbackTimerRef.current = setTimeout(
@@ -131,6 +143,8 @@ export function FadeInImage({
 
   const handleError: ImageProps["onError"] = (event) => {
     reveal();
+    setLoadFailed(true);
+    onLoadFailed?.();
     onError?.(event);
   };
 
@@ -138,6 +152,12 @@ export function FadeInImage({
     reveal();
     onLoadEnd?.(event);
   };
+
+  if (loadFailed) {
+    // Return an empty View so the parent layout stays stable but no broken
+    // image is rendered (avoids EmptyDrawable / infinite retry warnings).
+    return <View style={style} />;
+  }
 
   return (
     <Animated.Image

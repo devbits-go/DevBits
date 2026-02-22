@@ -37,13 +37,11 @@ import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useRequestGuard } from "@/hooks/useRequestGuard";
 import { subscribeToPostEvents } from "@/services/postEvents";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSaved } from "@/contexts/SavedContext";
 
 export default function BytesScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { savedPostIds } = useSaved();
   const [posts, setPosts] = useState([] as ReturnType<typeof mapPostToUi>[]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);

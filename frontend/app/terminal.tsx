@@ -28,9 +28,11 @@ import { useNotifications } from "@/contexts/NotificationsContext";
 import { ApiDirectMessage } from "@/constants/Types";
 import {
   API_BASE_URL,
+  ApiDirectMessageThread,
   createDirectMessage,
   getAllUsers,
   getDirectChatPeers,
+  getDirectMessageThreads,
   getDirectMessages,
   getUsersFollowingUsernames,
 } from "@/services/api";
@@ -95,7 +97,10 @@ const getPeerForMessage = (me: string, message: ApiDirectMessage) => {
   return sender === myName ? recipient : sender;
 };
 
-const getWebSocketBaseUrl = (baseUrl: string) => {
+const getWebSocketBaseUrl = (baseUrl?: string) => {
+  if (!baseUrl) {
+    return "";
+  }
   if (baseUrl.startsWith("https://")) {
     return `wss://${baseUrl.slice("https://".length)}`;
   }
@@ -103,6 +108,37 @@ const getWebSocketBaseUrl = (baseUrl: string) => {
     return `ws://${baseUrl.slice("http://".length)}`;
   }
   return baseUrl;
+};
+
+const truncatePreview = (text: string, max = 46) => {
+  const value = text.trim();
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, max - 1)}…`;
+};
+
+const formatInboxTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "now";
+  }
+
+  const diffMs = Date.now() - date.getTime();
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (diffMs < minute) {
+    return "now";
+  }
+  if (diffMs < hour) {
+    return `${Math.floor(diffMs / minute)}m`;
+  }
+  if (diffMs < day) {
+    return `${Math.floor(diffMs / hour)}h`;
+  }
+  return `${Math.floor(diffMs / day)}d`;
 };
 
 const parseApiErrorMessage = (error: unknown, fallback: string) => {
@@ -129,6 +165,14 @@ const parseApiErrorMessage = (error: unknown, fallback: string) => {
   }
 
   return rawMessage;
+};
+
+const isMissingDirectMessageUserError = (error: unknown) => {
+  const message = parseApiErrorMessage(error, "").toLowerCase();
+  return (
+    message.includes("failed to fetch direct messages") &&
+    message.includes("not found")
+  );
 };
 
 export default function TerminalScreen() {
@@ -160,17 +204,28 @@ export default function TerminalScreen() {
   const [lines, setLines] = useState<TerminalLine[]>([
     { id: 1, type: "out", text: "DevBits Terminal v1" },
     { id: 2, type: "out", text: "Type 'help' to list commands." },
-    { id: 3, type: "out", text: "Start a chat: chat username" },
-    { id: 4, type: "out", text: "List friends: friends" },
+    { id: 3, type: "out", text: "Open your inbox: inbox" },
+    { id: 4, type: "out", text: "Start a chat: chat username" },
     { id: 5, type: "out", text: "" },
   ]);
-  const chatOtherColor = "#F59E0B";
+
+  const movePeerToTop = useCallback((peerUsername: string) => {
+    const normalizedPeer = normalizeUsername(peerUsername);
+    if (!normalizedPeer) {
+      return;
+    }
+    setChatPeers((prev) => [
+      normalizedPeer,
+      ...prev.filter((entry) => entry !== normalizedPeer),
+    ]);
+  }, []);
 
   const commandHelp = useMemo(
     () => [
       "help                   show available commands",
       "clear                  clear terminal output",
       "echo <text>            print text",
+      "inbox                  show direct-message threads",
       "friends                list your follows and active chats",
       "chat <username>        open terminal chat session",
       "exit                   leave active chat session",
@@ -186,6 +241,7 @@ export default function TerminalScreen() {
       "help",
       "clear",
       "echo",
+      "inbox",
       "friends",
       "chat",
       "exit",
@@ -208,8 +264,9 @@ export default function TerminalScreen() {
     void Promise.all([
       getAllUsers(0, 200).catch(() => []),
       getUsersFollowingUsernames(user.username).catch(() => []),
+      getDirectMessageThreads(user.username, 0, 100).catch(() => []),
       getDirectChatPeers(user.username).catch(() => []),
-    ]).then(([users, following, peers]) => {
+    ]).then(([users, following, threads, peers]) => {
       if (!active) {
         return;
       }
@@ -224,10 +281,15 @@ export default function TerminalScreen() {
         ? following.map((name) => normalizeUsername(name)).filter(Boolean)
         : [];
       setFriendUsers(Array.from(new Set(follows)).sort());
+      const threadPeers = Array.isArray(threads)
+        ? threads
+            .map((thread) => normalizeUsername(thread.peer_username))
+            .filter(Boolean)
+        : [];
       const peerNames = Array.isArray(peers)
         ? peers.map((name) => normalizeUsername(name)).filter(Boolean)
         : [];
-      setChatPeers(Array.from(new Set(peerNames)).sort());
+      setChatPeers(Array.from(new Set([...threadPeers, ...peerNames])));
     });
 
     return () => {
@@ -350,41 +412,46 @@ export default function TerminalScreen() {
     });
   }, []);
 
-  const notifyIncomingMessage = (peer: string, text: string) => {
-    const now = Date.now();
-    const windowMs = 5000;
-    const spamThreshold = 10;
-    const spamCooldownMs = 15000;
-    const spamBannerHoldMs = 4000;
+  const notifyIncomingMessage = useCallback(
+    (peer: string, text: string) => {
+      const now = Date.now();
+      const windowMs = 5000;
+      const spamThreshold = 10;
+      const spamCooldownMs = 15000;
+      const spamBannerHoldMs = 4000;
 
-    const existing = spamWindowByPeerRef.current[peer] ?? [];
-    const recent = existing.filter((timestamp) => now - timestamp <= windowMs);
-    recent.push(now);
-    spamWindowByPeerRef.current[peer] = recent;
+      const existing = spamWindowByPeerRef.current[peer] ?? [];
+      const recent = existing.filter(
+        (timestamp) => now - timestamp <= windowMs,
+      );
+      recent.push(now);
+      spamWindowByPeerRef.current[peer] = recent;
 
-    const lastSpam = spamCooldownByPeerRef.current[peer] ?? 0;
-    if (recent.length >= spamThreshold && now - lastSpam > spamCooldownMs) {
-      spamCooldownByPeerRef.current[peer] = now;
+      const lastSpam = spamCooldownByPeerRef.current[peer] ?? 0;
+      if (recent.length >= spamThreshold && now - lastSpam > spamCooldownMs) {
+        spamCooldownByPeerRef.current[peer] = now;
+        showInAppBanner({
+          title: "Spam detected",
+          body: `@${peer} is spamming you — Stack overflow: inbox hit 10 msgs in 5s.`,
+          payload: { type: "direct_message", actor_name: peer },
+          incrementUnread: true,
+        });
+        return;
+      }
+
+      if (now - lastSpam < spamBannerHoldMs) {
+        return;
+      }
+
       showInAppBanner({
-        title: "Spam detected",
-        body: `@${peer} is spamming you — Stack overflow: inbox hit 10 msgs in 5s.`,
+        title: "New message",
+        body: `@${peer}: ${text}`,
         payload: { type: "direct_message", actor_name: peer },
         incrementUnread: true,
       });
-      return;
-    }
-
-    if (now - lastSpam < spamBannerHoldMs) {
-      return;
-    }
-
-    showInAppBanner({
-      title: "New message",
-      body: `@${peer}: ${text}`,
-      payload: { type: "direct_message", actor_name: peer },
-      incrementUnread: true,
-    });
-  };
+    },
+    [showInAppBanner],
+  );
 
   const appendChatEntries = (username: string, entries: ChatEntry[]) => {
     const normalizedUser = normalizeUsername(username);
@@ -414,76 +481,136 @@ export default function TerminalScreen() {
     return uniqueEntries;
   };
 
-  const renderChatHistory = (username: string, entries?: ChatEntry[]) => {
-    const normalizedUser = normalizeUsername(username);
-    const thread = entries ?? chatThreads[normalizedUser] ?? [];
-    if (!thread.length) {
+  const renderChatHistory = useCallback(
+    (username: string, entries?: ChatEntry[]) => {
+      const normalizedUser = normalizeUsername(username);
+      const thread = entries ?? chatThreads[normalizedUser] ?? [];
+      if (!thread.length) {
+        appendLines([
+          { type: "out", text: `chat @${normalizedUser}` },
+          { type: "out", text: "No previous messages. Say hello." },
+        ]);
+        return;
+      }
+
       appendLines([
         { type: "out", text: `chat @${normalizedUser}` },
-        { type: "out", text: "No previous messages. Say hello." },
+        ...thread.map((entry) => ({
+          type: "out" as const,
+          chatRole: entry.author,
+          text:
+            entry.author === "me"
+              ? `[${entry.timestamp}] you: ${entry.text}`
+              : `[${entry.timestamp}] @${normalizedUser}: ${entry.text}`,
+        })),
+      ]);
+    },
+    [chatThreads],
+  );
+
+  const loadChatHistory = useCallback(
+    async (username: string) => {
+      const normalizedUser = normalizeUsername(username);
+      if (!user?.username) {
+        appendLines([{ type: "err", text: "Sign in to open chat." }]);
+        return;
+      }
+
+      try {
+        const messages = await getDirectMessages(
+          user.username,
+          normalizedUser,
+          0,
+          200,
+        );
+        const mapped = messages.map((message) =>
+          mapMessageToChatEntry(user.username ?? "", message),
+        );
+        const historyIds = messages.map((message) => message.id);
+        for (const messageID of historyIds) {
+          seenMessageIdsRef.current.add(messageID);
+        }
+        setChatThreads((prev) => ({
+          ...prev,
+          [normalizedUser]: mapped,
+        }));
+        renderChatHistory(normalizedUser, mapped);
+      } catch (error) {
+        if (isMissingDirectMessageUserError(error)) {
+          appendLines([
+            {
+              type: "err",
+              text: `Chat unavailable: @${normalizedUser} does not exist.`,
+            },
+          ]);
+          setActiveChat((current) =>
+            current === normalizedUser ? null : current,
+          );
+          return;
+        }
+
+        const message = parseApiErrorMessage(
+          error,
+          `Failed to load chat with @${normalizedUser}`,
+        );
+        appendLines([{ type: "err", text: message }]);
+      }
+    },
+    [renderChatHistory, user?.username],
+  );
+
+  const openChatSession = useCallback(
+    async (username: string) => {
+      const target = normalizeUsername(username);
+      if (!target) {
+        return;
+      }
+      setActiveChat(target);
+      appendLines([
+        { type: "out", text: `Chat mode: @${target} (type /exit to leave)` },
+      ]);
+      await loadChatHistory(target);
+    },
+    [loadChatHistory],
+  );
+
+  const renderInbox = useCallback(async () => {
+    if (!user?.username) {
+      appendLines([{ type: "err", text: "Sign in to view inbox." }]);
+      return;
+    }
+
+    const threads = await getDirectMessageThreads(user.username, 0, 50).catch(
+      () => [] as ApiDirectMessageThread[],
+    );
+
+    if (!threads.length) {
+      appendLines([
+        { type: "out", text: "Inbox" },
+        { type: "out", text: "No direct messages yet." },
       ]);
       return;
     }
 
+    const normalizedPeers = threads
+      .map((thread) => normalizeUsername(thread.peer_username))
+      .filter(Boolean);
+    setChatPeers((prev) => Array.from(new Set([...normalizedPeers, ...prev])));
+
     appendLines([
-      { type: "out", text: `chat @${normalizedUser}` },
-      ...thread.map((entry) => ({
-        type: "out" as const,
-        chatRole: entry.author,
-        text:
-          entry.author === "me"
-            ? `[${entry.timestamp}] you: ${entry.text}`
-            : `[${entry.timestamp}] @${normalizedUser}: ${entry.text}`,
-      })),
+      { type: "out", text: "Inbox" },
+      ...threads.map((thread) => {
+        const peer = normalizeUsername(thread.peer_username);
+        const preview = truncatePreview(thread.last_content || "");
+        const when = formatInboxTime(thread.last_at);
+        return {
+          type: "out" as const,
+          text: `@${peer.padEnd(18, " ")} ${when.padStart(3, " ")}  ${preview}`,
+        };
+      }),
+      { type: "out", text: "Use: chat <username>" },
     ]);
-  };
-
-  const loadChatHistory = async (username: string) => {
-    const normalizedUser = normalizeUsername(username);
-    if (!user?.username) {
-      appendLines([{ type: "err", text: "Sign in to open chat." }]);
-      return;
-    }
-
-    try {
-      const messages = await getDirectMessages(
-        user.username,
-        normalizedUser,
-        0,
-        200,
-      );
-      const mapped = messages.map((message) =>
-        mapMessageToChatEntry(user.username ?? "", message),
-      );
-      const historyIds = messages.map((message) => message.id);
-      for (const messageID of historyIds) {
-        seenMessageIdsRef.current.add(messageID);
-      }
-      setChatThreads((prev) => ({
-        ...prev,
-        [normalizedUser]: mapped,
-      }));
-      renderChatHistory(normalizedUser, mapped);
-    } catch (error) {
-      const message = parseApiErrorMessage(
-        error,
-        `Failed to load chat with @${normalizedUser}`,
-      );
-      appendLines([{ type: "err", text: message }]);
-    }
-  };
-
-  const openChatSession = async (username: string) => {
-    const target = normalizeUsername(username);
-    if (!target) {
-      return;
-    }
-    setActiveChat(target);
-    appendLines([
-      { type: "out", text: `Chat mode: @${target} (type /exit to leave)` },
-    ]);
-    await loadChatHistory(target);
-  };
+  }, [user?.username]);
 
   const handleSendChatMessage = async (targetUser: string, message: string) => {
     const normalizedUser = normalizeUsername(targetUser);
@@ -510,9 +637,7 @@ export default function TerminalScreen() {
       const created = response.direct_message;
       const entry = mapMessageToChatEntry(user.username, created);
       appendChatEntries(normalizedUser, [entry]);
-      setChatPeers((prev) =>
-        prev.includes(normalizedUser) ? prev : [...prev, normalizedUser].sort(),
-      );
+      movePeerToTop(normalizedUser);
     } catch (error) {
       const message = parseApiErrorMessage(
         error,
@@ -558,6 +683,11 @@ export default function TerminalScreen() {
       return;
     }
 
+    if (lowered === "inbox") {
+      await renderInbox();
+      return;
+    }
+
     if (lowered === "friends" || lowered === "lsfriends") {
       if (!user?.username) {
         appendLines([{ type: "err", text: "Sign in to load friends." }]);
@@ -572,7 +702,7 @@ export default function TerminalScreen() {
             ...peers.map((name) => normalizeUsername(name)),
             ...Object.keys(chatThreads),
           ]),
-        ).sort();
+        );
         if (!following.length && !activeUsers.length) {
           appendLines([
             { type: "out", text: "No friends or active chats yet." },
@@ -591,7 +721,9 @@ export default function TerminalScreen() {
         }
 
         if (activeUsers.length) {
-          setChatPeers(activeUsers);
+          setChatPeers((prev) =>
+            Array.from(new Set([...prev, ...activeUsers])),
+          );
           appendLines([
             { type: "out", text: "Active chat threads:" },
             ...activeUsers.map((name) => ({
@@ -682,6 +814,7 @@ export default function TerminalScreen() {
         ]);
         void loadChatHistory(normalizedTarget);
       }
+      movePeerToTop(normalizedTarget);
       void handleSendChatMessage(normalizedTarget, message);
       return;
     }
@@ -745,7 +878,7 @@ export default function TerminalScreen() {
 
     autoOpenedChatRef.current = target;
     void openChatSession(target);
-  }, [params.chat, user?.username]);
+  }, [openChatSession, params.chat, user?.username]);
 
   useEffect(() => {
     if (!user?.username || !token) {
@@ -810,9 +943,7 @@ export default function TerminalScreen() {
           if (!appended.length) {
             return;
           }
-          setChatPeers((prev) =>
-            prev.includes(peer) ? prev : [...prev, peer].sort(),
-          );
+          movePeerToTop(peer);
 
           if (entry.author === "them") {
             notifyIncomingMessage(peer, entry.text);
@@ -871,7 +1002,7 @@ export default function TerminalScreen() {
         wsRef.current = null;
       }
     };
-  }, [token, user?.username]);
+  }, [movePeerToTop, notifyIncomingMessage, token, user?.username]);
 
   useEffect(() => {
     if (!activeChat || !user?.username) {
@@ -908,15 +1039,25 @@ export default function TerminalScreen() {
             })),
           );
         })
-        .catch(() => {
-          // Keep terminal responsive when refresh fails.
+        .catch((error) => {
+          if (isMissingDirectMessageUserError(error)) {
+            appendLines([
+              {
+                type: "err",
+                text: `Chat closed: @${activeChat} no longer exists.`,
+              },
+            ]);
+            setActiveChat((current) =>
+              current === activeChat ? null : current,
+            );
+          }
         });
     }, 3000);
 
     return () => {
       clearInterval(interval);
     };
-  }, [activeChat, user?.username]);
+  }, [activeChat, notifyIncomingMessage, user?.username]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -943,9 +1084,32 @@ export default function TerminalScreen() {
             </View>
           </View>
 
+          <View
+            style={[
+              styles.statusStrip,
+              {
+                borderColor: colors.border,
+                backgroundColor: colors.surfaceAlt,
+              },
+            ]}
+          >
+            <ThemedText type="caption" style={{ color: colors.muted }}>
+              {activeChat ? `chat @${activeChat}` : "command mode"}
+            </ThemedText>
+            <ThemedText type="caption" style={{ color: colors.muted }}>
+              peers {chatPeers.length}
+            </ThemedText>
+          </View>
+
           <ScrollView
             ref={outputRef}
-            style={styles.outputWrap}
+            style={[
+              styles.outputWrap,
+              {
+                borderColor: colors.border,
+                backgroundColor: colors.surface,
+              },
+            ]}
             contentContainerStyle={styles.outputContent}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={
@@ -963,11 +1127,11 @@ export default function TerminalScreen() {
                   {
                     color:
                       line.type === "err"
-                        ? "#ef4444"
+                        ? colors.muted
                         : line.chatRole === "me"
                           ? colors.tint
                           : line.chatRole === "them"
-                            ? chatOtherColor
+                            ? colors.chipText
                             : line.type === "cmd"
                               ? colors.tint
                               : colors.text,
@@ -1090,11 +1254,26 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 16,
     marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
   },
   outputContent: {
     gap: 6,
-    paddingTop: 4,
+    paddingTop: 2,
     paddingBottom: 16,
+  },
+  statusStrip: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   suggestionWrap: {
     marginHorizontal: 16,

@@ -16,6 +16,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
+import { checkApiConnection } from "@/services/api";
 
 export default function SignInScreen() {
   const colors = useAppColors();
@@ -49,9 +50,14 @@ export default function SignInScreen() {
     setIsSubmitting(true);
     setErrorMessage("");
     try {
+      await checkApiConnection();
       await signIn({ username, password });
     } catch (error) {
-      setErrorMessage("Sign in failed. Check credentials.");
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Sign in failed. Check credentials and connection.",
+      );
     } finally {
       setIsSubmitting(false);
     }

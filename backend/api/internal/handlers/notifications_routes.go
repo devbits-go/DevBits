@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"backend/api/internal/database"
-	"backend/api/internal/types"
+	"backend/api/internal/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,7 +28,19 @@ type ExpoPushMessage struct {
 	Data  map[string]interface{} `json:"data,omitempty"`
 }
 
+type ExpoPushTicketResponse struct {
+	Data struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		Details struct {
+			Error string `json:"error"`
+		} `json:"details"`
+	} `json:"data"`
+}
+
 const expoPushURL = "https://exp.host/--/api/v2/push/send"
+
+var expoPushHTTPClient = &http.Client{Timeout: 4 * time.Second}
 
 func RegisterPushToken(context *gin.Context) {
 	userID, ok := GetAuthUserID(context)
@@ -40,8 +54,15 @@ func RegisterPushToken(context *gin.Context) {
 		RespondWithError(context, http.StatusBadRequest, "Invalid request")
 		return
 	}
+
+	request.Token = strings.TrimSpace(request.Token)
+	request.Platform = strings.ToLower(strings.TrimSpace(request.Platform))
 	if request.Token == "" || request.Platform == "" {
 		RespondWithError(context, http.StatusBadRequest, "Missing token or platform")
+		return
+	}
+	if !isValidExpoPushToken(request.Token) {
+		RespondWithError(context, http.StatusBadRequest, "Invalid Expo push token")
 		return
 	}
 
@@ -158,7 +179,7 @@ func ClearNotifications(context *gin.Context) {
 	context.JSON(http.StatusOK, gin.H{"message": "Notifications cleared"})
 }
 
-func SendNotificationPush(targetID int64, notification *types.Notification, body string) {
+func SendNotificationPush(targetID int64, notification *database.Notification, body string) {
 	if notification == nil {
 		return
 	}
@@ -181,12 +202,90 @@ func SendNotificationPush(targetID int64, notification *types.Notification, body
 		},
 	}
 
-	for _, token := range tokens {
-		payload.To = token.Token
-		bytesBody, _ := json.Marshal(payload)
-		request, _ := http.NewRequest("POST", expoPushURL, bytes.NewBuffer(bytesBody))
-		request.Header.Set("Content-Type", "application/json")
-		client := &http.Client{Timeout: 4 * time.Second}
-		_, _ = client.Do(request)
+	const maxWorkers = 6
+	workerCount := len(tokens)
+	if workerCount > maxWorkers {
+		workerCount = maxWorkers
 	}
+	if workerCount < 1 {
+		return
+	}
+
+	tokensCh := make(chan database.PushToken)
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			for token := range tokensCh {
+				sendPushToToken(token.Token, payload)
+			}
+		}()
+	}
+
+	for _, token := range tokens {
+		tokensCh <- token
+	}
+	close(tokensCh)
+}
+
+func isValidExpoPushToken(token string) bool {
+	return strings.HasPrefix(token, "ExponentPushToken[") || strings.HasPrefix(token, "ExpoPushToken[")
+}
+
+func sendPushToToken(token string, basePayload ExpoPushMessage) {
+	if token == "" {
+		return
+	}
+
+	payload := basePayload
+	payload.To = token
+
+	bytesBody, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	request, err := http.NewRequest("POST", expoPushURL, bytes.NewBuffer(bytesBody))
+	if err != nil {
+		return
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+
+	response, err := expoPushHTTPClient.Do(request)
+	if err != nil {
+		logger.Log.Warnf("push delivery failed for token: %v", err)
+		return
+	}
+	defer response.Body.Close()
+
+	responseBytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		return
+	}
+
+	if response.StatusCode >= http.StatusBadRequest {
+		logger.Log.Warnf("expo push rejected token with status %d", response.StatusCode)
+	}
+
+	if shouldDeleteToken(responseBytes) {
+		_, _ = database.DeletePushToken(token)
+	}
+}
+
+func shouldDeleteToken(responseBytes []byte) bool {
+	if len(responseBytes) == 0 {
+		return false
+	}
+
+	var ticket ExpoPushTicketResponse
+	if err := json.Unmarshal(responseBytes, &ticket); err != nil {
+		return false
+	}
+
+	if ticket.Data.Status != "error" {
+		return false
+	}
+
+	errorCode := strings.ToLower(strings.TrimSpace(ticket.Data.Details.Error))
+	message := strings.ToLower(strings.TrimSpace(ticket.Data.Message))
+	return errorCode == "devicenotregistered" || strings.Contains(message, "not a registered push notification recipient")
 }
