@@ -30,3 +30,6 @@ devbits-487803-*.json
 # Build artifacts
 dist/
 build/
+
+# Logs
+**/*logs/
