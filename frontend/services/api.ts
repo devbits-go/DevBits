@@ -505,7 +505,7 @@ const buildInlineMediaFallback = async (file: {
   }
 
   const base64 = await FileSystem.readAsStringAsync(normalizedUri, {
-    encoding: "base64" as any,
+    encoding: FileSystem.EncodingType.Base64,
   });
 
   const mimeType = guessMimeTypeFromFilename(file.name, file.type);
