@@ -61,9 +61,9 @@ func Register(context *gin.Context) {
 	newUser := &database.ApiUser{
 		Username: request.Username,
 		Bio:      request.Bio,
-		Links:    map[string]interface{}{}, // Initialize empty map
+		Links:    []string{},
 		Picture:  request.Picture,
-		Settings: map[string]interface{}{}, // Initialize empty map
+		Settings: map[string]interface{}{},
 	}
 
 	if strings.TrimSpace(newUser.Picture) != "" {
@@ -75,13 +75,8 @@ func Register(context *gin.Context) {
 		newUser.Picture = storedPicture
 	}
 
-	// Convert links slice to map
 	if request.Links != nil {
-		linksMap := make(map[string]interface{})
-		for i, link := range request.Links {
-			linksMap[fmt.Sprintf("link%d", i+1)] = link
-		}
-		newUser.Links = linksMap
+		newUser.Links = request.Links
 	}
 
 	id, err := database.CreateUser(newUser)
