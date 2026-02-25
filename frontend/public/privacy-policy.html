@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="apple-touch-icon" href="/icon.png" />
-    <title>DevBits Privacy Policy</title>
+    <title>Become a Tester</title>
     <style>
       body {
         font-family:
@@ -67,9 +67,10 @@
       .topbar-inner {
         width: min(1080px, 100% - 32px);
         margin: 0 auto;
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
         align-items: center;
+        gap: 12px;
         padding: 14px 0;
       }
       .brand {
@@ -87,6 +88,7 @@
         display: flex;
         gap: 14px;
         flex-wrap: wrap;
+        justify-self: end;
       }
       .nav a {
         color: #94a0af;
@@ -95,6 +97,44 @@
       .nav a:hover,
       .nav a.active {
         color: #00f329;
+      }
+
+      .topbar-cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        padding: 7px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(0, 243, 41, 0.38);
+        background: rgba(16, 20, 26, 0.72);
+        color: #00f329;
+        text-decoration: none;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        margin-left: 10px;
+        flex-shrink: 0;
+        backdrop-filter: blur(12px);
+        box-shadow:
+          0 0 8px rgba(0, 243, 41, 0.22),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        transition:
+          transform 0.16s ease,
+          box-shadow 0.16s ease,
+          filter 0.16s ease;
+      }
+
+      .topbar-cta:hover,
+      .topbar-cta.active {
+        color: #00f329;
+        box-shadow:
+          0 0 12px rgba(0, 243, 41, 0.32),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+        transform: translateY(-1px);
+        filter: brightness(1.05);
       }
       .shell {
         max-width: 980px;
@@ -146,6 +186,14 @@
           font-size: 14px;
         }
 
+        .topbar-cta {
+          min-height: 34px;
+          padding: 7px 11px;
+          font-size: 12px;
+          margin-left: 0;
+          align-self: flex-end;
+        }
+
         .shell {
           margin: 18px auto 24px;
           padding: 0 12px;
@@ -157,30 +205,12 @@
         }
       }
     </style>
+    <link rel="stylesheet" href="shared/topbar.css" />
+    <script defer src="shared/topbar.js"></script>
   </head>
-  <body>
+  <body data-nav="privacy">
     <div class="glow-grid"></div>
-    <header class="topbar">
-      <div class="topbar-inner">
-        <a
-          class="brand"
-          href="https://play.google.com/apps/testing/com.devbits.frontend"
-          aria-label="Open DevBits on Google Play"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img class="brand-logo" src="/icon.png" alt="DevBits logo" />
-        </a>
-        <nav class="nav" aria-label="Main navigation">
-          <a href="/">Home</a>
-          <a href="/features">Features</a>
-          <a href="/tester-application">Tester</a>
-          <a href="/about">About</a>
-          <a class="active" href="/privacy-policy">Privacy</a>
-          <a href="/account-deletion">Deletion</a>
-        </nav>
-      </div>
-    </header>
+    <div id="site-topbar"></div>
     <main class="shell">
       <section class="card">
         <h1>Privacy Policy</h1>
@@ -360,6 +390,85 @@
         <p>
           We may update this policy. We will publish the effective date above
           and notify users for material changes.
+        </p>
+
+        <h2>App Store / Play Store data collection summary</h2>
+        <p>
+          For store listings and App Privacy forms, we collect the following
+          categories of data:
+        </p>
+        <ul>
+          <li>
+            <strong>Identifiers:</strong> Email, username, device identifiers,
+            and account IDs — linked to user account.
+          </li>
+          <li>
+            <strong>Contact Info:</strong> Email address — linked to user
+            account for support and account recovery.
+          </li>
+          <li>
+            <strong>User Content:</strong> Posts, comments, images and uploaded
+            media — linked to user account.
+          </li>
+          <li>
+            <strong>Usage Data:</strong> App usage, analytics, crash reports,
+            device model, OS version — may be <em>not</em> linked for analytics,
+            but linked for debugging when necessary.
+          </li>
+          <li>
+            <strong>Diagnostics:</strong> Crash logs and server logs — may
+            contain identifiers and be linked to accounts for support.
+          </li>
+          <li>
+            <strong>Authentication Data:</strong> JWT auth tokens (stored
+            server-side and issued to clients) — used to authenticate requests;
+            tokens expire automatically.
+          </li>
+          <li>
+            <strong>Push Tokens:</strong> APNs/FCM push tokens — stored to
+            deliver notifications; these are linked to user accounts.
+          </li>
+        </ul>
+
+        <p>
+          You may see these categories summarized in App Store Connect when
+          answering the App Privacy questions. If you need a one-line export for
+          the form:
+          <em
+            >Identifiers, Contact Info, User Content, Usage Data, Diagnostics —
+            all collected; Identifiers/Contact/User Content are linked to the
+            user; Usage/Diagnostics are sometimes linked for debugging.</em
+          >
+        </p>
+
+        <h2>Deep links &amp; app links (Universal Links / App Links)</h2>
+        <p>
+          DevBits supports Universal Links (iOS) and App Links (Android). To
+          enable this we host two files on the server:
+        </p>
+        <ul>
+          <li>
+            <strong>Apple (AASA):</strong>
+            <code>/apple-app-site-association</code> or
+            <code>/.well-known/apple-app-site-association</code> served as JSON
+            with <code>application/json</code> content-type. It lists the app's
+            App ID and allowed paths. Example template is available in the repo
+            and must include your Apple Team ID.
+          </li>
+          <li>
+            <strong>Android (assetlinks.json):</strong>
+            <code>/.well-known/assetlinks.json</code> served as JSON; it must
+            include your Android package and SHA256 fingerprint from your upload
+            keystore.
+          </li>
+        </ul>
+
+        <p>
+          Hosting these files and adding the matching entitlements/associated
+          domains in the Apple Developer portal and Android intent filters is
+          required only if you want links to open directly in the native app. If
+          you do not require Universal Links, this step is optional but
+          recommended for a polished experience.
         </p>
 
         <h2>Contact</h2>

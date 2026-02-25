@@ -40,5 +40,11 @@ COPY --from=builder /app/uploads ./uploads
 # Expose port 8080 to the outside world
 EXPOSE 8080
 
-# Command to run the executable
-CMD ["./main"]
+# Install openssl (used by entrypoint to generate secrets) and make entrypoint executable
+RUN apk add --no-cache openssl
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
+# Entrypoint generates environment secrets if missing, then runs the app
+ENTRYPOINT ["/root/docker-entrypoint.sh"]
+CMD ["/root/main"]

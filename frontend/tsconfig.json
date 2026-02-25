@@ -6,7 +6,7 @@
       "@/*": ["./*"]
     },
     "moduleResolution": "bundler",
-    "types": ["jest", "react", "react-native"]
+    "types": ["react", "react-native"]
   },
   "extends": "expo/tsconfig.base",
   "include": [

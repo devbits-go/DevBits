@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -67,13 +66,20 @@ func UpdateProfilePicture(context *gin.Context) {
 		return
 	}
 
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if ext == "" {
-		if file.Header.Get("Content-Type") != "" {
-			if guessed, guessErr := mime.ExtensionsByType(file.Header.Get("Content-Type")); guessErr == nil && len(guessed) > 0 {
-				ext = guessed[0]
-			}
-		}
+	ext, mediaKind, err := validateUploadAndResolveExtension(file, false, false)
+	if err != nil || mediaKind != "image" {
+		context.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Bad Request",
+			"message": "unsupported profile picture type",
+		})
+		return
+	}
+	if _, ok := allowedProfileImageExtensions[ext]; !ok {
+		context.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Bad Request",
+			"message": "unsupported profile picture format",
+		})
+		return
 	}
 
 	randomName, err := randomHex(12)

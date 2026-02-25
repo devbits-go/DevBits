@@ -16,7 +16,6 @@ import { ThemedText } from "@/components/ThemedText";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMotionConfig } from "@/hooks/useMotionConfig";
-import { checkApiConnection } from "@/services/api";
 
 export default function SignInScreen() {
   const colors = useAppColors();
@@ -50,7 +49,6 @@ export default function SignInScreen() {
     setIsSubmitting(true);
     setErrorMessage("");
     try {
-      await checkApiConnection();
       await signIn({ username, password });
     } catch (error) {
       setErrorMessage(
@@ -145,15 +143,15 @@ export default function SignInScreen() {
               </ThemedText>
             )}
           </Pressable>
-        </View>
 
-        <View style={styles.footer}>
-          <ThemedText type="caption" style={{ color: colors.muted }}>
-            New here?
-          </ThemedText>
-          <Link href="/(auth)/sign-up">
-            <ThemedText type="link">Create account</ThemedText>
-          </Link>
+          <View style={styles.footer}>
+            <ThemedText type="caption" style={{ color: colors.muted }}>
+              New here?
+            </ThemedText>
+            <Link href="/(auth)/sign-up">
+              <ThemedText type="link">Create account</ThemedText>
+            </Link>
+          </View>
         </View>
       </Animated.View>
     </SafeAreaView>
@@ -168,10 +166,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingBottom: 24,
-    justifyContent: "space-between",
+    justifyContent: "center",
+    gap: 24,
   },
   header: {
-    marginTop: 20,
     gap: 6,
   },
   form: {

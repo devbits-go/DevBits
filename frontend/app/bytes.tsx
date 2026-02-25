@@ -13,7 +13,7 @@ import {
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import {
-  clearApiCache,
+  beginFreshReadWindow,
   FeedSort,
   getFollowingPostsFeed,
   getPostsFeed,
@@ -59,6 +59,7 @@ export default function BytesScreen() {
   const requestGuard = useRequestGuard();
   const reveal = useRef(new Animated.Value(0.08)).current;
   const listRef = useRef<FlatList<ReturnType<typeof mapPostToUi>>>(null);
+  const hasFocusedRef = useRef(false);
   const { scrollY, onScroll } = useTopBlurScroll();
   const pageSize = 20;
 
@@ -118,24 +119,71 @@ export default function BytesScreen() {
 
         const postFeed = Array.isArray(postFeedRaw) ? postFeedRaw : [];
 
-        const uiPosts = await Promise.all(
-          postFeed.map(async (post) => {
-            const [user, project] = await Promise.all([
-              getUserById(post.user).catch(() => null),
-              getProjectById(post.project).catch(() => null),
-            ]);
-            return mapPostToUi(post, user, project);
-          }),
+        const uiPostsBase = postFeed.map((post) =>
+          mapPostToUi(post, null, null),
         );
 
         if (!requestGuard.isActive(requestId)) {
           return;
         }
 
-        setPosts((prev) => (append ? prev.concat(uiPosts) : uiPosts));
+        setPosts((prev) => (append ? prev.concat(uiPostsBase) : uiPostsBase));
         setPageIndex(nextPage);
         setHasMore(postFeed.length === pageSize);
         setHasError(false);
+
+        if (showLoader && requestGuard.isMounted()) {
+          setIsLoading(false);
+        }
+
+        const uniqueUserIds = Array.from(
+          new Set(postFeed.map((post) => post.user)),
+        );
+        const uniqueProjectIds = Array.from(
+          new Set(postFeed.map((post) => post.project)),
+        );
+        const usersById = new Map<
+          number,
+          Awaited<ReturnType<typeof getUserById>> | null
+        >();
+        const projectsById = new Map<
+          number,
+          Awaited<ReturnType<typeof getProjectById>> | null
+        >();
+
+        await Promise.all([
+          Promise.all(
+            uniqueUserIds.map(async (userId) => {
+              const userData = await getUserById(userId).catch(() => null);
+              usersById.set(userId, userData);
+            }),
+          ),
+          Promise.all(
+            uniqueProjectIds.map(async (projectId) => {
+              const projectData = await getProjectById(projectId).catch(
+                () => null,
+              );
+              projectsById.set(projectId, projectData);
+            }),
+          ),
+        ]);
+
+        const enrichedPosts = postFeed.map((post) =>
+          mapPostToUi(
+            post,
+            usersById.get(post.user) ?? null,
+            projectsById.get(post.project) ?? null,
+          ),
+        );
+
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
+
+        setPosts((prev) => {
+          const byId = new Map(enrichedPosts.map((post) => [post.id, post]));
+          return prev.map((post) => byId.get(post.id) ?? post);
+        });
       } catch {
         if (!requestGuard.isActive(requestId)) {
           return;
@@ -194,14 +242,19 @@ export default function BytesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      clearApiCache();
-      loadBytes({ showLoader: false, nextPage: 0 });
+      if (!hasFocusedRef.current) {
+        hasFocusedRef.current = true;
+        return;
+      }
+
+      beginFreshReadWindow();
+      void loadBytes({ showLoader: false, nextPage: 0 });
     }, [loadBytes]),
   );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    clearApiCache();
+    beginFreshReadWindow();
     setHasMore(true);
     setPageIndex(0);
     await loadBytes({ showLoader: false, nextPage: 0 });

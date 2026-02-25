@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +19,135 @@ import (
 )
 
 const uploadDir = "uploads"
+
+var allowedImageExtensions = map[string]struct{}{
+	".jpg":  {},
+	".jpeg": {},
+	".png":  {},
+	".gif":  {},
+	".webp": {},
+	".heic": {},
+	".heif": {},
+	".svg":  {},
+}
+
+var allowedProfileImageExtensions = map[string]struct{}{
+	".jpg":  {},
+	".jpeg": {},
+	".png":  {},
+	".gif":  {},
+	".webp": {},
+	".heic": {},
+	".heif": {},
+}
+
+var allowedVideoExtensions = map[string]struct{}{
+	".mp4":  {},
+	".mov":  {},
+	".webm": {},
+	".m4v":  {},
+	".avi":  {},
+}
+
+const maxUploadBytes int64 = 64 << 20
+
+func validateUploadAndResolveExtension(file *multipart.FileHeader, allowVideos bool, allowSVG bool) (string, string, error) {
+	if file == nil {
+		return "", "", fmt.Errorf("missing file")
+	}
+	if file.Size <= 0 {
+		return "", "", fmt.Errorf("empty upload")
+	}
+	if file.Size > maxUploadBytes {
+		return "", "", fmt.Errorf("file too large")
+	}
+
+	headerContentType := strings.ToLower(strings.TrimSpace(file.Header.Get("Content-Type")))
+	if idx := strings.Index(headerContentType, ";"); idx >= 0 {
+		headerContentType = strings.TrimSpace(headerContentType[:idx])
+	}
+
+	detectedContentType := ""
+	opened, err := file.Open()
+	if err == nil {
+		defer opened.Close()
+		probe := make([]byte, 512)
+		readCount, readErr := opened.Read(probe)
+		if readErr != nil && readErr != io.EOF {
+			return "", "", fmt.Errorf("failed to read upload")
+		}
+		if readCount > 0 {
+			detectedContentType = strings.ToLower(http.DetectContentType(probe[:readCount]))
+			if idx := strings.Index(detectedContentType, ";"); idx >= 0 {
+				detectedContentType = strings.TrimSpace(detectedContentType[:idx])
+			}
+		}
+	}
+
+	if headerContentType == "text/html" || detectedContentType == "text/html" ||
+		headerContentType == "application/xhtml+xml" || detectedContentType == "application/xhtml+xml" {
+		return "", "", fmt.Errorf("unsupported file type")
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if ext == "" {
+		if headerContentType != "" {
+			if guessed, guessErr := mime.ExtensionsByType(headerContentType); guessErr == nil && len(guessed) > 0 {
+				ext = strings.ToLower(guessed[0])
+			}
+		}
+		if ext == "" && detectedContentType != "" {
+			if guessed, guessErr := mime.ExtensionsByType(detectedContentType); guessErr == nil && len(guessed) > 0 {
+				ext = strings.ToLower(guessed[0])
+			}
+		}
+	}
+
+	isImage := strings.HasPrefix(headerContentType, "image/") || strings.HasPrefix(detectedContentType, "image/")
+	isVideo := strings.HasPrefix(headerContentType, "video/") || strings.HasPrefix(detectedContentType, "video/")
+
+	if isImage {
+		if _, ok := allowedImageExtensions[ext]; !ok {
+			if ext == "" {
+				ext = ".jpg"
+			} else {
+				return "", "", fmt.Errorf("unsupported image format")
+			}
+		}
+		if !allowSVG && ext == ".svg" {
+			return "", "", fmt.Errorf("unsupported image format")
+		}
+		return ext, "image", nil
+	}
+
+	if isVideo {
+		if !allowVideos {
+			return "", "", fmt.Errorf("unsupported file type")
+		}
+		if _, ok := allowedVideoExtensions[ext]; !ok {
+			if ext == "" {
+				ext = ".mp4"
+			} else {
+				return "", "", fmt.Errorf("unsupported video format")
+			}
+		}
+		return ext, "video", nil
+	}
+
+	if _, ok := allowedImageExtensions[ext]; ok {
+		if !allowSVG && ext == ".svg" {
+			return "", "", fmt.Errorf("unsupported image format")
+		}
+		return ext, "image", nil
+	}
+	if allowVideos {
+		if _, ok := allowedVideoExtensions[ext]; ok {
+			return ext, "video", nil
+		}
+	}
+
+	return "", "", fmt.Errorf("unsupported file type")
+}
 
 func UploadMedia(context *gin.Context) {
 	ct := context.Request.Header.Get("Content-Type")
@@ -53,13 +184,13 @@ func UploadMedia(context *gin.Context) {
 		return
 	}
 
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if ext == "" {
-		if file.Header.Get("Content-Type") != "" {
-			if guessed, err := mime.ExtensionsByType(file.Header.Get("Content-Type")); err == nil && len(guessed) > 0 {
-				ext = guessed[0]
-			}
-		}
+	ext, mediaKind, err := validateUploadAndResolveExtension(file, true, true)
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Bad Request",
+			"message": err.Error(),
+		})
+		return
 	}
 
 	name, err := randomHex(12)
@@ -87,6 +218,7 @@ func UploadMedia(context *gin.Context) {
 		"absolute_url": absoluteURL,
 		"filename":    filename,
 		"contentType": file.Header.Get("Content-Type"),
+		"mediaType":   mediaKind,
 		"size":        file.Size,
 	})
 }

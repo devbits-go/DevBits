@@ -39,13 +39,16 @@ const MAX_USER_CACHE_ENTRIES = 300;
 const MAX_INFLIGHT_GET_ENTRIES = 200;
 const USER_CACHE_TTL_MS = 5_000;
 let authToken: string | null = null;
-const REQUEST_TIMEOUT_MS = 120000;
+const REQUEST_TIMEOUT_MS = 3500;
+const AUTH_REQUEST_TIMEOUT_MS = 10000;
 const UPLOAD_TIMEOUT_MS = 30000;
-const HEALTHCHECK_TIMEOUT_MS = 4000;
+const HEALTHCHECK_TIMEOUT_MS = 2000;
 const LARGE_REQUEST_TIMEOUT_MS = 300000;
+const FALLBACK_RACE_STAGGER_MS = 250;
 const MAX_INLINE_MEDIA_FALLBACK_BYTES = 64 * 1024 * 1024;
 const REFRESH_READ_WINDOW_MS = 2500;
 let forceFreshReadsUntil = 0;
+let forceFreshReadToken: number | null = null;
 
 type RequestOptions = {
   timeoutMs?: number;
@@ -129,11 +132,18 @@ export const clearApiCache = () => {
 
 export const beginFreshReadWindow = (durationMs = REFRESH_READ_WINDOW_MS) => {
   const windowMs = Math.max(300, durationMs);
+  forceFreshReadToken = Date.now();
   forceFreshReadsUntil = Date.now() + windowMs;
   inFlightGetRequests.clear();
 };
 
-const isFreshReadWindowActive = () => Date.now() <= forceFreshReadsUntil;
+const isFreshReadWindowActive = () => {
+  const active = Date.now() <= forceFreshReadsUntil;
+  if (!active) {
+    forceFreshReadToken = null;
+  }
+  return active;
+};
 
 const getHostFromUri = (uri?: string | null) => {
   if (!uri) {
@@ -145,8 +155,9 @@ const getHostFromUri = (uri?: string | null) => {
 };
 
 const getDefaultBaseUrl = () => {
-  // In development, use the local server.
-  if (__DEV__) {
+  // Use local API only when explicitly requested.
+  const shouldUseLocalApi = process.env.EXPO_PUBLIC_USE_LOCAL_API?.trim() === "1";
+  if (__DEV__ && shouldUseLocalApi) {
     const legacyConstants = Constants as unknown as {
       manifest?: { debuggerHost?: string };
       manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
@@ -170,11 +181,30 @@ const getDefaultBaseUrl = () => {
     return "http://localhost";
   }
 
-  // In production, use the live server.
+  // Default to the live server for all other cases.
   return "https://devbits.ddns.net";
 };
 
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, "");
+
+const buildBaseUrlList = (...candidates: Array<string | null | undefined>) => {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    const normalized = normalizeBaseUrl(candidate.trim());
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    urls.push(normalized);
+  }
+
+  return urls;
+};
 
 export const API_BASE_URL = normalizeBaseUrl(
   process.env.EXPO_PUBLIC_API_URL?.trim() || getDefaultBaseUrl(),
@@ -184,10 +214,116 @@ const API_FALLBACK_URL = normalizeBaseUrl(
   process.env.EXPO_PUBLIC_API_FALLBACK_URL?.trim() || "https://devbits.ddns.net",
 );
 
-const API_UPLOAD_BASE_URLS =
-  API_FALLBACK_URL && API_FALLBACK_URL !== API_BASE_URL
-    ? [API_BASE_URL, API_FALLBACK_URL]
-    : [API_BASE_URL];
+const API_REQUEST_BASE_URLS = buildBaseUrlList(API_BASE_URL, API_FALLBACK_URL);
+const API_UPLOAD_BASE_URLS = API_REQUEST_BASE_URLS;
+
+const BLOCKED_MANAGED_UPLOAD_EXTENSIONS = new Set([
+  "htm",
+  "html",
+  "xhtml",
+  "js",
+  "mjs",
+  "cjs",
+  "php",
+  "asp",
+  "aspx",
+  "jsp",
+]);
+
+const getPathExtension = (pathValue: string) => {
+  const clean = pathValue.split("?")[0].split("#")[0];
+  const name = clean.split("/").pop() || "";
+  const parts = name.split(".");
+  if (parts.length < 2) {
+    return "";
+  }
+  return parts[parts.length - 1].toLowerCase();
+};
+
+const isBlockedManagedUploadPath = (pathValue: string) => {
+  const normalizedPath = pathValue.toLowerCase();
+  if (!normalizedPath.startsWith("/uploads/") && !normalizedPath.startsWith("uploads/")) {
+    return false;
+  }
+  return BLOCKED_MANAGED_UPLOAD_EXTENSIONS.has(getPathExtension(pathValue));
+};
+
+const resolveAggregateError = (error: unknown) => {
+  if (error instanceof AggregateError && Array.isArray(error.errors) && error.errors.length > 0) {
+    return error.errors[error.errors.length - 1];
+  }
+  return error;
+};
+
+const isTransientRequestError = (error: unknown) => {
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("network") ||
+    message.includes("timed out") ||
+    message.includes("failed to fetch") ||
+    message.includes("connection")
+  );
+};
+
+const fetchAcrossBaseUrls = async (
+  buildPath: (baseUrl: string) => string,
+  init: RequestInit,
+  timeoutMs: number,
+) => {
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const controllers: AbortController[] = [];
+
+  const attempts = API_REQUEST_BASE_URLS.map((baseUrl, index) =>
+    new Promise<{ response: Response; controller: AbortController }>((resolve, reject) => {
+      const delayMs = index * FALLBACK_RACE_STAGGER_MS;
+      const startTimer = setTimeout(async () => {
+        const controller = new AbortController();
+        controllers.push(controller);
+        const timeoutId =
+          timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+        try {
+          const response = await fetch(buildPath(baseUrl), {
+            ...init,
+            signal: controller.signal,
+          });
+          resolve({ response, controller });
+        } catch (error) {
+          reject(error);
+        } finally {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+        }
+      }, delayMs);
+
+      timers.push(startTimer);
+    }),
+  );
+
+  try {
+    const winner = await Promise.any(attempts);
+    for (const controller of controllers) {
+      if (controller !== winner.controller) {
+        controller.abort();
+      }
+    }
+    return winner.response;
+  } catch (error) {
+    for (const controller of controllers) {
+      controller.abort();
+    }
+    throw error;
+  } finally {
+    for (const timer of timers) {
+      clearTimeout(timer);
+    }
+  }
+};
 
 const isTransientUploadError = (error: unknown) => {
   if (error instanceof Error && error.name === "AbortError") {
@@ -217,11 +353,9 @@ const fetchUploadWithFallback = async (
         ...init,
         signal: controller.signal,
       });
-      // Return even non-2xx responses — let callers handle status codes.
       return response;
     } catch (error) {
       lastError = error;
-      // Always try the next URL before giving up.
       continue;
     } finally {
       clearTimeout(timeoutId);
@@ -371,7 +505,7 @@ const buildInlineMediaFallback = async (file: {
   }
 
   const base64 = await FileSystem.readAsStringAsync(normalizedUri, {
-    encoding: FileSystem.EncodingType.Base64,
+    encoding: "base64" as any,
   });
 
   const mimeType = guessMimeTypeFromFilename(file.name, file.type);
@@ -402,27 +536,18 @@ const toLocalAwareApiUrl = (input: string) => {
 };
 
 export const checkApiConnection = async (): Promise<void> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), HEALTHCHECK_TIMEOUT_MS);
-
   try {
-    const response = await fetch(`${API_BASE_URL}/health`, {
-      method: "GET",
-      signal: controller.signal,
-    });
+    const response = await fetchAcrossBaseUrls(
+      (baseUrl) => `${baseUrl}/health`,
+      { method: "GET" },
+      HEALTHCHECK_TIMEOUT_MS,
+    );
+
     if (!response.ok) {
-      throw new Error(`Health check failed (${response.status})`);
+      return;
     }
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        `Cannot reach API (${API_BASE_URL}). Health check timed out after ${HEALTHCHECK_TIMEOUT_MS / 1000}s.`,
-      );
-    }
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Cannot reach API (${API_BASE_URL}): ${detail}`);
-  } finally {
-    clearTimeout(timeoutId);
+  } catch {
+    return;
   }
 };
 
@@ -435,18 +560,29 @@ export const resolveMediaUrl = (value?: string | null) => {
     return "";
   }
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      if (isBlockedManagedUploadPath(parsed.pathname)) {
+        return "";
+      }
+    } catch {
+      // Ignore parse failures and fall through.
+    }
     return toLocalAwareApiUrl(trimmed);
   }
 
-  // Treat leading-slash paths as server-root references and return
-  // an absolute URL so consumers (Image, fetch, WebView) receive
-  // a valid absolute URL instead of a bare path like `/image/foo.svg`.
   if (trimmed.startsWith("/")) {
+    if (isBlockedManagedUploadPath(trimmed)) {
+      return "";
+    }
     return `${API_BASE_URL}${trimmed}`;
   }
 
   const normalized = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
   if (normalized.startsWith("uploads/")) {
+    if (isBlockedManagedUploadPath(normalized)) {
+      return "";
+    }
     return `${API_BASE_URL}/${normalized}`;
   }
 
@@ -461,17 +597,18 @@ const request = async <T>(
   const method = (init?.method ?? "GET").toUpperCase();
   const isGetRequest = method === "GET" && !init?.body;
   const forceFresh = !!options?.forceFresh || isFreshReadWindowActive();
+  const refreshToken = forceFreshReadToken ?? Date.now();
   const requestPath =
     forceFresh && isGetRequest
-      ? `${path}${path.includes("?") ? "&" : "?"}_rf=${Date.now()}`
+      ? `${path}${path.includes("?") ? "&" : "?"}_rf=${refreshToken}`
       : path;
-  const inFlightKey = `${authToken ?? ""}::${path}`;
+  const inFlightKey = `${authToken ?? ""}::${requestPath}`;
   const timeoutMs =
     typeof options?.timeoutMs === "number"
       ? Math.max(0, options.timeoutMs)
       : REQUEST_TIMEOUT_MS;
 
-  if (isGetRequest && !forceFresh) {
+  if (isGetRequest) {
     const existing = inFlightGetRequests.get(inFlightKey);
     if (existing) {
       return existing as Promise<T>;
@@ -480,7 +617,6 @@ const request = async <T>(
 
   const execute = async (): Promise<T> => {
     const headers = new Headers(init?.headers as HeadersInit | undefined);
-    // Only set JSON content-type for requests with a body that is not FormData
     const hasBody = !!init?.body;
     const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
     if (hasBody && !isFormData && !headers.has("Content-Type")) {
@@ -494,35 +630,32 @@ const request = async <T>(
       headers.set("Pragma", "no-cache");
     }
 
-    const controller = new AbortController();
-    const timeoutId =
-      timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
-
-    const requestBaseUrls =
-      API_FALLBACK_URL && API_FALLBACK_URL !== API_BASE_URL
-        ? [API_BASE_URL, API_FALLBACK_URL]
-        : [API_BASE_URL];
-
+    const maxAttempts = isGetRequest ? 2 : 1;
     let response: Response | null = null;
     let lastError: unknown = null;
 
-    for (const baseUrl of requestBaseUrls) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        response = await fetch(`${baseUrl}${requestPath}`, {
-          ...init,
-          headers,
-          signal: controller.signal,
-        });
+        response = await fetchAcrossBaseUrls(
+          (baseUrl) => `${baseUrl}${requestPath}`,
+          {
+            ...init,
+            headers,
+          },
+          timeoutMs,
+        );
         lastError = null;
         break;
       } catch (error) {
-        lastError = error;
-        continue;
+        const resolvedError = resolveAggregateError(error);
+        lastError = resolvedError;
+        const canRetry =
+          attempt < maxAttempts && isGetRequest && isTransientRequestError(resolvedError);
+        if (canRetry) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          continue;
+        }
       }
-    }
-
-    if (timeoutId) {
-      clearTimeout(timeoutId);
     }
 
     if (!response) {
@@ -531,8 +664,7 @@ const request = async <T>(
           `Request timed out after ${timeoutMs / 1000}s. Check API connectivity to ${API_BASE_URL}.`,
         );
       }
-      const detail =
-        lastError instanceof Error ? lastError.message : String(lastError);
+      const detail = lastError instanceof Error ? lastError.message : String(lastError);
       throw new Error(`Network error connecting to ${API_BASE_URL}: ${detail}`);
     }
 
@@ -553,7 +685,7 @@ const request = async <T>(
     }
   };
 
-  if (!isGetRequest || forceFresh) {
+  if (!isGetRequest) {
     return execute();
   }
 
@@ -657,6 +789,8 @@ export const registerUser = async (payload: AuthRegisterRequest) => {
   const response = await request<AuthResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
+  }, {
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
   return normalizeAuthResponse(response);
 };
@@ -665,12 +799,16 @@ export const loginUser = async (payload: AuthLoginRequest) => {
   const response = await request<AuthResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(payload),
+  }, {
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
   return normalizeAuthResponse(response);
 };
 
 export const getMe = async () => {
-  const user = await request<ApiUserWire>("/auth/me");
+  const user = await request<ApiUserWire>("/auth/me", undefined, {
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
   const normalized = normalizeUser(user);
   setUserCache(normalized);
   return normalized;

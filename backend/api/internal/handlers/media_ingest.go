@@ -143,6 +143,9 @@ func materializeDataURI(raw string) (string, error) {
 	}
 
 	ext := extensionFromContentType(mediaType)
+	if !isAllowedManagedMedia(ext, mediaType) {
+		return "", fmt.Errorf("unsupported media type")
+	}
 	return saveManagedUpload(body, ext)
 }
 
@@ -173,7 +176,45 @@ func materializeRemoteURL(parsed *url.URL) (string, error) {
 
 	contentType := response.Header.Get("Content-Type")
 	ext := extensionFromPathOrType(parsed.Path, contentType)
+	if !isAllowedManagedMedia(ext, contentType) {
+		return "", fmt.Errorf("unsupported media type")
+	}
 	return saveManagedUpload(body, ext)
+}
+
+func isAllowedManagedMedia(ext, contentType string) bool {
+	ext = strings.ToLower(strings.TrimSpace(ext))
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+
+	if strings.HasPrefix(contentType, "image/") {
+		if ext == "" {
+			return true
+		}
+		_, ok := allowedImageExtensions[ext]
+		return ok
+	}
+
+	if strings.HasPrefix(contentType, "video/") {
+		if ext == "" {
+			return true
+		}
+		_, ok := allowedVideoExtensions[ext]
+		return ok
+	}
+
+	if ext != "" {
+		if _, ok := allowedImageExtensions[ext]; ok {
+			return true
+		}
+		if _, ok := allowedVideoExtensions[ext]; ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 func extensionFromPathOrType(pathValue, contentType string) string {

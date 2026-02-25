@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.devbits.frontend",
+      "sha256_cert_fingerprints": [
+        "4E:A1:DD:8D:E1:03:23:AC:35:EB:BE:B2:64:36:DF:78:17:36:B5:3E:C4:69:67:82:74:EB:21:CC:D5:0A:34:7A"
+      ]
+    }
+  }
+]

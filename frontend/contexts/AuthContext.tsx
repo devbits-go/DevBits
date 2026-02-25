@@ -37,31 +37,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [justSignedUp, setJustSignedUp] = useState(false);
 
+  const clearSession = useCallback(async () => {
+    setAuthToken(null);
+    setUser(null);
+    setToken(null);
+    setJustSignedUp(false);
+    try {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+    } catch {
+      // Ignore secure store failures and keep client in signed-out state.
+    }
+  }, []);
+
   useEffect(() => {
     const loadSession = async () => {
-      const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
-      if (!storedToken) {
-        setIsLoading(false);
-        return;
-      }
-
-      setAuthToken(storedToken);
       try {
+        const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+        if (!storedToken) {
+          await clearSession();
+          return;
+        }
+
+        setAuthToken(storedToken);
         const me = await getMe();
         setUser(me);
         setToken(storedToken);
       } catch (error) {
-        setAuthToken(null);
-        setUser(null);
-        setToken(null);
-        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await clearSession();
       } finally {
         setIsLoading(false);
       }
     };
 
     loadSession();
-  }, []);
+  }, [clearSession]);
 
   const signIn = useCallback(async (payload: AuthLoginRequest) => {
     const response = await loginUser(payload);
@@ -69,7 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(response.user);
     setToken(response.token);
     setJustSignedUp(false);
-    await SecureStore.setItemAsync(TOKEN_KEY, response.token);
+    try {
+      await SecureStore.setItemAsync(TOKEN_KEY, response.token);
+    } catch {
+      // Continue with in-memory session even if secure store is unavailable.
+    }
   }, []);
 
   const signUp = useCallback(async (payload: AuthRegisterRequest) => {
@@ -78,16 +91,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(response.user);
     setToken(response.token);
     setJustSignedUp(true);
-    await SecureStore.setItemAsync(TOKEN_KEY, response.token);
+    try {
+      await SecureStore.setItemAsync(TOKEN_KEY, response.token);
+    } catch {
+      // Continue with in-memory session even if secure store is unavailable.
+    }
   }, []);
 
   const signOut = useCallback(async () => {
-    setAuthToken(null);
-    setUser(null);
-    setToken(null);
-    setJustSignedUp(false);
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-  }, []);
+    await clearSession();
+  }, [clearSession]);
 
   const setUserDirect = useCallback((u: ApiUser) => {
     setUser(u);
@@ -112,17 +125,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const isAuthFailure =
         message.includes("unauthorized") ||
         message.includes("missing auth token") ||
-        message.includes("request failed (401)");
+        message.includes("invalid auth token") ||
+        message.includes("forbidden") ||
+        message.includes("request failed (401)") ||
+        message.includes("request failed (403)");
 
       if (isAuthFailure) {
-        setAuthToken(null);
-        setUser(null);
-        setToken(null);
-        setJustSignedUp(false);
-        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await clearSession();
       }
     }
-  }, [token]);
+  }, [clearSession, token]);
 
   const value = useMemo(
     () => ({
