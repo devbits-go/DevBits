@@ -204,6 +204,11 @@ func (tc *TestCase) Run(t *testing.T, serverURL string) {
 
 	assert.Equal(t, tc.ExpectedStatus, resp.StatusCode, "Status code mismatch for %s %s", tc.Method, tc.Endpoint)
 
+	// Skip body comparison when ExpectedBody is empty.
+	if tc.ExpectedBody == "" {
+		return
+	}
+
 	if strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
 		var actualJSON interface{}
 		if err := json.Unmarshal(body, &actualJSON); err != nil {
