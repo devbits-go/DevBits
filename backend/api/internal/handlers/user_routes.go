@@ -623,18 +623,15 @@ func UpdateUserInfo(context *gin.Context) {
 	}
 
 	if links, ok := updatedData["links"]; ok {
-		linksMap, parseOK := links.(map[string]interface{})
-		if parseOK {
-			existingUser.Links = linksMap
-		} else if linksArray, parseArray := links.([]interface{}); parseArray {
-			normalized := make(map[string]interface{}, len(linksArray))
-			for index, item := range linksArray {
+		if linksArray, parseArray := links.([]interface{}); parseArray {
+			normalized := make([]string, 0, len(linksArray))
+			for _, item := range linksArray {
 				link, isString := item.(string)
 				if !isString {
 					RespondWithError(context, http.StatusBadRequest, "Invalid links format")
 					return
 				}
-				normalized[fmt.Sprintf("link_%d", index)] = link
+				normalized = append(normalized, link)
 			}
 			existingUser.Links = normalized
 		} else {

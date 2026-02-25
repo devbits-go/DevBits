@@ -312,7 +312,7 @@ func RemovePostLike(username string, postId string) (int, error) {
 		return http.StatusNoContent, nil
 	}
 
-	updateQuery := `UPDATE posts SET likes = GREATEST(likes - 1, 0) WHERE id = $1`
+	updateQuery := `UPDATE posts SET likes = MAX(likes - 1, 0) WHERE id = $1`
 	_, err = tx.Exec(updateQuery, parsedPostID)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("Failed to update likes count: %v", err)
