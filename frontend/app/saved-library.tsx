@@ -29,6 +29,7 @@ import {
 } from "@/services/api";
 import { mapPostToUi } from "@/services/mappers";
 import { subscribeToPostEvents } from "@/services/postEvents";
+import { FontSize, LineHeight } from "@/constants/Theme";
 
 export default function SavedLibraryScreen() {
   const colors = useAppColors();
@@ -231,8 +232,8 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   title: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: FontSize.pageTitle,
+    lineHeight: LineHeight.pageTitle,
   },
   emptyState: {
     alignItems: "center",

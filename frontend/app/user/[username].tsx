@@ -53,6 +53,7 @@ import {
 } from "@/services/api";
 import { mapPostToUi, mapProjectToUi } from "@/services/mappers";
 import { subscribeToPostEvents } from "@/services/postEvents";
+import { FontSize, LineHeight } from "@/constants/Theme";
 
 export default function UserProfileScreen() {
   const colors = useAppColors();
@@ -713,8 +714,8 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   title: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: FontSize.pageTitle,
+    lineHeight: LineHeight.pageTitle,
   },
   profileCard: {
     borderRadius: 16,
