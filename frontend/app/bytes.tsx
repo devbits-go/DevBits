@@ -37,6 +37,7 @@ import { useTopBlurScroll } from "@/hooks/useTopBlurScroll";
 import { useRequestGuard } from "@/hooks/useRequestGuard";
 import { subscribeToPostEvents } from "@/services/postEvents";
 import { useAuth } from "@/contexts/AuthContext";
+import { FontSize, LineHeight } from "@/constants/Theme";
 
 export default function BytesScreen() {
   const colors = useAppColors();
@@ -471,19 +472,14 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   title: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: FontSize.pageTitle,
+    lineHeight: LineHeight.pageTitle,
   },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: 12,
-  },
-  filterRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingTop: 6,
   },
   sortRow: {
     flexDirection: "row",

@@ -41,6 +41,7 @@ import {
   applyProjectEvent,
   subscribeToProjectEvents,
 } from "@/services/projectEvents";
+import { FontSize, LineHeight } from "@/constants/Theme";
 
 export default function StreamsScreen() {
   const colors = useAppColors();
@@ -448,8 +449,8 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   title: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: FontSize.pageTitle,
+    lineHeight: LineHeight.pageTitle,
   },
   headerRow: {
     flexDirection: "row",

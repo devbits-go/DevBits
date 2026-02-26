@@ -60,6 +60,7 @@ import { useRequestGuard } from "@/hooks/useRequestGuard";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { subscribeToPostEvents } from "@/services/postEvents";
+import { FontSize, LineHeight } from "@/constants/Theme";
 
 const categories = [
   "None",
@@ -985,8 +986,8 @@ const styles = StyleSheet.create({
     marginHorizontal: -16,
   },
   title: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: FontSize.pageTitle,
+    lineHeight: LineHeight.pageTitle,
   },
   searchBar: {
     flexDirection: "row",

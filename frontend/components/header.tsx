@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import { ThemedText } from "@/components/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useNotifications } from "@/contexts/NotificationsContext";
+import { FontSize, IconButton, LineHeight } from "@/constants/Theme";
 
 export function MyHeader() {
   const colors = useAppColors();
@@ -179,10 +180,10 @@ export function MyHeader() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 4,
+    paddingTop: 0,
     paddingBottom: 8,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
   },
@@ -192,8 +193,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   logoText: {
-    fontSize: 24,
-    lineHeight: 26,
+    fontSize: FontSize.pageTitle,
+    lineHeight: LineHeight.pageTitle,
   },
   tagline: {
     marginTop: 2,
@@ -205,9 +206,9 @@ const styles = StyleSheet.create({
     marginRight: 24,
   },
   iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: IconButton.size,
+    height: IconButton.size,
+    borderRadius: IconButton.borderRadius,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -217,7 +218,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   iconShell: {
-    borderRadius: 10,
+    borderRadius: IconButton.borderRadius,
   },
   badge: {
     position: "absolute",

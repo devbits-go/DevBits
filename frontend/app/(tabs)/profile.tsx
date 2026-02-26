@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import { ApiUser, UserProps } from "@/constants/Types";
+import { FontSize, IconButton, LineHeight } from "@/constants/Theme";
 import { ProjectCard } from "@/components/ProjectCard";
 import { InfiniteHorizontalCycle } from "@/components/InfiniteHorizontalCycle";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -1047,8 +1048,8 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   title: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: FontSize.pageTitle,
+    lineHeight: LineHeight.pageTitle,
   },
   headerRow: {
     flexDirection: "row",
@@ -1062,9 +1063,9 @@ const styles = StyleSheet.create({
   },
   headerSettingsButton: {
     borderWidth: 1,
-    borderRadius: 10,
-    width: 34,
-    height: 34,
+    borderRadius: IconButton.borderRadius,
+    width: IconButton.size,
+    height: IconButton.size,
     alignItems: "center",
     justifyContent: "center",
     shadowOpacity: 0.2,
