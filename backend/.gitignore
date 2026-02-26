@@ -1,5 +1,7 @@
 .env
+.env.test
 */.env
+*/.env.test
 
 *.exe
 *.exe~

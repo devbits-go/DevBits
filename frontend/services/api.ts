@@ -178,14 +178,14 @@ const getLocalDevBaseUrl = () => {
 };
 
 const getDefaultBaseUrl = () => {
-  // Use local API only when explicitly requested.
-  const shouldUseLocalApi = process.env.EXPO_PUBLIC_USE_LOCAL_API?.trim() === "1";
-  if (__DEV__ && shouldUseLocalApi) {
+  // In development mode, always connect to local backend (auto-detect computer's IP)
+  if (__DEV__) {
     const legacyConstants = Constants as unknown as {
       manifest?: { debuggerHost?: string };
       manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
     };
 
+    // Get the host IP from Expo's configuration (Metro bundler's IP)
     const hostUri =
       Constants.expoConfig?.hostUri ??
       legacyConstants.manifest?.debuggerHost ??
@@ -194,17 +194,19 @@ const getDefaultBaseUrl = () => {
 
     const host = getHostFromUri(hostUri);
     if (host) {
-      return `http://${host}`;
+      return `http://${host}:8080`;
     }
 
+    // Fallbacks for different platforms
     if (Platform.OS === "android") {
-      return "http://10.0.2.2";
+      return "http://10.0.2.2:8080";
     }
 
-    return "http://localhost";
+    // iOS simulator or web - try localhost
+    return "http://localhost:8080";
   }
 
-  // Default to the live server for all other cases.
+  // Production: use live server
   return "https://devbits.ddns.net";
 };
 
@@ -229,21 +231,17 @@ const buildBaseUrlList = (...candidates: Array<string | null | undefined>) => {
   return urls;
 };
 
-export const API_BASE_URL = normalizeBaseUrl(
-  process.env.EXPO_PUBLIC_API_URL?.trim() || getDefaultBaseUrl(),
-);
+export const API_BASE_URL = normalizeBaseUrl(getDefaultBaseUrl());
 
 const LOCAL_DEV_BASE_URL = getLocalDevBaseUrl();
 
-const IS_LOCAL_API_MODE =
-  __DEV__ && process.env.EXPO_PUBLIC_USE_LOCAL_API?.trim() === "1";
+const IS_LOCAL_API_MODE = __DEV__;
 
 const API_FALLBACK_URL = normalizeBaseUrl(
-  process.env.EXPO_PUBLIC_API_FALLBACK_URL?.trim() ||
-    (IS_LOCAL_API_MODE ? "" : "https://devbits.ddns.net"),
+  __DEV__ ? "" : "https://devbits.ddns.net",
 );
 
-const API_REQUEST_BASE_URLS = buildBaseUrlList(LOCAL_DEV_BASE_URL, API_BASE_URL, API_FALLBACK_URL);
+const API_REQUEST_BASE_URLS = buildBaseUrlList(API_BASE_URL, API_FALLBACK_URL);
 const API_UPLOAD_BASE_URLS = API_REQUEST_BASE_URLS;
 const BASE_URL_FAILURE_COOLDOWN_MS = 12000;
 

@@ -1,0 +1,32 @@
+services:
+  test-db:
+    image: postgres:15
+    container_name: devbits-test-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-devbits_test}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-testuser}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-testpass123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - test-postgres-data:/var/lib/postgresql/data
+      - ./api/internal/database/create_tables.sql:/docker-entrypoint-initdb.d/01-create_tables.sql:ro
+      - ./api/internal/database/create_test_data.sql:/docker-entrypoint-initdb.d/02-create_test_data.sql:ro
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_TEST_USER:-testuser} -d $${POSTGRES_TEST_DB:-devbits_test}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  test-postgres-data:
+    driver: local

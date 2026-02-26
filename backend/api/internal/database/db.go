@@ -22,9 +22,24 @@ func Connect() {
 	var err error
 	var dsn string
 
-	// Prefer PostgreSQL connection if DATABASE_URL is set
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL != "" {
+	// Check for test database mode
+	if os.Getenv("USE_TEST_DB") == "true" {
+		driverName = "postgres"
+		db := os.Getenv("POSTGRES_TEST_DB")
+		if db == "" {
+			db = "devbits_test"
+		}
+		user := os.Getenv("POSTGRES_TEST_USER")
+		if user == "" {
+			user = "testuser"
+		}
+		password := os.Getenv("POSTGRES_TEST_PASSWORD")
+		if password == "" {
+			log.Fatal("POSTGRES_TEST_PASSWORD is required when USE_TEST_DB=true")
+		}
+		dsn = fmt.Sprintf("postgres://%s:%s@127.0.0.1:5432/%s?sslmode=disable", user, password, db)
+	} else if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		// Production PostgreSQL connection
 		driverName = "postgres"
 		dsn = dbURL
 	} else {

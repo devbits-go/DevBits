@@ -83,6 +83,83 @@ All deployment database script usage is documented in:
 
 - `backend/scripts/README.md`
 
+## Local Development & Testing
+
+This section covers running the full application locally with a PostgreSQL test database and running tests.
+
+### Quick Start (Recommended)
+
+The easiest way to run the entire local development environment:
+
+```bash
+./run-front.sh
+```
+
+This starts:
+1. Test PostgreSQL database (auto-seeds with test data)
+2. Local Go backend on port 8080
+3. Frontend with QR code for Expo Go
+
+Scan the QR code with Expo Go on your phone. The app will automatically connect to your local backend.
+
+**Press Ctrl+C** to stop everything and restore production Docker containers.
+
+---
+
+### Prerequisites
+
+1. Install Docker and Docker Compose
+2. Copy the test environment file:
+
+```bash
+cd backend
+cp .env.test.example .env.test
+```
+
+---
+
+### Manual Commands
+
+**Start test database only:**
+```bash
+cd backend
+docker compose -f docker-compose.test.yml up -d
+```
+
+**Run backend only:**
+```bash
+cd backend
+USE_TEST_DB=true go run ./api
+```
+
+**Run tests:**
+```bash
+./run-tests.sh
+```
+
+**Reset test data (delete and recreate):**
+```bash
+docker compose -f backend/docker-compose.test.yml down -v
+docker compose -f backend/docker-compose.test.yml up -d
+```
+
+---
+
+### Production Docker (Regular Dev)
+
+To switch back to production Docker:
+
+```bash
+cd backend
+docker compose up -d
+```
+
+---
+
+### CI/CD
+
+Tests run automatically on GitHub Actions for every push and pull request. See `.github/workflows/test.yml` for details.
+
 ## Frontend Management (EAS)
 
 All frontend commands should be run from the `frontend` directory (`c:\Users\eligf\DevBits\frontend`).

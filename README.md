@@ -21,117 +21,36 @@ Some quirky names for things (frontend only)
 - Database: PostgreSQL or MySQL
 - Host: On AWS, full system design pending
 
-## Local Testing
+## Local Development
 
-### Backend Testing
+### Quick Start
 
-Install the following packages:
-
-- [**Go**](https://go.dev/doc/install) (for running the API)
-- [**SQLite3**](https://www.sqlite.org/index.html) (for database operations)
-
-#### 1. Navigate to the Project Root
-
-Change into the project directory:
+The easiest way to run the full local development environment:
 
 ```bash
-cd /path/to/DevBits
+./run-front.sh
 ```
 
-#### 2. Start the Database
+This starts:
+- Test PostgreSQL database (auto-seeds with test data)
+- Local Go backend on port 8080
+- Frontend with QR code for Expo Go
 
-1. Open a terminal and navigate to the database directory:
+Scan the QR code with Expo Go on your phone. The app will automatically connect to your local backend.
 
-   ```bash
-   cd backend/api/internal/database
-   ```
+**Press Ctrl+C** to stop everything and restore production Docker containers.
 
-2. Launch the SQLite database:
+### Prerequisites
 
-   ```bash
-   sqlite3 dev.sqlite3
-   ```
-
-3. (Optional) Open the `create_tables.sql` file in a new terminal for reference:
-
-   ```bash
-   nvim create_tables.sql
-   ```
-
-#### 3. Start the API
-
-1. Open another terminal and navigate to the backend directory:
-
-   ```bash
-   cd backend
-   ```
-
-2. Run the API:
-
-   ```bash
-   go run ./api
-   ```
-
-That's it! You're ready to start working with the DevBits API and database.
-
----
-
-### Frontend Testing
-
-Install the following packages:
-
-- [**Node**](https://nodejs.org/en/download/package-manager) (for running the React Native App)
-
-#### 1. Navigate to the DevBits Frontend
-
-Change into the project directory:
+1. Install Docker and Docker Compose
+2. Copy the test environment file:
 
 ```bash
-cd /path/to/DevBits/frontend
+cd backend
+cp .env.test.example .env.test
 ```
 
-#### 2. Check required packages are installed
-
-```bash
-npm install
-```
-
-#### 3. Start the app
-
-```bash
-npm run frontend
-```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-### Run app
-
-#### 1. Navigate to the DevBits frontend (required to run npm commands)
-
-Change into the project directory:
-
-```bash
-cd /path/to/DevBits/frontend
-```
-
-#### 2. Run all required commands
-
-```bash
-npm run all
-```
-
-#### Windows quick start (root script)
-
-From the project root, you can launch backend + frontend together:
-
-```powershell
-./run-all.ps1
-```
+For detailed instructions, see [INSTRUCTIONS.md](INSTRUCTIONS.md).
 
 ## Deployment DB scripts
 
