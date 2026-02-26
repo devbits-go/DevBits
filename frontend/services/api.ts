@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
 import {
   ApiPost,
@@ -39,13 +39,15 @@ const MAX_USER_CACHE_ENTRIES = 300;
 const MAX_INFLIGHT_GET_ENTRIES = 200;
 const USER_CACHE_TTL_MS = 5_000;
 let authToken: string | null = null;
-const REQUEST_TIMEOUT_MS = 120000;
+const REQUEST_TIMEOUT_MS = 3500;
+const AUTH_REQUEST_TIMEOUT_MS = 10000;
 const UPLOAD_TIMEOUT_MS = 30000;
-const HEALTHCHECK_TIMEOUT_MS = 4000;
+const HEALTHCHECK_TIMEOUT_MS = 2000;
 const LARGE_REQUEST_TIMEOUT_MS = 300000;
 const MAX_INLINE_MEDIA_FALLBACK_BYTES = 64 * 1024 * 1024;
 const REFRESH_READ_WINDOW_MS = 2500;
 let forceFreshReadsUntil = 0;
+let forceFreshReadToken: number | null = null;
 
 type RequestOptions = {
   timeoutMs?: number;
@@ -129,11 +131,18 @@ export const clearApiCache = () => {
 
 export const beginFreshReadWindow = (durationMs = REFRESH_READ_WINDOW_MS) => {
   const windowMs = Math.max(300, durationMs);
+  forceFreshReadToken = Date.now();
   forceFreshReadsUntil = Date.now() + windowMs;
   inFlightGetRequests.clear();
 };
 
-const isFreshReadWindowActive = () => Date.now() <= forceFreshReadsUntil;
+const isFreshReadWindowActive = () => {
+  const active = Date.now() <= forceFreshReadsUntil;
+  if (!active) {
+    forceFreshReadToken = null;
+  }
+  return active;
+};
 
 const getHostFromUri = (uri?: string | null) => {
   if (!uri) {
@@ -144,9 +153,34 @@ const getHostFromUri = (uri?: string | null) => {
   return host || null;
 };
 
+const getLocalDevBaseUrl = () => {
+  if (!__DEV__) {
+    return null;
+  }
+
+  const legacyConstants = Constants as unknown as {
+    manifest?: { debuggerHost?: string };
+    manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
+  };
+
+  const hostUri =
+    Constants.expoConfig?.hostUri ??
+    legacyConstants.manifest?.debuggerHost ??
+    legacyConstants.manifest2?.extra?.expoClient?.hostUri ??
+    null;
+
+  const host = getHostFromUri(hostUri);
+  if (!host) {
+    return null;
+  }
+
+  return `http://${host}`;
+};
+
 const getDefaultBaseUrl = () => {
-  // In development, use the local server.
-  if (__DEV__) {
+  // Use local API only when explicitly requested.
+  const shouldUseLocalApi = process.env.EXPO_PUBLIC_USE_LOCAL_API?.trim() === "1";
+  if (__DEV__ && shouldUseLocalApi) {
     const legacyConstants = Constants as unknown as {
       manifest?: { debuggerHost?: string };
       manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
@@ -170,24 +204,176 @@ const getDefaultBaseUrl = () => {
     return "http://localhost";
   }
 
-  // In production, use the live server.
+  // Default to the live server for all other cases.
   return "https://devbits.ddns.net";
 };
 
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, "");
 
+const buildBaseUrlList = (...candidates: Array<string | null | undefined>) => {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    const normalized = normalizeBaseUrl(candidate.trim());
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    urls.push(normalized);
+  }
+
+  return urls;
+};
+
 export const API_BASE_URL = normalizeBaseUrl(
   process.env.EXPO_PUBLIC_API_URL?.trim() || getDefaultBaseUrl(),
 );
 
+const LOCAL_DEV_BASE_URL = getLocalDevBaseUrl();
+
+const IS_LOCAL_API_MODE =
+  __DEV__ && process.env.EXPO_PUBLIC_USE_LOCAL_API?.trim() === "1";
+
 const API_FALLBACK_URL = normalizeBaseUrl(
-  process.env.EXPO_PUBLIC_API_FALLBACK_URL?.trim() || "https://devbits.ddns.net",
+  process.env.EXPO_PUBLIC_API_FALLBACK_URL?.trim() ||
+    (IS_LOCAL_API_MODE ? "" : "https://devbits.ddns.net"),
 );
 
-const API_UPLOAD_BASE_URLS =
-  API_FALLBACK_URL && API_FALLBACK_URL !== API_BASE_URL
-    ? [API_BASE_URL, API_FALLBACK_URL]
-    : [API_BASE_URL];
+const API_REQUEST_BASE_URLS = buildBaseUrlList(LOCAL_DEV_BASE_URL, API_BASE_URL, API_FALLBACK_URL);
+const API_UPLOAD_BASE_URLS = API_REQUEST_BASE_URLS;
+const BASE_URL_FAILURE_COOLDOWN_MS = 12000;
+
+type BaseUrlFailState = {
+  failedAt: number;
+  cooldownUntil: number;
+  errorCount: number;
+};
+
+const baseUrlFailState = new Map<string, BaseUrlFailState>();
+let preferredBaseUrl: string | null = API_REQUEST_BASE_URLS[0] ?? null;
+
+const getOrderedBaseUrls = (baseUrls: string[] = API_REQUEST_BASE_URLS) => {
+  const now = Date.now();
+  const healthy: string[] = [];
+  const cooling: string[] = [];
+
+  for (const url of baseUrls) {
+    const state = baseUrlFailState.get(url);
+    if (!state || state.cooldownUntil <= now) {
+      healthy.push(url);
+    } else {
+      cooling.push(url);
+    }
+  }
+
+  const ordered = [...healthy, ...cooling];
+  if (preferredBaseUrl && ordered.includes(preferredBaseUrl)) {
+    return [
+      preferredBaseUrl,
+      ...ordered.filter((url) => url !== preferredBaseUrl),
+    ];
+  }
+  return ordered;
+};
+
+const markBaseUrlSuccess = (url: string) => {
+  baseUrlFailState.delete(url);
+  preferredBaseUrl = url;
+};
+
+const markBaseUrlFailure = (url: string) => {
+  const previous = baseUrlFailState.get(url);
+  const errorCount = (previous?.errorCount ?? 0) + 1;
+  const now = Date.now();
+  baseUrlFailState.set(url, {
+    failedAt: now,
+    cooldownUntil: now + BASE_URL_FAILURE_COOLDOWN_MS,
+    errorCount,
+  });
+};
+
+const BLOCKED_MANAGED_UPLOAD_EXTENSIONS = new Set([
+  "htm",
+  "html",
+  "xhtml",
+  "js",
+  "mjs",
+  "cjs",
+  "php",
+  "asp",
+  "aspx",
+  "jsp",
+]);
+
+const getPathExtension = (pathValue: string) => {
+  const clean = pathValue.split("?")[0].split("#")[0];
+  const name = clean.split("/").pop() || "";
+  const parts = name.split(".");
+  if (parts.length < 2) {
+    return "";
+  }
+  return parts[parts.length - 1].toLowerCase();
+};
+
+const isBlockedManagedUploadPath = (pathValue: string) => {
+  const normalizedPath = pathValue.toLowerCase();
+  if (!normalizedPath.startsWith("/uploads/") && !normalizedPath.startsWith("uploads/")) {
+    return false;
+  }
+  return BLOCKED_MANAGED_UPLOAD_EXTENSIONS.has(getPathExtension(pathValue));
+};
+
+const isTransientRequestError = (error: unknown) => {
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("network") ||
+    message.includes("timed out") ||
+    message.includes("failed to fetch") ||
+    message.includes("connection")
+  );
+};
+
+const fetchWithFailover = async (
+  buildPath: (baseUrl: string) => string,
+  init: RequestInit,
+  timeoutMs: number,
+  baseUrls: string[] = API_REQUEST_BASE_URLS,
+) => {
+  const orderedBaseUrls = getOrderedBaseUrls(baseUrls);
+  let lastError: unknown = null;
+
+  for (const baseUrl of orderedBaseUrls) {
+    const controller = new AbortController();
+    const timeoutId =
+      timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+    try {
+      const response = await fetch(buildPath(baseUrl), {
+        ...init,
+        signal: controller.signal,
+      });
+      markBaseUrlSuccess(baseUrl);
+      return response;
+    } catch (error) {
+      lastError = error;
+      markBaseUrlFailure(baseUrl);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  throw lastError ?? new Error("No API base URL available");
+};
 
 const isTransientUploadError = (error: unknown) => {
   if (error instanceof Error && error.name === "AbortError") {
@@ -217,11 +403,9 @@ const fetchUploadWithFallback = async (
         ...init,
         signal: controller.signal,
       });
-      // Return even non-2xx responses — let callers handle status codes.
       return response;
     } catch (error) {
       lastError = error;
-      // Always try the next URL before giving up.
       continue;
     } finally {
       clearTimeout(timeoutId);
@@ -402,27 +586,18 @@ const toLocalAwareApiUrl = (input: string) => {
 };
 
 export const checkApiConnection = async (): Promise<void> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), HEALTHCHECK_TIMEOUT_MS);
-
   try {
-    const response = await fetch(`${API_BASE_URL}/health`, {
-      method: "GET",
-      signal: controller.signal,
-    });
+    const response = await fetchWithFailover(
+      (baseUrl) => `${baseUrl}/health`,
+      { method: "GET" },
+      HEALTHCHECK_TIMEOUT_MS,
+    );
+
     if (!response.ok) {
-      throw new Error(`Health check failed (${response.status})`);
+      return;
     }
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        `Cannot reach API (${API_BASE_URL}). Health check timed out after ${HEALTHCHECK_TIMEOUT_MS / 1000}s.`,
-      );
-    }
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Cannot reach API (${API_BASE_URL}): ${detail}`);
-  } finally {
-    clearTimeout(timeoutId);
+  } catch {
+    return;
   }
 };
 
@@ -435,18 +610,29 @@ export const resolveMediaUrl = (value?: string | null) => {
     return "";
   }
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      if (isBlockedManagedUploadPath(parsed.pathname)) {
+        return "";
+      }
+    } catch {
+      // Ignore parse failures and fall through.
+    }
     return toLocalAwareApiUrl(trimmed);
   }
 
-  // Treat leading-slash paths as server-root references and return
-  // an absolute URL so consumers (Image, fetch, WebView) receive
-  // a valid absolute URL instead of a bare path like `/image/foo.svg`.
   if (trimmed.startsWith("/")) {
+    if (isBlockedManagedUploadPath(trimmed)) {
+      return "";
+    }
     return `${API_BASE_URL}${trimmed}`;
   }
 
   const normalized = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
   if (normalized.startsWith("uploads/")) {
+    if (isBlockedManagedUploadPath(normalized)) {
+      return "";
+    }
     return `${API_BASE_URL}/${normalized}`;
   }
 
@@ -461,17 +647,18 @@ const request = async <T>(
   const method = (init?.method ?? "GET").toUpperCase();
   const isGetRequest = method === "GET" && !init?.body;
   const forceFresh = !!options?.forceFresh || isFreshReadWindowActive();
+  const refreshToken = forceFreshReadToken ?? Date.now();
   const requestPath =
     forceFresh && isGetRequest
-      ? `${path}${path.includes("?") ? "&" : "?"}_rf=${Date.now()}`
+      ? `${path}${path.includes("?") ? "&" : "?"}_rf=${refreshToken}`
       : path;
-  const inFlightKey = `${authToken ?? ""}::${path}`;
+  const inFlightKey = `${authToken ?? ""}::${requestPath}`;
   const timeoutMs =
     typeof options?.timeoutMs === "number"
       ? Math.max(0, options.timeoutMs)
       : REQUEST_TIMEOUT_MS;
 
-  if (isGetRequest && !forceFresh) {
+  if (isGetRequest) {
     const existing = inFlightGetRequests.get(inFlightKey);
     if (existing) {
       return existing as Promise<T>;
@@ -480,7 +667,6 @@ const request = async <T>(
 
   const execute = async (): Promise<T> => {
     const headers = new Headers(init?.headers as HeadersInit | undefined);
-    // Only set JSON content-type for requests with a body that is not FormData
     const hasBody = !!init?.body;
     const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
     if (hasBody && !isFormData && !headers.has("Content-Type")) {
@@ -494,35 +680,31 @@ const request = async <T>(
       headers.set("Pragma", "no-cache");
     }
 
-    const controller = new AbortController();
-    const timeoutId =
-      timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
-
-    const requestBaseUrls =
-      API_FALLBACK_URL && API_FALLBACK_URL !== API_BASE_URL
-        ? [API_BASE_URL, API_FALLBACK_URL]
-        : [API_BASE_URL];
-
+    const maxAttempts = isGetRequest ? 2 : 1;
     let response: Response | null = null;
     let lastError: unknown = null;
 
-    for (const baseUrl of requestBaseUrls) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        response = await fetch(`${baseUrl}${requestPath}`, {
-          ...init,
-          headers,
-          signal: controller.signal,
-        });
+        response = await fetchWithFailover(
+          (baseUrl) => `${baseUrl}${requestPath}`,
+          {
+            ...init,
+            headers,
+          },
+          timeoutMs,
+        );
         lastError = null;
         break;
       } catch (error) {
         lastError = error;
-        continue;
+        const canRetry =
+          attempt < maxAttempts && isGetRequest && isTransientRequestError(error);
+        if (canRetry) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          continue;
+        }
       }
-    }
-
-    if (timeoutId) {
-      clearTimeout(timeoutId);
     }
 
     if (!response) {
@@ -531,8 +713,7 @@ const request = async <T>(
           `Request timed out after ${timeoutMs / 1000}s. Check API connectivity to ${API_BASE_URL}.`,
         );
       }
-      const detail =
-        lastError instanceof Error ? lastError.message : String(lastError);
+      const detail = lastError instanceof Error ? lastError.message : String(lastError);
       throw new Error(`Network error connecting to ${API_BASE_URL}: ${detail}`);
     }
 
@@ -553,7 +734,7 @@ const request = async <T>(
     }
   };
 
-  if (!isGetRequest || forceFresh) {
+  if (!isGetRequest) {
     return execute();
   }
 
@@ -632,8 +813,12 @@ const normalizeAuthResponse = (response: AuthResponse): AuthResponse => ({
 
 export type FeedSort = "time" | "likes" | "new" | "recent" | "popular" | "hot";
 
-export const getPostsFeed = (type: FeedSort, start = 0, count = 10) =>
-  request<ApiPost[]>(`/feed/posts?type=${type}&start=${start}&count=${count}`);
+export const getPostsFeed = async (type: FeedSort, start = 0, count = 10) => {
+  const response = await request<ApiPost[] | null>(
+    `/feed/posts?type=${type}&start=${start}&count=${count}`,
+  );
+  return Array.isArray(response) ? response : [];
+};
 
 export const getFollowingPostsFeed = (
   username: string,
@@ -657,6 +842,8 @@ export const registerUser = async (payload: AuthRegisterRequest) => {
   const response = await request<AuthResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
+  }, {
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
   return normalizeAuthResponse(response);
 };
@@ -665,22 +852,31 @@ export const loginUser = async (payload: AuthLoginRequest) => {
   const response = await request<AuthResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(payload),
+  }, {
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
   return normalizeAuthResponse(response);
 };
 
 export const getMe = async () => {
-  const user = await request<ApiUserWire>("/auth/me");
+  const user = await request<ApiUserWire>("/auth/me", undefined, {
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
   const normalized = normalizeUser(user);
   setUserCache(normalized);
   return normalized;
 };
 
-export const getProjectsFeed = (
+export const getProjectsFeed = async (
   type: FeedSort,
   start = 0,
   count = 10
-) => request<ApiProject[]>(`/feed/projects?type=${type}&start=${start}&count=${count}`);
+) => {
+  const response = await request<ApiProject[] | null>(
+    `/feed/projects?type=${type}&start=${start}&count=${count}`,
+  );
+  return Array.isArray(response) ? response : [];
+};
 
 export const getFollowingProjectsFeed = (
   username: string,

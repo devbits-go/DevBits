@@ -62,7 +62,6 @@ func GetProjectsByUserId(context *gin.Context) {
 // It expects the `user_id` parameter in the URL.
 // Returns:
 // - 400 Bad Request if the ID is invalid.
-// - 403 Forbidden if auth user does not match.
 // - 500 Internal Server Error if the database query fails.
 // On success, responds with a 200 OK status and the projects' details in JSON format.
 func GetProjectsByBuilderId(context *gin.Context) {
@@ -70,12 +69,6 @@ func GetProjectsByBuilderId(context *gin.Context) {
 	userId, err := strconv.Atoi(strId)
 	if err != nil {
 		RespondWithError(context, http.StatusBadRequest, fmt.Sprintf("Failed to parse user_id: %v", err))
-		return
-	}
-
-	authUserID, ok := GetAuthUserID(context)
-	if ok && int64(userId) != authUserID {
-		RespondWithError(context, http.StatusForbidden, "Forbidden")
 		return
 	}
 

@@ -72,6 +72,7 @@ func main() {
 			// Uploaded media is content-addressed (random hex filenames) so
 			// it is safe to aggressively cache on the client.
 			context.Header("Cache-Control", "public, max-age=31536000, immutable")
+			context.Header("X-Content-Type-Options", "nosniff")
 			context.Next()
 			return
 		}
@@ -147,7 +148,7 @@ func main() {
 	router.PUT("/projects/:project_id", handlers.RequireAuth(), handlers.UpdateProjectInfo)
 	router.DELETE("/projects/:project_id", handlers.RequireAuth(), handlers.DeleteProject)
 	router.GET("/projects/by-user/:user_id", handlers.GetProjectsByUserId)
-	router.GET("/projects/by-builder/:user_id", handlers.RequireAuth(), handlers.GetProjectsByBuilderId)
+	router.GET("/projects/by-builder/:user_id", handlers.GetProjectsByBuilderId)
 
 	router.GET("/projects/:project_id/builders", handlers.GetProjectBuilders)
 	router.POST("/projects/:project_id/builders/:username", handlers.RequireAuth(), handlers.AddProjectBuilder)

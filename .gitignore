@@ -1,3 +1,35 @@
+# Repo-level ignores for secrets and build artifacts
+# Backend envs
+backend/.env
+backend/.env.local
+
+# Common secret files
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.crt
+
+# Service account and API keys
+*service-account*.json
+devbits-*.json
+devbits-play-service-account.json
+google-services.json
+GoogleService-Info.plist
+
+# Node/npm
+node_modules/
+
+# Expo / build outputs
+.expo/
+web-build/
+dist/
+
+# Local env files
+.env
+.env.*
 
 # Expo
 .expo/

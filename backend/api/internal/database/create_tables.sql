@@ -186,16 +186,24 @@ CREATE TABLE IF NOT EXISTS userpushtokens (
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner);
+CREATE INDEX IF NOT EXISTS idx_projects_creation_date ON projects(creation_date DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_project_id ON posts(project_id);
+CREATE INDEX IF NOT EXISTS idx_posts_creation_date ON posts(creation_date DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_user_id ON comments(user_id);
+CREATE INDEX IF NOT EXISTS idx_comments_creation_date ON comments(creation_date DESC);
 CREATE INDEX IF NOT EXISTS idx_userfollows_follower_id ON userfollows(follower_id);
 CREATE INDEX IF NOT EXISTS idx_userfollows_followed_id ON userfollows(followed_id);
 CREATE INDEX IF NOT EXISTS idx_projectlikes_project_id ON projectlikes(project_id);
 CREATE INDEX IF NOT EXISTS idx_projectfollows_project_id ON projectfollows(project_id);
+CREATE INDEX IF NOT EXISTS idx_projectfollows_user_id ON projectfollows(user_id);
 CREATE INDEX IF NOT EXISTS idx_postlikes_post_id ON postlikes(post_id);
+CREATE INDEX IF NOT EXISTS idx_postsaves_post_id ON postsaves(post_id);
+CREATE INDEX IF NOT EXISTS idx_postsaves_user_id ON postsaves(user_id);
+CREATE INDEX IF NOT EXISTS idx_projectbuilders_user_id ON projectbuilders(user_id);
 CREATE INDEX IF NOT EXISTS idx_commentlikes_comment_id ON commentlikes(comment_id);
 CREATE INDEX IF NOT EXISTS idx_directmessages_sender_recipient ON directmessages(sender_id, recipient_id);
+CREATE INDEX IF NOT EXISTS idx_directmessages_recipient_created ON directmessages(recipient_id, creation_date DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created_at ON notifications(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read_at ON notifications(user_id, read_at);

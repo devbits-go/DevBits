@@ -88,9 +88,10 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
+  const [loaded, fontError] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  const [fontFallbackReady, setFontFallbackReady] = useState(false);
   const { user, isLoading, justSignedUp } = useAuth();
   const { preferences } = usePreferences();
   const { inAppBanner, dismissInAppBanner } = useNotifications();
@@ -98,9 +99,11 @@ function RootLayoutNav() {
   const router = useRouter();
   const [showBoot, setShowBoot] = useState(() => !hasShownBoot);
   const shouldShowBoot = useMemo(
-    () => loaded && showBoot && !hasShownBoot,
-    [loaded, showBoot],
+    () =>
+      (loaded || !!fontError || fontFallbackReady) && showBoot && !hasShownBoot,
+    [fontError, fontFallbackReady, loaded, showBoot],
   );
+  const fontsReady = loaded || !!fontError || fontFallbackReady;
   const stackAnimation = useMemo(() => {
     switch (preferences.pageTransitionEffect) {
       case "none":
@@ -164,14 +167,26 @@ function RootLayoutNav() {
   );
 
   useEffect(() => {
-    if (loaded) {
+    if (loaded || fontError) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setFontFallbackReady(true);
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, [fontError, loaded]);
+
+  useEffect(() => {
+    if (fontsReady) {
       // Hide splash screen
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [fontsReady]);
 
   useEffect(() => {
-    if (!loaded || isLoading) {
+    if (!fontsReady || isLoading) {
       return;
     }
 
@@ -193,7 +208,7 @@ function RootLayoutNav() {
   }, [
     isLoading,
     justSignedUp,
-    loaded,
+    fontsReady,
     preferences.hasSeenWelcomeTour,
     segments,
     router,
@@ -244,7 +259,7 @@ function RootLayoutNav() {
   }, [openFromPayload]);
 
   // Render null if fonts are not loaded
-  if (!loaded) {
+  if (!fontsReady) {
     return null;
   }
 

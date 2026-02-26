@@ -12,14 +12,21 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://devbits.ddns.net",
+        "EXPO_PUBLIC_API_FALLBACK_URL": "https://devbits.ddns.net",
+        "EXPO_PUBLIC_SITE_URL": "https://devbits.ddns.net"
+      }
+      ,
+      "credentialsSource": "remote"
     }
   },
   "submit": {
     "production": {
       "android": {
         "serviceAccountKeyPath": "..\/devbits-play-service-account.json",
-        "track": "internal"
+        "track": "closed"
       }
     }
   }

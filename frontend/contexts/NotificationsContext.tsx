@@ -77,7 +77,7 @@ export function NotificationsProvider({
     payload: Record<string, unknown>;
   } | null>(null);
   const pageSize = 40;
-  const pollIntervalMs = 4000;
+  const pollIntervalMs = 12000;
   const isRegisteringRef = useRef(false);
   const notificationsModuleRef = useRef<NotificationsModule | null>(null);
   const hasHydratedRef = useRef(false);

@@ -1,0 +1,126 @@
+html {
+  scrollbar-gutter: stable both-edges;
+}
+
+.topbar {
+  border-bottom: 1px solid rgba(180, 255, 196, 0.2);
+  background: linear-gradient(
+    180deg,
+    rgba(13, 18, 26, 0.86) 0%,
+    rgba(8, 11, 16, 0.72) 100%
+  );
+  backdrop-filter: blur(14px);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.28),
+    inset 0 0 20px rgba(0, 243, 41, 0.04);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.topbar-inner {
+  width: min(1080px, 100% - 32px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+}
+
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  object-fit: cover;
+  box-shadow: 0 0 14px rgba(0, 243, 41, 0.18);
+}
+
+.nav {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-self: end;
+}
+
+.nav a {
+  color: #94a0af;
+  text-decoration: none;
+}
+
+.nav a:hover,
+.nav a.active {
+  color: #00f329;
+}
+
+.topbar-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 243, 41, 0.38);
+  background: rgba(16, 20, 26, 0.72);
+  color: #00f329;
+  text-decoration: none;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  margin-left: 10px;
+  flex-shrink: 0;
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 0 8px rgba(0, 243, 41, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    filter 0.16s ease;
+}
+
+.topbar-cta:hover,
+.topbar-cta.active {
+  color: #00f329;
+  box-shadow:
+    0 0 12px rgba(0, 243, 41, 0.32),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+@media (max-width: 768px) {
+  .topbar-inner {
+    width: min(1080px, 100% - 20px);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .nav {
+    width: 100%;
+    gap: 10px 12px;
+    justify-self: auto;
+  }
+
+  .nav a {
+    font-size: 14px;
+  }
+
+  .topbar-cta {
+    min-height: 34px;
+    padding: 7px 11px;
+    font-size: 12px;
+    margin-left: 0;
+    align-self: flex-end;
+  }
+}

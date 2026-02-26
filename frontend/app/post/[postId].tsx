@@ -592,22 +592,6 @@ export default function PostDetailScreen() {
       } else {
         await unlikePost(user.username, post.id);
       }
-
-      try {
-        const [serverStatus, serverPost] = await Promise.all([
-          isPostLiked(user.username, post.id),
-          getPostById(post.id),
-        ]);
-        const normalizedLikes = Math.max(0, serverPost.likes ?? nextLikes);
-        setPostLiked(serverStatus.status);
-        setPostLikeCount(normalizedLikes);
-        emitPostStats(post.id, {
-          likes: normalizedLikes,
-          isLiked: serverStatus.status,
-        });
-      } catch {
-        // Keep optimistic state if sync fails.
-      }
     } catch {
       setPostLiked(previousLiked);
       setPostLikeCount(previousLikes);

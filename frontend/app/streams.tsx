@@ -13,7 +13,7 @@ import {
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import {
-  clearApiCache,
+  beginFreshReadWindow,
   FeedSort,
   getFollowingProjectsFeed,
   getProjectBuilders,
@@ -67,6 +67,7 @@ export default function StreamsScreen() {
   const requestGuard = useRequestGuard();
   const reveal = useRef(new Animated.Value(0.08)).current;
   const listRef = useRef<FlatList<ReturnType<typeof mapProjectToUi>>>(null);
+  const hasFocusedRef = useRef(false);
   const { scrollY, onScroll } = useTopBlurScroll();
   const pageSize = 24;
 
@@ -139,25 +140,46 @@ export default function StreamsScreen() {
           ? builderProjectsRaw
           : [];
         const builderIds = builderProjects.map((project) => project.id);
-        const builderCounts = await Promise.all(
-          projectFeed.map((project) =>
-            getProjectBuilders(project.id).catch(() => []),
-          ),
-        );
-        const uiProjects = projectFeed.map((project, index) =>
-          mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+        const uiProjectsBase = projectFeed.map((project) =>
+          mapProjectToUi(project, 0),
         );
         if (!requestGuard.isActive(requestId)) {
           return;
         }
 
-        setProjects((prev) => (append ? prev.concat(uiProjects) : uiProjects));
+        setProjects((prev) =>
+          append ? prev.concat(uiProjectsBase) : uiProjectsBase,
+        );
         if (nextPage === 0) {
           setBuilderProjectIds(builderIds);
         }
         setPageIndex(nextPage);
         setHasMore(projectFeed.length === pageSize);
         setHasError(false);
+
+        if (showLoader && requestGuard.isMounted()) {
+          setIsLoading(false);
+        }
+
+        const builderCounts = await Promise.all(
+          projectFeed.map((project) =>
+            getProjectBuilders(project.id).catch(() => []),
+          ),
+        );
+        const enrichedProjects = projectFeed.map((project, index) =>
+          mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+        );
+
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
+
+        setProjects((prev) => {
+          const byId = new Map(
+            enrichedProjects.map((project) => [project.id, project]),
+          );
+          return prev.map((project) => byId.get(project.id) ?? project);
+        });
       } catch {
         if (!requestGuard.isActive(requestId)) {
           return;
@@ -189,14 +211,19 @@ export default function StreamsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      clearApiCache();
-      loadStreams({ showLoader: false, nextPage: 0 });
+      if (!hasFocusedRef.current) {
+        hasFocusedRef.current = true;
+        return;
+      }
+
+      beginFreshReadWindow();
+      void loadStreams({ showLoader: false, nextPage: 0 });
     }, [loadStreams]),
   );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    clearApiCache();
+    beginFreshReadWindow();
     setHasMore(true);
     setPageIndex(0);
     await loadStreams({ showLoader: false, nextPage: 0 });
