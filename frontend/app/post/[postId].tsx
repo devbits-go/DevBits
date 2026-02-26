@@ -348,7 +348,7 @@ export default function PostDetailScreen() {
       return;
     }
     if (!content.trim()) {
-      setErrorMessage("Comment cannot be empty.");
+      setErrorMessage("Bit cannot be empty.");
       return;
     }
 
@@ -385,7 +385,7 @@ export default function PostDetailScreen() {
       setComments(commentStates);
       emitPostStats(post.id, { comments: commentStates.length });
     } catch {
-      setErrorMessage("Failed to post comment.");
+      setErrorMessage("Failed to post bit.");
     } finally {
       setIsSubmitting(false);
     }
@@ -725,7 +725,7 @@ export default function PostDetailScreen() {
       return;
     }
     if (!editingCommentText.trim()) {
-      setErrorMessage("Comment cannot be empty.");
+      setErrorMessage("Bit cannot be empty.");
       return;
     }
     setIsCommentUpdating(true);
@@ -755,14 +755,14 @@ export default function PostDetailScreen() {
       setEditingCommentText("");
       setEditingCommentMedia([]);
     } catch {
-      setErrorMessage("Failed to update comment.");
+      setErrorMessage("Failed to update bit.");
     } finally {
       setIsCommentUpdating(false);
     }
   };
 
   const handleDeleteComment = (commentId: number) => {
-    Alert.alert("Delete comment?", "This action cannot be undone.", [
+    Alert.alert("Delete bit?", "This action cannot be undone.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -783,7 +783,7 @@ export default function PostDetailScreen() {
                 handleCancelEditComment();
               }
             } catch {
-              setErrorMessage("Failed to delete comment.");
+              setErrorMessage("Failed to delete bit.");
             }
           })();
         },
@@ -1133,7 +1133,7 @@ export default function PostDetailScreen() {
                         <TextInput
                           value={content}
                           onChangeText={setContent}
-                          placeholder="Add a comment"
+                          placeholder="Add a bit"
                           placeholderTextColor={colors.muted}
                           style={[styles.input, { color: colors.text }]}
                           multiline
@@ -1238,7 +1238,7 @@ export default function PostDetailScreen() {
                     </View>
 
                     <View style={styles.commentSection}>
-                      <ThemedText type="subtitle">Comments</ThemedText>
+                      <ThemedText type="subtitle">Bits</ThemedText>
                       {comments.length ? (
                         comments.map((comment) => (
                           <View
@@ -1325,7 +1325,7 @@ export default function PostDetailScreen() {
                                 <TextInput
                                   value={editingCommentText}
                                   onChangeText={setEditingCommentText}
-                                  placeholder="Update comment"
+                                  placeholder="Update bit"
                                   placeholderTextColor={colors.muted}
                                   style={[
                                     styles.editInput,
@@ -1489,7 +1489,7 @@ export default function PostDetailScreen() {
                             type="caption"
                             style={{ color: colors.muted }}
                           >
-                            No comments yet. Start the thread.
+                            No bits yet. Start the thread.
                           </ThemedText>
                         </View>
                       )}

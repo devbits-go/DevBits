@@ -60,7 +60,7 @@ export default function NotificationsScreen() {
       case "builder_added":
         return "Builder invite";
       case "comment_post":
-        return "New comment";
+        return "New bit";
       case "save_post":
         return "Byte saved";
       case "save_project":
@@ -80,7 +80,7 @@ export default function NotificationsScreen() {
       case "builder_added":
         return `${actor} added you as a builder.`;
       case "comment_post":
-        return `${actor} commented on your byte.`;
+        return `${actor} added a bit to your byte.`;
       case "save_post":
         return `${actor} saved your byte.`;
       case "save_project":
