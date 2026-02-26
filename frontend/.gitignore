@@ -44,6 +44,7 @@ fastlane/credentials.json
 *.key
 *.jks
 *.keystore
+@elifouts__frontend.jks
 
 # typescript
 *.tsbuildinfo

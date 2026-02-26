@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="apple-touch-icon" href="/icon.png" />
-    <title>Become a DevBits Tester</title>
+    <title>Become a Tester</title>
     <style>
       body {
         font-family:
@@ -106,9 +106,10 @@
       .topbar-inner {
         width: min(1080px, 100% - 32px);
         margin: 0 auto;
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
         align-items: center;
+        gap: 12px;
         padding: 14px 0;
       }
 
@@ -129,6 +130,7 @@
         display: flex;
         gap: 14px;
         flex-wrap: wrap;
+        justify-self: end;
       }
 
       .nav a {
@@ -139,6 +141,44 @@
       .nav a:hover,
       .nav a.active {
         color: #00f329;
+      }
+
+      .topbar-cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        padding: 7px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(0, 243, 41, 0.38);
+        background: rgba(16, 20, 26, 0.72);
+        color: #00f329;
+        text-decoration: none;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        margin-left: 10px;
+        flex-shrink: 0;
+        backdrop-filter: blur(12px);
+        box-shadow:
+          0 0 8px rgba(0, 243, 41, 0.22),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        transition:
+          transform 0.16s ease,
+          box-shadow 0.16s ease,
+          filter 0.16s ease;
+      }
+
+      .topbar-cta:hover,
+      .topbar-cta.active {
+        color: #00f329;
+        box-shadow:
+          0 0 12px rgba(0, 243, 41, 0.32),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+        transform: translateY(-1px);
+        filter: brightness(1.05);
       }
 
       .panel {
@@ -298,6 +338,14 @@
           font-size: 14px;
         }
 
+        .topbar-cta {
+          min-height: 34px;
+          padding: 7px 11px;
+          font-size: 12px;
+          margin-left: 0;
+          align-self: flex-end;
+        }
+
         .container {
           margin: 18px auto 24px;
           padding: 0 12px;
@@ -333,32 +381,14 @@
         }
       }
     </style>
+    <link rel="stylesheet" href="shared/topbar.css" />
+    <script defer src="shared/topbar.js"></script>
   </head>
-  <body>
+  <body data-nav="tester">
     <div class="glow-grid"></div>
     <div class="orb"></div>
     <div class="orb2"></div>
-    <header class="topbar">
-      <div class="topbar-inner">
-        <a
-          class="brand"
-          href="https://play.google.com/apps/testing/com.devbits.frontend"
-          aria-label="Open DevBits on Google Play"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img class="brand-logo" src="/icon.png" alt="DevBits logo" />
-        </a>
-        <nav class="nav" aria-label="Main navigation">
-          <a href="/">Home</a>
-          <a href="/features">Features</a>
-          <a class="active" href="/tester-application">Tester</a>
-          <a href="/about">About</a>
-          <a href="/privacy-policy">Privacy</a>
-          <a href="/account-deletion">Deletion</a>
-        </nav>
-      </div>
-    </header>
+    <div id="site-topbar"></div>
     <main class="container">
       <section class="panel">
         <h1>

@@ -1,4 +1,0 @@
-{
-  "typescript.tsserver.exclude": ["**/node_modules/**"],
-  "javascript.tsserver.exclude": ["**/node_modules/**"]
-}

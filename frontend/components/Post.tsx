@@ -188,7 +188,6 @@ export function Post({
   const previewCharLimit = 220;
   const likeMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
   const saveMutationRef = useRef<{ value: boolean; ts: number } | null>(null);
-  const desiredLikeRef = useRef<boolean | null>(null);
   const desiredSaveRef = useRef<boolean | null>(null);
   const [isSavedLocal, setIsSavedLocal] = useState(isSaved(id));
   const previewContent = useMemo(() => {
@@ -339,73 +338,31 @@ export function Post({
   }, [id, user?.username]);
 
   const handleToggleLike = async () => {
-    if (!user?.username) {
-      return;
-    }
-
-    let nextLiked = false;
-    let nextLikes = 0;
-
-    setIsLiked((prev) => {
-      nextLiked = !prev;
-      return nextLiked;
-    });
-    setLikeCount((prev) => {
-      nextLikes = Math.max(0, prev + (nextLiked ? 1 : -1));
-      return nextLikes;
-    });
-
-    emitPostStats(id, { likes: nextLikes, isLiked: nextLiked });
-    likeMutationRef.current = { value: nextLiked, ts: Date.now() };
-    desiredLikeRef.current = nextLiked;
-
-    if (isLikeUpdating) {
+    if (!user?.username || isLikeUpdating) {
       return;
     }
 
     setIsLikeUpdating(true);
+    const previousLiked = isLiked;
+    const previousLikes = likeCount;
+    const nextLiked = !previousLiked;
+    const nextLikes = Math.max(0, previousLikes + (nextLiked ? 1 : -1));
+
+    likeMutationRef.current = { value: nextLiked, ts: Date.now() };
+    setIsLiked(nextLiked);
+    setLikeCount(nextLikes);
+    emitPostStats(id, { likes: nextLikes, isLiked: nextLiked });
+
     try {
-      while (desiredLikeRef.current !== null) {
-        const targetLiked = desiredLikeRef.current;
-        desiredLikeRef.current = null;
-
-        if (targetLiked) {
-          await likePost(user.username, id);
-        } else {
-          await unlikePost(user.username, id);
-        }
+      if (nextLiked) {
+        await likePost(user.username, id);
+      } else {
+        await unlikePost(user.username, id);
       }
-
-      try {
-        const [serverStatus, serverPost] = await Promise.all([
-          isPostLiked(user.username, id),
-          getPostById(id),
-        ]);
-        setIsLiked(serverStatus.status);
-        if (typeof serverPost?.likes === "number") {
-          const normalizedLikes = Math.max(0, serverPost.likes);
-          setLikeCount(normalizedLikes);
-          emitPostStats(id, {
-            likes: normalizedLikes,
-            isLiked: serverStatus.status,
-          });
-        }
-      } catch {}
     } catch {
-      try {
-        const [serverStatus, serverPost] = await Promise.all([
-          isPostLiked(user.username, id),
-          getPostById(id),
-        ]);
-        setIsLiked(serverStatus.status);
-        if (typeof serverPost?.likes === "number") {
-          setLikeCount(Math.max(0, serverPost.likes));
-          emitPostStats(id, {
-            likes: Math.max(0, serverPost.likes),
-            isLiked: serverStatus.status,
-          });
-        }
-      } catch {}
+      setIsLiked(previousLiked);
+      setLikeCount(previousLikes);
+      emitPostStats(id, { likes: previousLikes, isLiked: previousLiked });
     } finally {
       likeMutationRef.current = null;
       setIsLikeUpdating(false);

@@ -94,7 +94,36 @@ func QueryComment(id int) (*Comment, error) {
 //   - []Comment: The post details if found.
 //   - error: An error if the query fails. Returns nil for both if no comments exists.
 func QueryCommentsByUserId(userId int) ([]Comment, int, error) {
-	query := `
+	scanRows := func(rows *sql.Rows) ([]Comment, int, error) {
+		defer rows.Close()
+		var result []Comment
+		for rows.Next() {
+			var comment Comment
+			var mediaJSON string
+			err := rows.Scan(
+				&comment.ID,
+				&comment.User,
+				&comment.Content,
+				&mediaJSON,
+				&comment.Likes,
+				&comment.CreationDate,
+				&comment.ParentComment,
+			)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					return nil, http.StatusOK, nil
+				}
+				return nil, http.StatusInternalServerError, err
+			}
+			if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
+				return nil, http.StatusBadRequest, err
+			}
+			result = append(result, comment)
+		}
+		return result, http.StatusOK, nil
+	}
+
+	postQuery := `
 	            SELECT 
 	                c.id AS comment_id,
 	                c.user_id,
@@ -107,14 +136,18 @@ func QueryCommentsByUserId(userId int) ([]Comment, int, error) {
 	            JOIN postcomments pc ON c.id = pc.comment_id
 	            WHERE c.user_id = $1;
     `
-
-	postRows, err := DB.Query(query, userId)
+	postRows, err := DB.Query(postQuery, userId)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
-	defer postRows.Close()
+	// Fully drain postRows before opening projRows to avoid holding two open
+	// cursors at once (which fails on SQLite due to schema-lock contention).
+	postComments, code, err := scanRows(postRows)
+	if err != nil {
+		return nil, code, err
+	}
 
-	query = `
+	projQuery := `
 	        SELECT 
 	            c.id AS comment_id,
 	            c.user_id,
@@ -127,62 +160,16 @@ func QueryCommentsByUserId(userId int) ([]Comment, int, error) {
 	        JOIN projectcomments pc ON c.id = pc.comment_id
 	        WHERE c.user_id = $1;
 	`
-	projRows, err := DB.Query(query, userId)
+	projRows, err := DB.Query(projQuery, userId)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
-	defer projRows.Close()
-	comments := []Comment{}
-
-	for projRows.Next() {
-		var comment Comment
-		var mediaJSON string
-		err := projRows.Scan(
-			&comment.ID,
-			&comment.User,
-			&comment.Content,
-			&mediaJSON,
-			&comment.Likes,
-			&comment.CreationDate,
-			&comment.ParentComment,
-		)
-
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return nil, http.StatusOK, nil
-			}
-			return nil, http.StatusInternalServerError, err
-		}
-		if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
-			return nil, http.StatusBadRequest, err
-		}
-		comments = append(comments, comment)
-	}
-	for postRows.Next() {
-		var comment Comment
-		var mediaJSON string
-		err := postRows.Scan(
-			&comment.ID,
-			&comment.User,
-			&comment.Content,
-			&mediaJSON,
-			&comment.Likes,
-			&comment.CreationDate,
-			&comment.ParentComment,
-		)
-
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return nil, http.StatusOK, nil
-			}
-			return nil, http.StatusInternalServerError, err
-		}
-		if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
-			return nil, http.StatusBadRequest, err
-		}
-		comments = append(comments, comment)
+	projComments, code, err := scanRows(projRows)
+	if err != nil {
+		return nil, code, err
 	}
 
+	comments := append(projComments, postComments...)
 	return comments, http.StatusOK, nil
 }
 

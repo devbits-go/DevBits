@@ -17,6 +17,15 @@ $root = Resolve-Path (Join-Path $scriptDir "..")
 Push-Location $root
 
 try {
+    $hostsPath = "C:\Windows\System32\drivers\etc\hosts"
+    if (Test-Path $hostsPath) {
+        $hostOverride = Select-String -Path $hostsPath -Pattern "(?im)^\s*127\.0\.0\.1\s+devbits\.ddns\.net(\s|$)" -ErrorAction SilentlyContinue
+        if ($hostOverride) {
+            Write-Host "WARNING: hosts file maps devbits.ddns.net to 127.0.0.1. This can cause domain/API connection failures and slow first loads." -ForegroundColor Yellow
+            Write-Host "Remove that hosts override from $hostsPath (run editor as Administrator) if you want real domain routing." -ForegroundColor Yellow
+        }
+    }
+
     $envFile = Join-Path $root ".env"
     if (-not (Test-Path $envFile)) {
         throw "Missing $envFile. Create it from backend/.env.example and set strong credentials before deploying."

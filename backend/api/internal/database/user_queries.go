@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 )
 
 type ApiUser struct {
 	Id           int                    `json:"id"`
-	Username     string                 `json:"username"`
+	Username     string                 `json:"username" binding:"required"`
 	Picture      string                 `json:"picture"`
 	Bio          string                 `json:"bio"`
-	Links        map[string]interface{} `json:"links"`
+	Links        []string               `json:"links"`
 	Settings     map[string]interface{} `json:"settings"`
 	CreationDate string                 `json:"creation_date"`
 }
@@ -36,7 +37,7 @@ func CreateUser(user *ApiUser) (int, error) {
 	// Use $1, $2, etc. for parameter placeholders in PostgreSQL
 	query := `
 		INSERT INTO users (username, picture, bio, links, settings, creation_date)
-		VALUES ($1, $2, $3, $4, $5, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id;
 	`
 	var newId int
@@ -47,6 +48,7 @@ func CreateUser(user *ApiUser) (int, error) {
 		user.Bio,
 		linksJson,
 		settingsJson,
+		time.Now().UTC().Format("2006-01-02 15:04:05"),
 	).Scan(&newId)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert user: %w", err)

@@ -4,22 +4,25 @@
     "slug": "frontend",
     "version": "1.0.2",
     "orientation": "portrait",
-    "icon": "./assets/images/Devbits_Icons1.png",
+    "icon": "./assets/images/Devbits_Icons.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/images/Devbits_Icons1.png",
+      "icon": "./assets/images/Devbits_Icons.png",
       "bundleIdentifier": "com.devbits.frontend",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "associatedDomains": [
+        "applinks:devbits.ddns.net"
+      ]
     },
     "android": {
       "icon": "./assets/images/Devbits_Icons1.png",
-      "versionCode": 13,
+      "versionCode": 14,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -35,7 +38,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "splash": {
-      "image": "./assets/images/Devbits_Icons1.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },

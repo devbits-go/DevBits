@@ -143,35 +143,27 @@ export default function ExploreScreen() {
           ? followingIdsRaw
           : [];
 
-        const builderCounts = await Promise.all(
-          projectFeed.map((project) =>
-            getProjectBuilders(project.id).catch(() => []),
-          ),
-        );
-        const uiProjects = projectFeed.map((project, index) =>
-          mapProjectToUi(project, builderCounts[index]?.length ?? 0),
-        );
         const projectMap = new Map(
           projectFeed.map((project) => [project.id, project]),
         );
-        const uiPosts = await Promise.all(
-          postFeed.map(async (post) => {
-            const [postUser, postProject] = await Promise.all([
-              getUserById(post.user).catch(() => null),
-              projectMap.get(post.project)
-                ? Promise.resolve(projectMap.get(post.project)!)
-                : getProjectById(post.project).catch(() => null),
-            ]);
-            return mapPostToUi(post, postUser, postProject);
-          }),
+        const usersById = new Map(users.map((item) => [item.id, item]));
+        const uiProjectsBase = projectFeed.map((project) =>
+          mapProjectToUi(project, 0),
+        );
+        const uiPostsBase = postFeed.map((post) =>
+          mapPostToUi(
+            post,
+            usersById.get(post.user) ?? null,
+            projectMap.get(post.project) ?? null,
+          ),
         );
         const tagCounts = new Map<string, number>();
-        uiProjects.forEach((project) =>
+        uiProjectsBase.forEach((project) =>
           project.tags.forEach((tag) =>
             tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1),
           ),
         );
-        uiPosts.forEach((post) =>
+        uiPostsBase.forEach((post) =>
           post.tags.forEach((tag) =>
             tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1),
           ),
@@ -189,8 +181,8 @@ export default function ExploreScreen() {
           return;
         }
 
-        setProjects(uiProjects);
-        setPosts(uiPosts);
+        setProjects(uiProjectsBase);
+        setPosts(uiPostsBase);
         setTags(
           Array.from(tagCounts.entries())
             .sort((a, b) => b[1] - a[1])
@@ -199,6 +191,58 @@ export default function ExploreScreen() {
         setPeople(uiPeople.filter((person) => person.name !== user?.username));
         setFollowing(new Set(followingIds));
         setHasError(false);
+
+        if (showLoader && requestGuard.isMounted()) {
+          setIsLoading(false);
+        }
+
+        const missingProjectIds = Array.from(
+          new Set(
+            postFeed
+              .map((post) => post.project)
+              .filter((projectId) => !projectMap.has(projectId)),
+          ),
+        );
+
+        const fetchedProjects = await Promise.all(
+          missingProjectIds.map((projectId) =>
+            getProjectById(projectId).catch(() => null),
+          ),
+        );
+
+        fetchedProjects.forEach((project) => {
+          if (project) {
+            projectMap.set(project.id, project);
+          }
+        });
+
+        const [builderCounts, enrichedPosts] = await Promise.all([
+          Promise.all(
+            projectFeed.map((project) =>
+              getProjectBuilders(project.id).catch(() => []),
+            ),
+          ),
+          Promise.all(
+            postFeed.map(async (post) =>
+              mapPostToUi(
+                post,
+                usersById.get(post.user) ?? null,
+                projectMap.get(post.project) ?? null,
+              ),
+            ),
+          ),
+        ]);
+
+        const enrichedProjects = projectFeed.map((project, index) =>
+          mapProjectToUi(project, builderCounts[index]?.length ?? 0),
+        );
+
+        if (!requestGuard.isActive(requestId)) {
+          return;
+        }
+
+        setProjects(enrichedProjects);
+        setPosts(enrichedPosts);
       } catch {
         if (!requestGuard.isActive(requestId)) {
           return;

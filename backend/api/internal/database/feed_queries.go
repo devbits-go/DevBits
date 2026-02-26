@@ -76,7 +76,7 @@ func getPostsFeedSorted(start int, count int, sort string) ([]Post, int, error) 
 		return nil, http.StatusNotFound, err
 	}
 	defer rows.Close()
-	var posts []Post
+	posts := []Post{}
 
 	for rows.Next() {
 		var post Post
@@ -119,7 +119,7 @@ func getProjectsFeedSorted(start int, count int, sort string) ([]Project, int, e
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
-	var projects []Project
+	projects := []Project{}
 	defer rows.Close()
 
 	for rows.Next() {
