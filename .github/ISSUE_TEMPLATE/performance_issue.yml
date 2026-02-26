@@ -1,0 +1,127 @@
+name: Performance Issue
+description: Report slow performance, high resource usage, or optimization opportunities
+title: "[Performance]: "
+labels: ["performance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a performance issue! Detailed information helps us identify and fix bottlenecks.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of DevBits is experiencing performance issues?
+      options:
+        - Backend (Go API)
+        - Frontend (React Native)
+        - Database queries
+        - Network/API calls
+        - Build/compilation time
+        - App startup time
+        - Memory usage
+        - Multiple components
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is the performance issue?
+      options:
+        - Critical - App unusable or crashes
+        - High - Significant slowdown affecting usability
+        - Medium - Noticeable but tolerable delay
+        - Low - Minor optimization opportunity
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Performance Issue Description
+      description: Describe the performance problem you're experiencing.
+      placeholder: |
+        What operation is slow?
+        How long does it take?
+        When does it occur?
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this performance issue?
+      placeholder: |
+        1. Open the app
+        2. Navigate to '...'
+        3. Perform action '...'
+        4. Notice slowdown/lag
+
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Performance Metrics
+      description: If available, provide specific measurements
+      placeholder: |
+        - Response time: X seconds
+        - Memory usage: Y MB
+        - CPU usage: Z%
+        - Database query time: A ms
+        - Bundle size: B KB
+      render: markdown
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Performance
+      description: What would acceptable performance look like?
+      placeholder: |
+        Operation should complete in < 1 second
+        Memory usage should stay under 100MB
+
+  - type: textarea
+    id: profiling
+    attributes:
+      label: Profiling Data
+      description: If you've done any profiling or debugging, share the results
+      placeholder: |
+        - Go pprof output
+        - React Native Performance Monitor data
+        - Database EXPLAIN QUERY PLAN results
+        - Network timing from DevTools
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Information (Optional)
+      description: Help us understand your setup
+      placeholder: |
+        - OS: [e.g., Ubuntu 22.04, macOS 14, Windows 11]
+        - Device: [e.g., iPhone 14, Samsung Galaxy S23, Desktop]
+        - Go version: [e.g., 1.21.5]
+        - Node version: [e.g., 20.10.0]
+        - Database size: [e.g., 10k records, 500MB]
+        - Network conditions: [e.g., WiFi, 4G, slow connection]
+      render: markdown
+
+  - type: textarea
+    id: investigation
+    attributes:
+      label: Investigation & Ideas
+      description: Any theories about what might be causing the issue?
+      placeholder: |
+        - Might be caused by N+1 queries
+        - Could be related to large image loading
+        - May need caching
+        - Possibly inefficient algorithm
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or videos showing the issue
+      placeholder: Any other information that might be helpful

@@ -1,0 +1,83 @@
+name: Documentation
+description: Report missing, unclear, or incorrect documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve DevBits documentation! Clear docs make the project more accessible to everyone.
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What kind of documentation issue is this?
+      options:
+        - Missing documentation
+        - Incorrect/outdated information
+        - Unclear or confusing explanation
+        - Typo or formatting issue
+        - Code examples needed
+        - API documentation
+        - Setup/installation instructions
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of DevBits does this documentation relate to?
+      options:
+        - Backend (Go API)
+        - Frontend (React Native)
+        - Database
+        - Scripts/Build
+        - README files
+        - Setup/Installation
+        - General project docs
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where is the documentation issue located?
+      placeholder: |
+        - File: README.md, line 42
+        - Section: "Backend Testing"
+        - URL: https://...
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What's Wrong?
+      description: Clearly describe the documentation issue.
+      placeholder: |
+        The current documentation states... but actually...
+        OR
+        There's no documentation for...
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How should the documentation be improved?
+      placeholder: |
+        The documentation should explain...
+        OR
+        Here's a better way to phrase it...
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or examples?
+      placeholder: |
+        - Related to issue #123
+        - This confused me when I tried to...
+        - Similar projects document this as...

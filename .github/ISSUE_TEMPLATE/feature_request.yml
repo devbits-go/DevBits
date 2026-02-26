@@ -1,0 +1,96 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for DevBits
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please provide as much detail as possible to help us understand your idea.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of DevBits would this feature affect?
+      options:
+        - Backend (Go API)
+        - Frontend (React Native)
+        - Database
+        - Scripts/Build
+        - Documentation
+        - Multiple Components
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a problem? Please describe.
+      placeholder: |
+        I'm always frustrated when...
+        It would be helpful if...
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see.
+      placeholder: A clear and concise description of what you want to happen.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or features you've considered.
+      placeholder: What other approaches could solve this problem?
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Critical - Blocking my workflow
+        - High - Would significantly improve experience
+        - Medium - Nice to have
+        - Low - Minor improvement
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: user-impact
+    attributes:
+      label: User Impact
+      description: Who would benefit from this feature?
+      options:
+        - label: End users (people using the app)
+        - label: Developers working on DevBits
+        - label: System administrators/DevOps
+        - label: Contributors
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups or Examples
+      description: If applicable, add mockups, screenshots, or examples from other apps.
+      placeholder: Drag and drop images or provide links
+
+  - type: textarea
+    id: technical-notes
+    attributes:
+      label: Technical Considerations
+      description: Any technical details, dependencies, or implementation notes?
+      placeholder: |
+        - Might require changes to database schema
+        - Could use library X
+        - Should integrate with feature Y
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context about the feature request here.
+      placeholder: Any other information that might be helpful
