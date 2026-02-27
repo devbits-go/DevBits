@@ -20,6 +20,6 @@
 # Service account files
 *service-account*.json
 devbits-*.json
-
+/backups/
 # nginx certs (if you keep private certs locally, move to secrets/ and ignore)
 nginx/certs/
