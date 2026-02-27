@@ -235,8 +235,6 @@ export const API_BASE_URL = normalizeBaseUrl(getDefaultBaseUrl());
 
 const LOCAL_DEV_BASE_URL = getLocalDevBaseUrl();
 
-const IS_LOCAL_API_MODE = __DEV__;
-
 const API_FALLBACK_URL = normalizeBaseUrl(
   __DEV__ ? "" : "https://devbits.ddns.net",
 );
