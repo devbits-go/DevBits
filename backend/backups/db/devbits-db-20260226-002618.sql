@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict yTlSkLCZueqHatdTd0SIdf1ZGmZHKqQywfBrJelO7R4aGtcyb5EBHommHDb29on
+\restrict By02p8KYJHDbJ6TNla6wXJw3hjRwXm33SK1zLGJUiwbeK1DXV2hAfPPXSJlxU3l
 
 -- Dumped from database version 15.16 (Debian 15.16-1.pgdg13+1)
 -- Dumped by pg_dump version 15.16 (Debian 15.16-1.pgdg13+1)
@@ -440,6 +440,7 @@ COPY public.commentlikes (user_id, comment_id) FROM stdin;
 COPY public.comments (id, parent_comment_id, user_id, content, media, likes, creation_date) FROM stdin;
 1	\N	2	***Welcome!***	[]	1	2026-02-22 06:13:57.140633
 2	\N	2	hey	[]	0	2026-02-24 06:02:43.563579
+8	\N	2	Hopefully.	[]	0	2026-02-26 03:59:47.343148
 4	\N	2	How nice	[]	0	2026-02-25 12:12:46.208948
 3	\N	12	Very cool	[]	2	2026-02-25 04:22:50.328314
 6	\N	12	# **_I guess iΓÇÖm just better_**	[]	0	2026-02-25 14:37:45.700912
@@ -558,6 +559,12 @@ COPY public.directmessages (id, sender_id, recipient_id, content, creation_date,
 103	2	12	hi	2026-02-25 03:01:12.357361	\N
 104	2	12	how are you	2026-02-25 03:01:18.800528	\N
 105	12	2	heyyyy	2026-02-25 04:08:15.61367	\N
+106	2	3	test chat	2026-02-26 04:11:31.118818	\N
+107	2	3	why so much space	2026-02-26 04:11:41.98759	\N
+108	3	2	hey brother	2026-02-26 04:26:41.296631	\N
+109	3	2	how are yo u	2026-02-26 04:26:53.007846	\N
+110	3	2	you ok?	2026-02-26 04:26:58.146489	\N
+111	2	3	im good	2026-02-26 04:27:26.372042	\N
 \.
 
 
@@ -568,9 +575,7 @@ COPY public.directmessages (id, sender_id, recipient_id, content, creation_date,
 COPY public.notifications (id, user_id, actor_id, type, post_id, project_id, comment_id, created_at, read_at) FROM stdin;
 22	4	2	follow_user	\N	\N	\N	2026-02-22 23:37:12.499656	\N
 23	4	2	direct_message	\N	\N	\N	2026-02-22 23:45:51.549256	\N
-24	3	2	builder_added	\N	1	\N	2026-02-22 23:55:39.441395	\N
 25	4	5	follow_user	\N	\N	\N	2026-02-23 14:05:31.617678	\N
-26	3	5	follow_user	\N	\N	\N	2026-02-23 14:05:33.224218	\N
 113	7	2	direct_message	\N	\N	\N	2026-02-24 04:55:40.797338	\N
 114	5	2	direct_message	\N	\N	\N	2026-02-24 14:26:04.787561	\N
 115	8	5	direct_message	\N	\N	\N	2026-02-24 14:28:01.829198	\N
@@ -582,16 +587,20 @@ COPY public.notifications (id, user_id, actor_id, type, post_id, project_id, com
 124	8	2	follow_user	\N	\N	\N	2026-02-24 16:42:14.999132	\N
 125	8	2	follow_user	\N	\N	\N	2026-02-24 16:42:17.831356	\N
 126	8	2	follow_user	\N	\N	\N	2026-02-24 16:42:20.600543	\N
-127	3	2	follow_user	\N	\N	\N	2026-02-24 16:42:23.646586	\N
 128	9	2	follow_user	\N	\N	\N	2026-02-24 18:59:50.771187	\N
-137	3	12	follow_user	\N	\N	\N	2026-02-25 04:29:33.667517	\N
+150	13	2	follow_user	\N	\N	\N	2026-02-26 03:56:22.471112	\N
+151	8	2	save_project	\N	4	\N	2026-02-26 03:58:22.992793	\N
+152	9	2	save_project	\N	6	\N	2026-02-26 03:58:25.521494	\N
+153	12	2	save_project	\N	8	\N	2026-02-26 03:58:27.247643	\N
+154	12	2	save_post	5	\N	\N	2026-02-26 03:58:46.882382	\N
 138	7	12	follow_user	\N	\N	\N	2026-02-25 04:29:35.707022	\N
+161	12	3	save_project	\N	8	\N	2026-02-26 04:32:34.671987	\N
 141	12	2	comment_post	5	\N	4	2026-02-25 12:12:46.213931	\N
 142	12	2	comment_post	5	\N	5	2026-02-25 12:14:33.856195	\N
-144	8	2	save_project	\N	4	\N	2026-02-25 12:17:04.35381	\N
+162	9	3	save_project	\N	6	\N	2026-02-26 04:32:36.360604	\N
+163	8	3	save_project	\N	4	\N	2026-02-26 04:32:37.793972	\N
 146	12	2	comment_post	5	\N	7	2026-02-25 15:29:55.81608	\N
-148	12	2	save_project	\N	8	\N	2026-02-25 21:22:15.531766	\N
-149	9	2	save_project	\N	6	\N	2026-02-25 21:22:15.949098	\N
+165	12	3	save_post	5	\N	\N	2026-02-26 04:32:46.91211	\N
 \.
 
 
@@ -607,6 +616,7 @@ COPY public.postcomments (post_id, comment_id, user_id) FROM stdin;
 5	5	2
 5	6	12
 5	7	2
+8	8	2
 \.
 
 
@@ -621,8 +631,22 @@ COPY public.postlikes (user_id, post_id) FROM stdin;
 12	5
 9	7
 2	7
+10	7
+10	6
+10	5
 2	6
 2	5
+10	3
+10	2
+10	1
+3	8
+3	7
+3	6
+3	5
+3	3
+3	2
+3	1
+2	8
 \.
 
 
@@ -631,12 +655,13 @@ COPY public.postlikes (user_id, post_id) FROM stdin;
 --
 
 COPY public.posts (id, content, media, project_id, creation_date, user_id, likes) FROM stdin;
-1	Welcome to Devbits!\n>- To start - create your first `Stream`\n>- Then add a `Byte`!\n---\n>- *Any user can comment or chat with other users!*\n\n-- I hope you enjoy! :)	[]	1	2026-02-22 06:11:36.478826	2	2
-3	Go to `settings > Help` for documentation on site MD rendering 	[]	2	2026-02-22 23:54:39.762739	2	1
-2	> [!Tip] Set up your Bio!!	[]	1	2026-02-22 23:51:46.051741	2	1
-7	Add a *Comment* if you have an issue or go to the link below to add an issue\n\n[Devbits Issues on GitHub](github.com/devbits-go/DevBits/issues)\n\nIf you have any other feedback please feel free to message me!\n\n-Eli	[]	1	2026-02-25 20:39:50.441679	2	2
-6	Try markdown features now!\n\n> *Go to:*\n> `settings > help & Nav > MD help`\n> ___\n> - *For more info on Md checkout `devbits.md`*	[]	1	2026-02-25 16:52:42.58316	2	1
-5	Got OAuth working!	[]	8	2026-02-25 04:07:44.256025	12	2
+7	Add a *Comment* if you have an issue or go to the link below to add an issue\n\n[Devbits Issues on GitHub](github.com/devbits-go/DevBits/issues)\n\nIf you have any other feedback please feel free to message me!\n\n-Eli	[]	1	2026-02-25 20:39:50.441679	2	4
+6	Try markdown features now!\n\n> *Go to:*\n> `settings > help & Nav > MD help`\n> ___\n> - *For more info on Md checkout `devbits.md`*	[]	1	2026-02-25 16:52:42.58316	2	3
+5	Got OAuth working!	[]	8	2026-02-25 04:07:44.256025	12	4
+3	Go to `settings > Help` for documentation on site MD rendering 	[]	2	2026-02-22 23:54:39.762739	2	3
+2	> [!Tip] Set up your Bio!!	[]	1	2026-02-22 23:51:46.051741	2	3
+1	Welcome to Devbits!\n>- To start - create your first `Stream`\n>- Then add a `Byte`!\n---\n>- *Any user can comment or chat with other users!*\n\n-- I hope you enjoy! :)	[]	1	2026-02-22 06:11:36.478826	2	4
+8	> [!Note]Update 16 incoming!\n___\n\n* feat: update privacy policy and topbar design\n\n- Changed the title of the privacy policy page to "Become a Tester".\n- Redesigned the topbar layout using CSS Grid for better alignment.\n- Added a "Become a Tester" call-to-action button in the topbar.\n- Introduced a new shared topbar component with associated CSS and JS files.\n- Updated the tester application page to reflect the new topbar design.\n- Enhanced API request handling with improved timeout settings and error management.\n- Removed the reset project script as it is no longer needed.\n- Added scripts for running the frontend and enabling Git hooks.\n- Created a PowerShell script for formatting videos for the App Store.\n\n* Removed github hookss not needed. screw you co-piolot\n\n* Initial plan\n\n* Restore jest tests without --watchAll to prevent connectivity slowdown\n\nCo-authored-by: elifouts <116454864+elifouts@users.noreply.github.com>\n\n* Initial plan\n\n* Fix HTTP/2 directive in nginx.conf to use listen 443 ssl http2\n\nCo-authored-by: elifouts <116454864+elifouts@users.noreply.github.com>\n\n* Initial plan\n\n* Initial plan\n\n* Initial plan\n\n* Use FileSystem.EncodingType.Base64 instead of "base64" as any\n\nCo-authored-by: elifouts <116454864+elifouts@users.noreply.github.com>\n\n* Fix PowerShell syntax errors in FormatForAppStore.ps1\n\nCo-authored-by: elifouts <116454864+elifouts@users.noreply.github.com>\n\n* Fix backend compatibility issues: Links type, NOW(), GREATEST, concurrent cursors, logger init\n\nCo-authored-by: elifouts <116454864+elifouts@users.noreply.github.com>\n\n* Fixed http2\n\n* Fix all backend tests: update expected values, add empty body skip, fix dual-cursor bug and GREATEST()\n\nCo-authored-by: elifouts <116454864+elifouts@users.noreply.github.com>\n\n* screw this. im recreating it.\n\n* Backup DB\n\n* Fixed Developement frontend connection and also fixed post likes to match the same method used for streams.\n\n* update icons\n\n---------\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>	[]	1	2026-02-26 03:59:04.048423	2	2
 \.
 
 
@@ -645,6 +670,10 @@ COPY public.posts (id, content, media, project_id, creation_date, user_id, likes
 --
 
 COPY public.postsaves (user_id, post_id) FROM stdin;
+2	2
+2	5
+3	1
+3	5
 \.
 
 
@@ -671,10 +700,13 @@ COPY public.projectcomments (project_id, comment_id, user_id) FROM stdin;
 
 COPY public.projectfollows (user_id, project_id) FROM stdin;
 7	1
-12	8
 2	4
-2	8
+12	8
 2	6
+2	8
+3	8
+3	6
+3	4
 \.
 
 
@@ -688,10 +720,21 @@ COPY public.projectlikes (user_id, project_id) FROM stdin;
 2	2
 9	8
 8	4
+2	6
 2	4
 12	8
 12	1
-2	6
+10	8
+10	2
+10	1
+10	4
+10	6
+2	1
+3	2
+3	4
+3	6
+3	8
+3	1
 2	8
 \.
 
@@ -701,11 +744,11 @@ COPY public.projectlikes (user_id, project_id) FROM stdin;
 --
 
 COPY public.projects (id, name, description, about_md, status, likes, links, tags, media, owner, creation_date) FROM stdin;
-2	Devbits.md	A place to show off MD support	# Markdown Syntax Guide\n\nA complete reference for Markdown formatting with interactive examples.\n\n---\n\n## Headers\n\n```\n# This is a Heading h1\n## This is a Heading h2\n### This is a Heading h3\n#### This is a Heading h4\n##### This is a Heading h5\n###### This is a Heading h6\n```\n\n# This is a Heading h1\n## This is a Heading h2\n### This is a Heading h3\n#### This is a Heading h4\n##### This is a Heading h5\n###### This is a Heading h6\n\n---\n\n## Emphasis\n\n*This text will be italic*  \n_This will also be italic_\n\n**This text will be bold**  \n__This will also be bold__\n\n_You **can** combine them_\n\n~~This text is strikethrough~~\n\n---\n\n## Lists\n\n### Unordered Lists\n\n* Item 1\n* Item 2\n* Item 2a\n* Item 2b\n    * Item 3a\n    * Item 3b\n\n### Ordered Lists\n\n1. Item 1\n2. Item 2\n3. Item 3\n    1. Item 3a\n    2. Item 3b\n\n### Task Lists (Checkboxes)\n\n- [x] Completed task\n- [x] Another completed task\n- [ ] Incomplete task\n- [ ] Another incomplete task\n    - [x] Subtask completed\n    - [ ] Subtask incomplete\n\n---\n\n## Images\n\n![This is an alt text.](/image/Markdown-mark.svg "This is a sample image.")\n\n---\n\n## Links\n\nYou may be using [Markdown Live Preview](https://markdownlivepreview.com/).\n\n[Link with title](https://example.com "This is a title")\n\n<https://example.com>\n\n---\n\n## Blockquotes\n\n> Markdown is a lightweight markup language with plain-text-formatting syntax, created in 2004 by John Gruber with Aaron Swartz.\n\n> Markdown is often used to format readme files, for writing messages in online discussion forums, and to create rich text using a plain text editor.\n\n> **Note:** You can use other markdown syntax within blockquotes.\n\n---\n\n## Tables\n\n| Left columns  | Center columns | Right columns |\n| ------------- |:-------------:|:-----------:|\n| left foo      | center foo     | right foo   |\n| left bar      | center bar     | right bar   |\n| left baz      | center baz     | right baz   |\n\n---\n\n## Code\n\n### Blocks of Code\n\n```javascript\nlet message = 'Hello world';\nalert(message);\n```\n\n```python\ndef hello_world():\n    print("Hello, World!")\n    return True\n```\n\n```html\n<div class="container">\n  <p>HTML Example</p>\n</div>\n```\n\n### Inline Code\n\nThis web site is using `markedjs/marked` for rendering markdown.\n\nUse the `console.log()` function to debug your code.\n\n---\n\n## Horizontal Rules\n\n---\n\n***\n\n___\n\n---\n\n## Line Breaks\n\nLine 1  \nLine 2 (with two spaces before)\n\nLine 1\n\nLine 2 (with blank line between)\n\n---\n\n<details>\n<summary><strong>???? Advanced Features (Click to expand)</strong></summary>\n\n### Definition Lists\n\nTerm 1\n:   Definition 1\n\nTerm 2\n:   Definition 2a\n:   Definition 2b\n\n### Footnotes\n\nThis is a statement[^1] with a footnote.\n\n[^1]: This is the footnote content.\n\n### Superscript & Subscript\n\nH~2~O\n\nE=mc^2^\n\n</details>\n\n---\n\n<details>\n<summary><strong>??? Markdown Best Practices (Click to expand)</strong></summary>\n\n- Use consistent heading hierarchy\n- Add blank lines between sections\n- Use code fences for better readability\n- Link to external resources when relevant\n- Keep lists simple and organized\n- Use emphasis sparingly for impact\n- Always provide alt text for images\n- Test your markdown before sharing\n\n</details>\n\n---\n\n<details>\n<summary><strong>???? Tips & Tricks (Click to expand)</strong></summary>\n\n**Combining Styles:**\n- ***Bold and Italic*** combined\n- **Bold with `code`**\n- > Blockquote with **bold**\n\n**Escaping Characters:**\n\\*This will not be italic\\*\n\n\\[This is not a link\\]\n\n**HTML Embedding:**\nYou can embed raw HTML for more control over formatting.\n\n</details>\n\n---\n\n## Quick Reference Checklist\n\n- [x] Headers learned\n- [x] Emphasis mastered\n- [x] Lists understood\n- [x] Images added\n- [x] Links created\n- [x] Blockquotes used\n- [x] Tables created\n- [x] Code blocks formatted\n- [ ] Advanced features explored\n- [ ] Ready to write markdown!\n\n---\n\n**Last Updated:** February 20, 2026  \n**Format:** GitHub Flavored Markdown (GFM)	0	3	[]	["markdown","documentation","devbits"]	[]	2	2026-02-22 06:12:55.58306
-8	iNQueue	Whats next iN Queue? Find out by bringing together all of your favorite media watches in one place.	NQ aims to develop a cross-platform media recommendation system that unifies user preferences across movies, shows, games, books, and more to deliver personalized "next in queue" suggestions. By aggregating and restructuring data from multiple APIs, the system will create a graph of your media consumption history.	0	3	["https://github.com/grillinr/nq"]	["go","react native"]	[]	12	2026-02-25 04:07:07.834917
-4	Ball growing machine	machine that grows my balls	Currently it does not grow my balls. Further testing required	0	2	[]	["Balls","grow","big"]	[]	8	2026-02-24 14:27:57.974905
-6	i found issue	Issue	when i try to add link to my profile my keyboard covers the box and i cannot see what i typing to thpost i cant see what im typing on this as well keyboard covers it also caps are being weird my image wont upload and after i post it being glitchy	0	1	[]	[]	["https://devbits.ddns.net/uploads/u9_912c35d6bb863bcf54d1b5c7.png"]	9	2026-02-24 17:50:48.488426
-1	Devbits	`DevBits`\n___\n> An app for *Devs* and people with cool projects\n*Or if you are just taking a browse that is cool too*	![DevBits](https://github.com/devbits-go/.github/blob/main/profile/svg/DevBits.svg)\n\n![Purpose](https://github.com/devbits-go/.github/blob/main/profile/svg/Purpose.svg)\n\n> Welcome To *DevBits*, The App for Developers and people in tech.\n\n> Looking to create a healthy social environment for people to share their ideas.\n\n![Members](https://github.com/devbits-go/.github/blob/main/profile/svg/Members.svg)\n\n![Cards](https://github.com/devbits-go/.github/blob/main/profile/svg/Cards.svg)\n\n![ArchBTW](https://github.com/devbits-go/.github/blob/main/profile/svg/ArchBTW.svg)	0	3	["devbits.ddns.net/tester-application"]	["Devbits","New","App","Social Media","Testing","documentation"]	[]	2	2026-02-22 05:56:36.110313
+6	i found issue	Issue	when i try to add link to my profile my keyboard covers the box and i cannot see what i typing to thpost i cant see what im typing on this as well keyboard covers it also caps are being weird my image wont upload and after i post it being glitchy	0	3	[]	[]	["https://devbits.ddns.net/uploads/u9_912c35d6bb863bcf54d1b5c7.png"]	9	2026-02-24 17:50:48.488426
+1	Devbits	`DevBits`\n___\n> An app for *Devs* and people with cool projects\n*Or if you are just taking a browse that is cool too*	![DevBits](https://github.com/devbits-go/.github/blob/main/profile/svg/DevBits.svg)\n\n![Purpose](https://github.com/devbits-go/.github/blob/main/profile/svg/Purpose.svg)\n\n> Welcome To *DevBits*, The App for Developers and people in tech.\n\n> Looking to create a healthy social environment for people to share their ideas.\n\n![Members](https://github.com/devbits-go/.github/blob/main/profile/svg/Members.svg)\n\n![Cards](https://github.com/devbits-go/.github/blob/main/profile/svg/Cards.svg)\n\n![ArchBTW](https://github.com/devbits-go/.github/blob/main/profile/svg/ArchBTW.svg)	0	6	["devbits.ddns.net/tester-application"]	["documentation"]	[]	2	2026-02-22 05:56:36.110313
+8	iNQueue	Whats next iN Queue? Find out by bringing together all of your favorite media watches in one place.	NQ aims to develop a cross-platform media recommendation system that unifies user preferences across movies, shows, games, books, and more to deliver personalized "next in queue" suggestions. By aggregating and restructuring data from multiple APIs, the system will create a graph of your media consumption history.	0	5	["https://github.com/grillinr/nq"]	["go","react native"]	[]	12	2026-02-25 04:07:07.834917
+2	Devbits.md	A place to show off MD support	# Markdown Syntax Guide\n\nA complete reference for Markdown formatting with interactive examples.\n\n---\n\n## Headers\n\n```\n# This is a Heading h1\n## This is a Heading h2\n### This is a Heading h3\n#### This is a Heading h4\n##### This is a Heading h5\n###### This is a Heading h6\n```\n\n# This is a Heading h1\n## This is a Heading h2\n### This is a Heading h3\n#### This is a Heading h4\n##### This is a Heading h5\n###### This is a Heading h6\n\n---\n\n## Emphasis\n\n*This text will be italic*  \n_This will also be italic_\n\n**This text will be bold**  \n__This will also be bold__\n\n_You **can** combine them_\n\n~~This text is strikethrough~~\n\n---\n\n## Lists\n\n### Unordered Lists\n\n* Item 1\n* Item 2\n* Item 2a\n* Item 2b\n    * Item 3a\n    * Item 3b\n\n### Ordered Lists\n\n1. Item 1\n2. Item 2\n3. Item 3\n    1. Item 3a\n    2. Item 3b\n\n### Task Lists (Checkboxes)\n\n- [x] Completed task\n- [x] Another completed task\n- [ ] Incomplete task\n- [ ] Another incomplete task\n    - [x] Subtask completed\n    - [ ] Subtask incomplete\n\n---\n\n## Images\n\n![This is an alt text.](/image/Markdown-mark.svg "This is a sample image.")\n\n---\n\n## Links\n\nYou may be using [Markdown Live Preview](https://markdownlivepreview.com/).\n\n[Link with title](https://example.com "This is a title")\n\n<https://example.com>\n\n---\n\n## Blockquotes\n\n> Markdown is a lightweight markup language with plain-text-formatting syntax, created in 2004 by John Gruber with Aaron Swartz.\n\n> Markdown is often used to format readme files, for writing messages in online discussion forums, and to create rich text using a plain text editor.\n\n> **Note:** You can use other markdown syntax within blockquotes.\n\n---\n\n## Tables\n\n| Left columns  | Center columns | Right columns |\n| ------------- |:-------------:|:-----------:|\n| left foo      | center foo     | right foo   |\n| left bar      | center bar     | right bar   |\n| left baz      | center baz     | right baz   |\n\n---\n\n## Code\n\n### Blocks of Code\n\n```javascript\nlet message = 'Hello world';\nalert(message);\n```\n\n```python\ndef hello_world():\n    print("Hello, World!")\n    return True\n```\n\n```html\n<div class="container">\n  <p>HTML Example</p>\n</div>\n```\n\n### Inline Code\n\nThis web site is using `markedjs/marked` for rendering markdown.\n\nUse the `console.log()` function to debug your code.\n\n---\n\n## Horizontal Rules\n\n---\n\n***\n\n___\n\n---\n\n## Line Breaks\n\nLine 1  \nLine 2 (with two spaces before)\n\nLine 1\n\nLine 2 (with blank line between)\n\n---\n\n<details>\n<summary><strong>???? Advanced Features (Click to expand)</strong></summary>\n\n### Definition Lists\n\nTerm 1\n:   Definition 1\n\nTerm 2\n:   Definition 2a\n:   Definition 2b\n\n### Footnotes\n\nThis is a statement[^1] with a footnote.\n\n[^1]: This is the footnote content.\n\n### Superscript & Subscript\n\nH~2~O\n\nE=mc^2^\n\n</details>\n\n---\n\n<details>\n<summary><strong>??? Markdown Best Practices (Click to expand)</strong></summary>\n\n- Use consistent heading hierarchy\n- Add blank lines between sections\n- Use code fences for better readability\n- Link to external resources when relevant\n- Keep lists simple and organized\n- Use emphasis sparingly for impact\n- Always provide alt text for images\n- Test your markdown before sharing\n\n</details>\n\n---\n\n<details>\n<summary><strong>???? Tips & Tricks (Click to expand)</strong></summary>\n\n**Combining Styles:**\n- ***Bold and Italic*** combined\n- **Bold with `code`**\n- > Blockquote with **bold**\n\n**Escaping Characters:**\n\\*This will not be italic\\*\n\n\\[This is not a link\\]\n\n**HTML Embedding:**\nYou can embed raw HTML for more control over formatting.\n\n</details>\n\n---\n\n## Quick Reference Checklist\n\n- [x] Headers learned\n- [x] Emphasis mastered\n- [x] Lists understood\n- [x] Images added\n- [x] Links created\n- [x] Blockquotes used\n- [x] Tables created\n- [x] Code blocks formatted\n- [ ] Advanced features explored\n- [ ] Ready to write markdown!\n\n---\n\n**Last Updated:** February 20, 2026  \n**Format:** GitHub Flavored Markdown (GFM)	0	5	[]	["markdown","documentation","devbits"]	[]	2	2026-02-22 06:12:55.58306
+4	Ball growing machine	machine that grows my balls	Currently it does not grow my balls. Further testing required	0	4	[]	["Balls","grow","big"]	[]	8	2026-02-24 14:27:57.974905
 \.
 
 
@@ -725,6 +768,7 @@ COPY public.userfollows (follower_id, followed_id) FROM stdin;
 2	12
 12	3
 12	7
+2	13
 \.
 
 
@@ -743,6 +787,7 @@ kylie	$2a$10$9qt8DwUNFH64REPD7/IJ1uL8I.28WCQArmnwn8I.DfFaXW7J/RZOC
 blackshadow73	$2a$10$viWbouQxrYtejFRFCaN3deAYqeAHhdz.qVY4.sICEHix0AeCFElYi
 DerekCorniello	$2a$10$mDxxy3R/iYekVnrLSPGIG..aMM4oxk3jGa.J1grKbP5QchlCbpRWq
 nrgrill2003@gmail.com	$2a$10$gq8FGjdTtG5B2HKOT6HG9ufWHycjniQSb.LZc.F2nE/8rf6jBY356
+test	$2a$10$162xpBa4Z.Go57g2ddm/A.Y7yIVdbRClGK1ZkODXaYZQBlbguUOze
 \.
 
 
@@ -751,8 +796,8 @@ nrgrill2003@gmail.com	$2a$10$gq8FGjdTtG5B2HKOT6HG9ufWHycjniQSb.LZc.F2nE/8rf6jBY3
 --
 
 COPY public.userpushtokens (id, user_id, token, platform, created_at) FROM stdin;
-1	2	ExponentPushToken[0swYQCMnwgv2U7vm3X51pW]	ios	2026-02-24 05:34:44.586288
 38	11	ExponentPushToken[ajsresPbvPduk3-PPpLAqX]	ios	2026-02-25 00:36:19.420879
+1	2	ExponentPushToken[0swYQCMnwgv2U7vm3X51pW]	ios	2026-02-24 05:34:44.586288
 39	12	ExponentPushToken[UO1B5eOKkqI6iPAUj9rX2t]	ios	2026-02-25 00:39:12.85981
 \.
 
@@ -762,7 +807,6 @@ COPY public.userpushtokens (id, user_id, token, platform, created_at) FROM stdin
 --
 
 COPY public.users (id, username, picture, bio, links, settings, creation_date) FROM stdin;
-3	Whiteshadow73	/uploads/u3_8e213dd74950c62c9df55994.jpg		{}	{"accentColor":"#3DACFD","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":60000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.55,"visualizationMode":"monoAccent","zenMode":false}	2026-02-22 08:06:14.433232
 4	drtimfouts	/uploads/bfbe036460f2602afb275915.htm	Dev dad	{}	{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.55,"visualizationMode":"monoAccent","zenMode":false}	2026-02-22 19:11:39.453595
 7	DerekCornDev			{}	{"accentColor":"#4A8DFF","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.55,"visualizationMode":"monoAccent","zenMode":false}	2026-02-24 03:19:40.762558
 9	kylie	/uploads/u9_c1724846b8f93da55f421234.jpg	Hi	{"link_0":"Kylie-Merz"}	{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.55,"visualizationMode":"monoAccent","zenMode":false}	2026-02-24 17:46:13.221158
@@ -770,8 +814,10 @@ COPY public.users (id, username, picture, bio, links, settings, creation_date) F
 5	bonerbob	/uploads/u5_d8d0b793924c9834ebcabf88.jpg		{}	{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.55,"visualizationMode":"monoAccent","zenMode":false}	2026-02-23 14:05:00.130288
 10	blackshadow73			{}	{}	2026-02-24 23:57:35.326365
 11	DerekCorniello			{}	{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.55,"visualizationMode":"monoAccent","zenMode":false}	2026-02-25 00:36:17.630979
+13	test			[]	{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.55,"visualizationMode":"monoAccent","zenMode":false}	2026-02-26 03:28:05
 12	nrgrill2003@gmail.com	/uploads/u12_3ccfa4701ae0e035bc5d3c07.jpg	10x dev	{"link_0":"nathangrilliot.com","link_1":"github.com/grillinr","link_2":"nathangrilliot.com"}	{"accentColor":"#00F329","backgroundRefreshEnabled":true,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"promptScheme","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.55,"visualizationMode":"classic","zenMode":false}	2026-02-25 00:39:09.951406
-2	elifouts	/uploads/u2_31ec6c089f9f008d2b4b2c52.jpg	> [!Note] Hello World!\n\nI am a 10x developer for `devbits`	[]	{"accentColor":"#4A8DFF","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.9599999785423279,"visualizationMode":"cinematic","zenMode":false}	2026-02-22 05:28:00.259995
+3	Whiteshadow73	/uploads/u3_8e213dd74950c62c9df55994.jpg	I ranked Plat in Valorant.\n\n~~Flexing~~	[]	{"accentColor":"#4A8DFF","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":60000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"typewriter","visualizationIntensity":1,"visualizationMode":"cinematic","zenMode":false}	2026-02-22 08:06:14.433232
+2	elifouts	/uploads/u2_182a392d5837c19a1ad894b5.jpg	> [!Note] Hello World!\n\nI am a 10x developer for `devbits`	[]	{"accentColor":"#4A8DFF","backgroundRefreshEnabled":false,"compactMode":false,"hasSeenWelcomeTour":true,"imageRevealEffect":"smooth","linkOpenMode":"asTyped","pageTransitionEffect":"fade","refreshIntervalMs":120000,"rgbShiftEnabled":false,"rgbShiftSpeedMs":3200,"rgbShiftStep":0.85,"rgbShiftTheme":"rainbow","rgbShiftTickMs":44,"rgbUserTheme1":["#00F329","#06B6D4","#A855F7"],"rgbUserTheme2":["#FF6B6B","#F59E0B","#FDE047"],"textRenderEffect":"smooth","visualizationIntensity":0.9599999785423279,"visualizationMode":"cinematic","zenMode":false}	2026-02-22 05:28:00.259995
 \.
 
 
@@ -779,28 +825,28 @@ COPY public.users (id, username, picture, bio, links, settings, creation_date) F
 -- Name: comments_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.comments_id_seq', 7, true);
+SELECT pg_catalog.setval('public.comments_id_seq', 8, true);
 
 
 --
 -- Name: directmessages_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.directmessages_id_seq', 105, true);
+SELECT pg_catalog.setval('public.directmessages_id_seq', 111, true);
 
 
 --
 -- Name: notifications_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.notifications_id_seq', 149, true);
+SELECT pg_catalog.setval('public.notifications_id_seq', 165, true);
 
 
 --
 -- Name: posts_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.posts_id_seq', 7, true);
+SELECT pg_catalog.setval('public.posts_id_seq', 8, true);
 
 
 --
@@ -814,14 +860,14 @@ SELECT pg_catalog.setval('public.projects_id_seq', 8, true);
 -- Name: userpushtokens_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.userpushtokens_id_seq', 81, true);
+SELECT pg_catalog.setval('public.userpushtokens_id_seq', 110, true);
 
 
 --
 -- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.users_id_seq', 12, true);
+SELECT pg_catalog.setval('public.users_id_seq', 13, true);
 
 
 --
@@ -1419,5 +1465,5 @@ ALTER TABLE ONLY public.userpushtokens
 -- PostgreSQL database dump complete
 --
 
-\unrestrict yTlSkLCZueqHatdTd0SIdf1ZGmZHKqQywfBrJelO7R4aGtcyb5EBHommHDb29on
+\unrestrict By02p8KYJHDbJ6TNla6wXJw3hjRwXm33SK1zLGJUiwbeK1DXV2hAfPPXSJlxU3l
 
