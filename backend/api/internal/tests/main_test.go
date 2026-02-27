@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -24,8 +26,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
-	_ "modernc.org/sqlite"
 )
 
 // TestCase describes a single HTTP request/response test.
@@ -137,7 +139,10 @@ func setupTestRouter() *gin.Engine {
 // loadSQLFile executes all statements from a SQL file on db.
 // An optional series of old/new string pairs can be passed to rewrite
 // the SQL before execution (e.g. to make PostgreSQL DDL run on SQLite).
-func loadSQLFile(db *sql.DB, path string, replacements ...string) error {
+func loadSQLFile(db *sql.DB, filename string, replacements ...string) error {
+	_, callerFile, _, _ := runtime.Caller(0)
+	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(callerFile))))
+	path := filepath.Join(root, "api", "internal", "database", filename)
 	sqlBytes, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %v", path, err)
@@ -225,34 +230,22 @@ func (tc *TestCase) Run(t *testing.T, serverURL string) {
 }
 
 func TestAPI(t *testing.T) {
-	// Initialize logger so handler utilities don't panic on first use.
 	logger.InitLogger()
 
-	// Set up an in-memory SQLite database so tests never touch disk or
-	// require a running server process.
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open test database: %v", err)
-	}
-	defer db.Close()
-
-	database.DB = db
-
-	if _, err := db.Exec("PRAGMA foreign_keys=ON;"); err != nil {
-		t.Fatalf("Failed to enable foreign keys: %v", err)
+	database.DB = nil
+	database.Connect()
+	db := database.DB
+	if db == nil {
+		t.Fatal("Failed to connect to database")
 	}
 
-	if err := loadSQLFile(db, "../database/create_tables.sql",
-		// create_tables.sql uses PostgreSQL SERIAL; convert to SQLite syntax
-		"SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT",
-	); err != nil {
+	if err := loadSQLFile(db, "create_tables.sql"); err != nil {
 		t.Fatalf("Failed to load schema: %v", err)
 	}
-	if err := loadSQLFile(db, "../database/create_test_data.sql"); err != nil {
+	if err := loadSQLFile(db, "create_test_data.sql"); err != nil {
 		t.Fatalf("Failed to load test data: %v", err)
 	}
 
-	// Insert sentinel "deleted" user (id=-1) required by comment soft-delete logic.
 	if _, err := db.Exec(`INSERT INTO users (id, username, picture, bio, links, settings, creation_date) VALUES (-1, 'deleted_user', '', '', '[]', '{}', '1970-01-01 00:00:00')`); err != nil {
 		t.Fatalf("Failed to insert sentinel deleted user: %v", err)
 	}

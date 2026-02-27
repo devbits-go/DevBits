@@ -30,6 +30,7 @@ dist/
 # Local env files
 .env
 .env.*
+!.env.example
 
 # Expo
 .expo/
@@ -38,6 +39,7 @@ dist/
 .env
 .env.*
 *.env
+!.env.example
 
 # Secrets folder (recommended place for service keys)
 secrets/

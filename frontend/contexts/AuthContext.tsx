@@ -53,6 +53,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const loadSession = async () => {
       try {
         const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+        try {
+          // eslint-disable-next-line no-console
+          console.log("AuthProvider: storedToken present=", !!storedToken);
+        } catch {}
         if (!storedToken) {
           await clearSession();
           return;
@@ -74,12 +78,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (payload: AuthLoginRequest) => {
     const response = await loginUser(payload);
+    try {
+      // eslint-disable-next-line no-console
+      console.log("AuthProvider.signIn: received token=", !!response?.token);
+    } catch {}
     setAuthToken(response.token);
     setUser(response.user);
     setToken(response.token);
     setJustSignedUp(false);
     try {
       await SecureStore.setItemAsync(TOKEN_KEY, response.token);
+      try {
+        // eslint-disable-next-line no-console
+        console.log("AuthProvider.signIn: stored token in SecureStore");
+      } catch {}
     } catch {
       // Continue with in-memory session even if secure store is unavailable.
     }

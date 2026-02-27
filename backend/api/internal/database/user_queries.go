@@ -334,7 +334,8 @@ func GetUserFollowers(username string) ([]*ApiUser, error) {
 		SELECT u.id, u.username, u.picture, u.bio, u.links, u.settings, u.creation_date
 		FROM users u
 		JOIN userfollows f ON u.id = f.follower_id
-		WHERE f.followed_id = $1;
+		WHERE f.followed_id = $1
+		ORDER BY u.id;
 	`
 	rows, err := DB.Query(query, user.Id)
 	if err != nil {
@@ -384,7 +385,8 @@ func GetUserFollowing(username string) ([]*ApiUser, error) {
 		SELECT u.id, u.username, u.picture, u.bio, u.links, u.settings, u.creation_date
 		FROM users u
 		JOIN userfollows f ON u.id = f.followed_id
-		WHERE f.follower_id = $1;
+		WHERE f.follower_id = $1
+		ORDER BY u.id;
 	`
 	rows, err := DB.Query(query, user.Id)
 	if err != nil {
@@ -434,7 +436,8 @@ func GetUserFollowersUsernames(username string) ([]string, error) {
 		SELECT u.username
 		FROM users u
 		JOIN userfollows f ON u.id = f.follower_id
-		WHERE f.followed_id = $1;
+		WHERE f.followed_id = $1
+		ORDER BY u.username;
 	`
 	rows, err := DB.Query(query, user.Id)
 	if err != nil {
@@ -468,7 +471,8 @@ func GetUserFollowingUsernames(username string) ([]string, error) {
 		SELECT u.username
 		FROM users u
 		JOIN userfollows f ON u.id = f.followed_id
-		WHERE f.follower_id = $1;
+		WHERE f.follower_id = $1
+		ORDER BY u.username;
 	`
 	rows, err := DB.Query(query, user.Id)
 	if err != nil {
@@ -537,4 +541,3 @@ func CreateUserLoginInfo(info *UserLoginInfo) error {
 	}
 	return nil
 }
-

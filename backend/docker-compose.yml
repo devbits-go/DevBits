@@ -28,6 +28,8 @@ services:
     volumes:
       # Mount the uploads directory to persist data
       - ./uploads:/root/uploads
+    ports:
+      - "8080:8080"
     security_opt:
       - no-new-privileges:true
     networks:

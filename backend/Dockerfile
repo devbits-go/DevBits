@@ -45,6 +45,7 @@ RUN apk add --no-cache openssl
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
-# Entrypoint generates environment secrets if missing, then runs the app
-ENTRYPOINT ["/root/docker-entrypoint.sh"]
+# Entrypoint generates environment secrets if missing, then runs the app.
+# Use /bin/sh explicitly to avoid shebang/line-ending portability issues.
+ENTRYPOINT ["/bin/sh", "/root/docker-entrypoint.sh"]
 CMD ["/root/main"]

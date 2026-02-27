@@ -1,0 +1,36 @@
+name: devbits-dev-local
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: devbits_dev
+      POSTGRES_USER: devbits_dev
+      POSTGRES_PASSWORD: devbits_dev_password
+    ports:
+      - "${DEVBITS_DB_PORT:-5433}:5432"
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devbits_dev -d devbits_dev"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://devbits_dev:devbits_dev_password@db:5432/devbits_dev?sslmode=disable
+      DEVBITS_DEBUG: "1"
+    ports:
+      - "${DEVBITS_BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./uploads:/root/uploads
+
+volumes:
+  postgres-dev-data:

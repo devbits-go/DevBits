@@ -1,0 +1,54 @@
+name: Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: devbits_test
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass123
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U testuser -d devbits_test; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          USE_TEST_DB: true
+          POSTGRES_TEST_DB: devbits_test
+          POSTGRES_TEST_USER: testuser
+          POSTGRES_TEST_PASSWORD: testpass123
+        run: go test -v ./api/internal/tests/...

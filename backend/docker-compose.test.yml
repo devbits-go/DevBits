@@ -1,0 +1,31 @@
+name: devbits-test-local
+
+services:
+  test-db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-devbits_test}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-testuser}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-testpass123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - test-postgres-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_TEST_USER:-testuser} -d $${POSTGRES_TEST_DB:-devbits_test}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  test-postgres-data:
+    driver: local

@@ -1,116 +1,61 @@
-# DevBits Application Instructions
+# Deployment Process
 
-This document provides the essential commands for managing the backend services with Docker and for building and deploying the frontend application.
+## Backend
 
-## Backend Management (Docker)
+> **Live/Deployed Stack**
+>
+> ```bash
+> cd /path/to/DevBits/backend
+> docker compose up -d
+> docker compose logs -f db
+> ```
 
-Use separate command sets for each environment.
+> Rebuild and restart:
+>
+> ```bash
+> docker compose up -d --build
+> ```
 
-### Local DB + Backend (your dev machine)
+> [!TIP]
+> Check `backend/scripts/README.md` for database operations.
 
-Run from project root (`c:\Users\eligf\DevBits`):
+## Build
 
-```bash
-docker compose -f backend/docker-compose.yml up -d
-```
+> **Android Production Build**
+>
+> ```bash
+> npx eas build -p android --profile production
+> ```
 
-Rebuild local backend image:
+> [!NOTE]
+> This generates an `.aab` file and uploads to your Expo account.
 
-```bash
-docker compose -f backend/docker-compose.yml up -d --build
-```
+> **iOS Production Build**
+>
+> Replace `android` with `ios` and fill out proper credentials.
+>
+> ```bash
+> npx eas build -p ios --profile production
+> ```
 
-Stop local stack:
+> [!NOTE]
+> Currently requires MY credentials. Need to add team credentials.
 
-```bash
-docker compose -f backend/docker-compose.yml down
-```
+## Submit
 
-Restart local stack:
+> **Android to Google Play Store**
+>
+> Copy file out of expo and create new release on Google Play Console.
 
-```bash
-docker compose -f backend/docker-compose.yml restart
-```
+> [!NOTE]
+> `npx eas submit -p android` failed, so manual submission is required until fix is in place. Im not sure what is happening.
 
-View local logs:
+> **iOS to App Store**
+>
+> ```bash
+> npx eas submit -p ios --latest --profile production
+> ```
 
-```bash
-docker compose -f backend/docker-compose.yml logs -f backend
-docker compose -f backend/docker-compose.yml logs -f db
-docker compose -f backend/docker-compose.yml logs -f nginx
-```
+---
 
-### Live/Deployed DB + Backend (your server)
-
-Run these only on your deployed host where DevBits is installed.
-
-Create backend environment file once (required):
-
-```bash
-cd /path/to/DevBits/backend
-cp .env.example .env
-# edit .env and set a strong POSTGRES_PASSWORD before first deploy
-```
-
-```bash
-cd /path/to/DevBits/backend
-docker compose up -d
-docker compose logs -f db
-```
-
-Rebuild and restart deployment containers:
-
-```bash
-cd /path/to/DevBits/backend
-docker compose up -d --build
-```
-
-Stop deployment stack:
-
-```bash
-cd /path/to/DevBits/backend
-docker compose down
-```
-
-Important safety note:
-
-- Deployment reset/restore scripts in `backend/scripts` are destructive and should only be run in the environment you intend to modify.
-- Never run reset commands against live DB unless you explicitly want a full wipe.
-
-### Deployment DB scripts
-
-All deployment database script usage is documented in:
-
-- `backend/scripts/README.md`
-
-## Frontend Management (EAS)
-
-All frontend commands should be run from the `frontend` directory (`c:\Users\eligf\DevBits\frontend`).
-
-### Install Dependencies
-
-If you haven't already, or if you've pulled new changes, install the necessary Node.js packages:
-
-```bash
-npm install
-```
-
-### Build the Android App
-
-To create a production build of the Android application for the Google Play Store:
-
-```bash
-npx eas build -p android --profile production
-```
-
-This will generate an `.aab` file and upload it to your Expo account.
-
-### Submit to Google Play Store
-
-After a successful build, you can submit the latest build to the Google Play Store for internal testing:
-
-```bash
-npx eas submit -p android --latest --profile production
-```
-
-This command will automatically find the latest build, download it, and upload it to the Google Play Console.
+`Workflow: Backend Setup → EAS Build → EAS Submit`
