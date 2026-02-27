@@ -1,6 +1,6 @@
 # Script: run-front.ps1
 # Does: Starts Expo frontend and lets you choose backend target (Production or Local).
-# Use: .\run-front.ps1 [-Local|-Production] [-Clear]
+# Use: .\run-front.ps1 [-Local|-Production] [-Clear] [-DevClient]
 # DB: None (frontend only).
 # Ports: Metro uses LAN IP; local API defaults to :8080 (EXPO_PUBLIC_LOCAL_API_PORT overrides).
 # Modes: Frontend=ON | Backend=Production URL or Local URL | Live stack untouched | Dev/Test DB untouched.
@@ -8,7 +8,8 @@
 param(
     [switch]$Clear,
     [switch]$Local,
-    [switch]$Production
+    [switch]$Production,
+    [switch]$DevClient
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,7 +43,8 @@ function Get-LanIPv4 {
     return $ip
 }
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = Split-Path -Parent $scriptDir
 $frontendDir = Join-Path $root "frontend"
 $localIp = Get-LanIPv4
 
@@ -66,8 +68,14 @@ else {
     }
 }
 
-$env:REACT_NATIVE_PACKAGER_HOSTNAME = $localIp
-$env:EXPO_PACKAGER_HOSTNAME = $localIp
+if ($localIp -ne "127.0.0.1") {
+    $env:REACT_NATIVE_PACKAGER_HOSTNAME = $localIp
+    $env:EXPO_PACKAGER_HOSTNAME = $localIp
+}
+else {
+    Remove-Item Env:REACT_NATIVE_PACKAGER_HOSTNAME -ErrorAction SilentlyContinue
+    Remove-Item Env:EXPO_PACKAGER_HOSTNAME -ErrorAction SilentlyContinue
+}
 $env:EXPO_PUBLIC_API_URL = "https://devbits.ddns.net"
 $env:EXPO_PUBLIC_API_FALLBACK_URL = "https://devbits.ddns.net"
 
@@ -85,12 +93,19 @@ else {
 
 Push-Location $frontendDir
 try {
-    if ($Clear) {
-        & npx expo start --dev-client --clear
+    $expoArgs = @("expo", "start", "--host", "lan")
+    if ($DevClient) {
+        $expoArgs += "--dev-client"
     }
     else {
-        & npx expo start --dev-client
+        $expoArgs += "--go"
     }
+
+    if ($Clear) {
+        $expoArgs += "--clear"
+    }
+
+    & npx @expoArgs
     exit $LASTEXITCODE
 }
 finally {

@@ -15,7 +15,8 @@ $composeProject = "devbits-test-local"
 Write-Host "=== DevBits Test Suite ===" -ForegroundColor Cyan
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$backendDir = Resolve-Path (Join-Path $scriptDir "backend")
+$repoRoot = Split-Path -Parent $scriptDir
+$backendDir = Resolve-Path (Join-Path $repoRoot "backend")
 Push-Location $backendDir
 try {
     $dockerCmd = Get-Command docker -ErrorAction SilentlyContinue

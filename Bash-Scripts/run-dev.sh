@@ -9,7 +9,8 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$ROOT/backend"
 COMPOSE_PROJECT="devbits-dev-local"
 
@@ -110,4 +111,4 @@ done
 
 echo "Launching frontend in local backend mode..."
 cd "$ROOT"
-EXPO_PUBLIC_LOCAL_API_PORT="$DEVBITS_BACKEND_PORT" "$ROOT/run-front.sh" --local $CLEAR_FRONTEND
+EXPO_PUBLIC_LOCAL_API_PORT="$DEVBITS_BACKEND_PORT" "$SCRIPT_DIR/run-front.sh" --local $CLEAR_FRONTEND

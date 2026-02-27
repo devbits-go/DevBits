@@ -1,13 +1,9 @@
-# Script: run-dev.ps1
-# Does: Boots local dev DB + local backend (isolated compose project), then launches frontend in local mode.
-# Use: .\run-dev.ps1 [-Clear]
-# DB: devbits_dev (user/pass: devbits_dev/devbits_dev_password) in compose project devbits-dev-local.
+# Script: run-db-tests.ps1
+# Does: Recreates isolated local dev DB/backend containers, waits for DB, then runs Go tests in a temporary golang container.
+# Use: .\run-db-tests.ps1
+# DB: devbits_dev via host.docker.internal in compose project devbits-dev-local.
 # Ports: backend default :8080, DB default :5433 (DEVBITS_BACKEND_PORT / DEVBITS_DB_PORT override).
-# Modes: Frontend=ON(local API) | Backend=ON(local Docker) | Live stack untouched | Test DB untouched.
-
-param(
-    [switch]$Clear
-)
+# Modes: Frontend=OFF | Backend=only for local test infra | Live stack untouched | Dev/Test data isolated.
 
 $ErrorActionPreference = "Stop"
 
@@ -48,7 +44,7 @@ function Resolve-Port {
 }
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$backendDir = Join-Path $scriptDir "backend"
+$repoRoot = Split-Path -Parent $scriptDir
 $composeProject = "devbits-dev-local"
 
 $dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
@@ -68,16 +64,14 @@ $dbPort = Resolve-Port -Label "postgres" -DefaultPort $dbDefault
 $env:DEVBITS_BACKEND_PORT = "$backendPort"
 $env:DEVBITS_DB_PORT = "$dbPort"
 
-Write-Host "Using backend port $backendPort and db port $dbPort." -ForegroundColor Cyan
-
-Push-Location $backendDir
+Push-Location $repoRoot
 try {
-    docker compose -p $composeProject -f docker-compose.dev.yml down --volumes --remove-orphans
-    docker compose -p $composeProject -f docker-compose.dev.yml up -d --build
+    docker compose -p $composeProject -f backend/docker-compose.dev.yml down --volumes --remove-orphans
+    docker compose -p $composeProject -f backend/docker-compose.dev.yml up -d --build
 
     Write-Host "Waiting for database readiness..." -ForegroundColor Yellow
     for ($i = 1; $i -le 60; $i++) {
-        docker compose -p $composeProject -f docker-compose.dev.yml exec -T db pg_isready -U devbits_dev -d devbits_dev *> $null
+        docker compose -p $composeProject -f backend/docker-compose.dev.yml exec -T db pg_isready -U devbits_dev -d devbits_dev *> $null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Database is ready." -ForegroundColor Green
             break
@@ -90,37 +84,17 @@ try {
         Start-Sleep -Seconds 1
     }
 
-    Write-Host "Waiting for backend health check..." -ForegroundColor Yellow
-    for ($i = 1; $i -le 60; $i++) {
-        try {
-            $response = Invoke-WebRequest -Uri "http://localhost:$backendPort/health" -UseBasicParsing -TimeoutSec 2
-            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) {
-                Write-Host "Backend is healthy." -ForegroundColor Green
-                break
-            }
-        }
-        catch {
-        }
-
-        if ($i -eq 60) {
-            Write-Host "Error: Backend did not become healthy within 60 seconds." -ForegroundColor Red
-            docker compose -p $composeProject -f docker-compose.dev.yml logs backend --tail 100
-            exit 1
-        }
-
-        Start-Sleep -Seconds 1
-    }
+    $backendPath = Join-Path $repoRoot "backend"
+    docker run --rm --add-host=host.docker.internal:host-gateway `
+        -e USE_TEST_DB=true `
+        -e POSTGRES_TEST_DB=devbits_dev `
+        -e POSTGRES_TEST_USER=devbits_dev `
+        -e POSTGRES_TEST_PASSWORD=devbits_dev_password `
+        -e POSTGRES_TEST_HOST=host.docker.internal `
+        -e POSTGRES_TEST_PORT=$dbPort `
+        -v "${backendPath}:/app" -w /app/api golang:1.24 bash -c "go test ./..."
+    exit $LASTEXITCODE
 }
 finally {
     Pop-Location
 }
-
-Write-Host "Launching frontend in local backend mode..." -ForegroundColor Cyan
-$env:EXPO_PUBLIC_LOCAL_API_PORT = "$backendPort"
-if ($Clear) {
-    & (Join-Path $scriptDir "run-front.ps1") -Local -Clear
-}
-else {
-    & (Join-Path $scriptDir "run-front.ps1") -Local
-}
-exit $LASTEXITCODE

@@ -54,8 +54,34 @@ let forceFreshReadToken: number | null = null;
 const DEV_MAX_CONCURRENT_REQUESTS = 6;
 const DEV_MAX_GET_ATTEMPTS = 1;
 const DEV_STAGGER_MS = 120; // max random stagger before starting a request
+const DEV_REQUEST_SHAPING_ENV_KEY = "EXPO_PUBLIC_ENABLE_DEV_REQUEST_SHAPING";
 let devInFlightCount = 0;
 const devQueue: Array<() => void> = [];
+
+const parseTruthyFlag = (value: unknown) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    return normalized !== "0" && normalized !== "false";
+  }
+  return value === true;
+};
+
+const isDevRequestShapingEnabled = (() => {
+  try {
+    const extras = (Constants as any)?.expoConfig?.extra ??
+      (Constants as any)?.manifest2?.extra ??
+      (Constants as any)?.manifest?.extra ??
+      null;
+
+    const raw = extras?.[DEV_REQUEST_SHAPING_ENV_KEY] ??
+      (typeof process !== "undefined" ? process.env?.[DEV_REQUEST_SHAPING_ENV_KEY] : undefined);
+
+    return parseTruthyFlag(raw);
+  } catch {
+    return false;
+  }
+})();
 
 const acquireDevSlot = async () => {
   if (!__DEV__) return;
@@ -335,22 +361,7 @@ type BaseUrlFailState = {
 const baseUrlFailState = new Map<string, BaseUrlFailState>();
 let preferredBaseUrl: string | null = API_REQUEST_BASE_URLS[0] ?? null;
 
-// If the resolved API host is remote (not localhost or emulator loopback),
-// use a larger default timeout to account for higher latency.
-const apiHost = (() => {
-  try {
-    const url = new URL(API_BASE_URL);
-    return url.hostname;
-  } catch {
-    return null;
-  }
-})();
-
-const LOCAL_API_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "10.0.2.2"]);
-
-const EFFECTIVE_REQUEST_TIMEOUT_MS = apiHost && !LOCAL_API_HOSTS.has(apiHost)
-  ? Math.max(REQUEST_TIMEOUT_MS, 15000)
-  : REQUEST_TIMEOUT_MS;
+const EFFECTIVE_REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 
 const getOrderedBaseUrls = (baseUrls: string[] = API_REQUEST_BASE_URLS) => {
   const now = Date.now();
@@ -757,7 +768,7 @@ const request = async <T>(
     let didAcquire = false;
 
     // Stagger + acquire dev slot if running in dev
-    if (__DEV__) {
+    if (__DEV__ && isDevRequestShapingEnabled) {
       const stagger = Math.floor(Math.random() * DEV_STAGGER_MS);
       if (stagger > 0) {
         // eslint-disable-next-line no-await-in-loop
@@ -785,7 +796,7 @@ const request = async <T>(
       }
 
       const maxAttempts = isGetRequest
-        ? (__DEV__ ? DEV_MAX_GET_ATTEMPTS : 2)
+        ? (__DEV__ && isDevRequestShapingEnabled ? DEV_MAX_GET_ATTEMPTS : 2)
         : 1;
       let response: Response | null = null;
       let lastError: unknown = null;
