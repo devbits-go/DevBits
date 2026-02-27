@@ -1,0 +1,91 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in DevBits
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this bug! Please fill out the sections below to help us investigate and fix the issue.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of DevBits is affected?
+      options:
+        - Backend (Go API)
+        - Frontend (React Native)
+        - Database
+        - Scripts/Build
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: What went wrong?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: What should have happened instead?
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+      placeholder: What actually happened?
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or Error Messages
+      description: If applicable, add any error messages, stack traces, or relevant logs.
+      render: shell
+      placeholder: Paste logs here
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If applicable, add screenshots to help explain your problem.
+      placeholder: Drag and drop images here
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Information (Optional)
+      description: Help us understand your setup
+      placeholder: |
+        - Go version: [e.g., 1.21.5]
+        - Node version: [e.g., 20.10.0]
+        - React Native version: [e.g., 0.73.0]
+      render: markdown
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here.
+      placeholder: Any other information that might be helpful
