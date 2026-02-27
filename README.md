@@ -25,30 +25,50 @@ Some quirky names for things (frontend only)
 
 ### Quick Start
 
-The easiest way to run the full local development environment:
+Start only the frontend (choose production or local backend at launch):
 
 ```bash
 ./run-front.sh
 ```
 
-This starts:
-- Test PostgreSQL database (auto-seeds with test data)
-- Local Go backend on port 8080
-- Frontend with QR code for Expo Go
+Start full local stack (dev PostgreSQL + backend + frontend in local API mode):
+
+```bash
+./run-dev.sh
+```
+
+Run backend tests using dockerized Go against the dev DB stack:
+
+```bash
+./run-db-tests.sh
+```
+
+PowerShell equivalents:
+
+```powershell
+.\run-front.ps1
+.\run-dev.ps1
+.\run-db-tests.ps1
+```
 
 Scan the QR code with Expo Go on your phone. The app will automatically connect to your local backend.
 
-**Press Ctrl+C** to stop everything and restore production Docker containers.
+### Verification Checklist
+
+- Fresh clone frontend check: run `chmod +x run-front.sh run-dev.sh run-db-tests.sh`, then `./run-front.sh`, choose `Production`, and confirm Expo starts.
+- Full local stack: run `./run-dev.sh`, confirm backend health at `http://<LAN-IP>:8080/health`, then validate app API calls from a phone on same WiFi.
+- DB tests: run `./run-db-tests.sh` and confirm it exits with code `0`.
 
 ### Prerequisites
 
-1. Install Docker and Docker Compose
-2. Copy the test environment file:
+1. Install Docker and Docker Compose (v2)
+2. Install Node.js/npm for Expo frontend
 
-```bash
-cd backend
-cp .env.test.example .env.test
-```
+### Troubleshooting
+
+- Docker Desktop on Windows: ensure file sharing is enabled for the repo path.
+- If `8080` or `5433` is occupied, the scripts prompt for alternate ports (or allow exit with guidance).
+- WSL/Docker Desktop/Linux engine differences: run scripts from the environment that owns your Docker daemon and ensure localhost port forwarding is enabled.
 
 For detailed instructions, see [INSTRUCTIONS.md](INSTRUCTIONS.md).
 

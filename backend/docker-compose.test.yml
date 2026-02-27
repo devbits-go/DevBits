@@ -1,7 +1,8 @@
+name: devbits-test-local
+
 services:
   test-db:
     image: postgres:15
-    container_name: devbits-test-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_TEST_DB:-devbits_test}

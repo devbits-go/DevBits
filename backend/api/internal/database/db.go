@@ -6,11 +6,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
+	_ "modernc.org/sqlite"
 )
 
 var DB *sql.DB // Global database instance
@@ -38,7 +38,16 @@ func Connect() {
 		if password == "" {
 			log.Fatal("POSTGRES_TEST_PASSWORD is required when USE_TEST_DB=true")
 		}
-		dsn = fmt.Sprintf("postgres://%s:%s@127.0.0.1:5432/%s?sslmode=disable", user, password, db)
+		host := os.Getenv("POSTGRES_TEST_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		port := os.Getenv("POSTGRES_TEST_PORT")
+		if port == "" {
+			port = "5432"
+		}
+		log.Printf("Using test Postgres host: %s", host)
+		dsn = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, password, host, port, db)
 	} else if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
 		// Production PostgreSQL connection
 		driverName = "postgres"
@@ -123,12 +132,24 @@ func ensureSqliteSchema() error {
 }
 
 func execSqlFile(filename string) error {
-	_, callerFile, _, _ := runtime.Caller(0)
-	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(callerFile))))
-	path := filepath.Join(root, "api", "internal", "database", filename)
-	content, err := os.ReadFile(path)
+	rel := filepath.Join("api", "internal", "database", filename)
+
+	// Try several locations: current dir, and up to 4 parent dirs.
+	var content []byte
+	var err error
+	tried := []string{}
+	dir := "."
+	for i := 0; i < 5; i++ {
+		path := filepath.Clean(filepath.Join(dir, rel))
+		tried = append(tried, path)
+		content, err = os.ReadFile(path)
+		if err == nil {
+			break
+		}
+		dir = filepath.Join(dir, "..")
+	}
 	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", path, err)
+		return fmt.Errorf("failed to read %s (tried: %v): %w", rel, tried, err)
 	}
 
 	statements := strings.Split(string(content), ";")

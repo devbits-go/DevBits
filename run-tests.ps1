@@ -1,13 +1,21 @@
+# Script: run-tests.ps1
+# Does: Starts isolated test Postgres, runs backend API tests on host Go toolchain, then tears test DB down.
+# Use: .\run-tests.ps1 [-KeepDb]
+# DB: devbits_test (from backend/.env.test or defaults) in compose project devbits-test-local.
+# Ports: test DB mapped to :5432 by docker-compose.test.yml.
+# Modes: Frontend=OFF | Backend=tests only (no live deployment changes) | Live stack untouched | Test DB only.
+
 param(
     [switch]$KeepDb
 )
 
 $ErrorActionPreference = "Stop"
+$composeProject = "devbits-test-local"
 
 Write-Host "=== DevBits Test Suite ===" -ForegroundColor Cyan
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$backendDir = Resolve-Path (Join-Path $scriptDir "..")
+$backendDir = Resolve-Path (Join-Path $scriptDir "backend")
 Push-Location $backendDir
 try {
     $dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
@@ -34,10 +42,10 @@ try {
     [Environment]::SetEnvironmentVariable("USE_TEST_DB", "true", "Process")
 
     $envTestFile = Join-Path $backendDir ".env.test"
-    $testDbRunning = docker compose -f docker-compose.test.yml --env-file $envTestFile ps 2>$null | Select-String "Up" -Quiet
+    $testDbRunning = docker compose -p $composeProject -f docker-compose.test.yml --env-file $envTestFile ps 2>$null | Select-String "Up" -Quiet
     if (-not $testDbRunning) {
         Write-Host "Starting test database..." -ForegroundColor Yellow
-        docker compose -f docker-compose.test.yml --env-file $envTestFile up -d
+        docker compose -p $composeProject -f docker-compose.test.yml --env-file $envTestFile up -d
 
         Write-Host "Waiting for database to be ready..." -ForegroundColor Yellow
         Start-Sleep -Seconds 5
@@ -45,7 +53,7 @@ try {
         $maxAttempts = 30
         $attempt = 0
         while ($attempt -lt $maxAttempts) {
-            $result = docker compose -f docker-compose.test.yml --env-file $envTestFile exec -T test-db pg_isready -U testuser -d devbits_test 2>$null
+            docker compose -p $composeProject -f docker-compose.test.yml --env-file $envTestFile exec -T test-db pg_isready -U testuser -d devbits_test 2>$null
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "Database is ready!" -ForegroundColor Green
                 break
@@ -82,12 +90,12 @@ try {
     if (-not $KeepDb) {
         Write-Host ""
         Write-Host "Stopping test database..." -ForegroundColor Yellow
-        docker compose -f docker-compose.test.yml down
+        docker compose -p $composeProject -f docker-compose.test.yml down
     }
     else {
         Write-Host ""
         Write-Host "Test database is still running." -ForegroundColor Yellow
-        Write-Host "Run 'docker compose -f docker-compose.test.yml down' to stop it." -ForegroundColor Yellow
+        Write-Host "Run 'docker compose -p $composeProject -f docker-compose.test.yml down' to stop it." -ForegroundColor Yellow
     }
 
     exit $testResult

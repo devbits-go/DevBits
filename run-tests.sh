@@ -1,8 +1,16 @@
 #!/bin/bash
+# Script: run-tests.sh
+# Does: Starts isolated test Postgres, runs backend API tests on host Go toolchain, then tears test DB down.
+# Use: ./run-tests.sh (set KEEP_TEST_DB=true to keep DB running)
+# DB: devbits_test (from backend/.env.test or defaults) in compose project devbits-test-local.
+# Ports: test DB mapped to :5432 by docker-compose.test.yml.
+# Modes: Frontend=OFF | Backend=tests only (no live deployment changes) | Live stack untouched | Test DB only.
+
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/backend"
+COMPOSE_PROJECT="devbits-test-local"
 
 KEEP_DB=${KEEP_TEST_DB:-false}
 
@@ -31,8 +39,8 @@ else
 fi
 
 echo "Starting test database..."
-docker compose -f docker-compose.test.yml down -v
-docker compose -f docker-compose.test.yml up -d
+docker compose -p "$COMPOSE_PROJECT" -f docker-compose.test.yml down -v
+docker compose -p "$COMPOSE_PROJECT" -f docker-compose.test.yml up -d
 
 echo "Waiting for database to be ready..."
 sleep 5
@@ -40,7 +48,7 @@ sleep 5
 MAX_ATTEMPTS=30
 ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    if docker compose -f docker-compose.test.yml exec -T test-db pg_isready -U testuser -d devbits_test > /dev/null 2>&1; then
+    if docker compose -p "$COMPOSE_PROJECT" -f docker-compose.test.yml exec -T test-db pg_isready -U testuser -d devbits_test > /dev/null 2>&1; then
         echo "Database is ready!"
         break
     fi
@@ -74,11 +82,11 @@ fi
 if [ "$KEEP_DB" != "true" ]; then
     echo ""
     echo "Stopping test database..."
-    docker compose -f docker-compose.test.yml down -v
+    docker compose -p "$COMPOSE_PROJECT" -f docker-compose.test.yml down -v
 else
     echo ""
     echo "Test database is still running."
-    echo "Run 'docker compose -f docker-compose.test.yml down' to stop it."
+    echo "Run 'docker compose -p $COMPOSE_PROJECT -f docker-compose.test.yml down' to stop it."
 fi
 
 exit $TEST_RESULT
