@@ -11,8 +11,6 @@ services:
       - "5432:5432"
     volumes:
       - test-postgres-data:/var/lib/postgresql/data
-      - ./api/internal/database/create_tables.sql:/docker-entrypoint-initdb.d/01-create_tables.sql:ro
-      - ./api/internal/database/create_test_data.sql:/docker-entrypoint-initdb.d/02-create_test_data.sql:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:

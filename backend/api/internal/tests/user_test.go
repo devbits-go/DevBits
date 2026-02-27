@@ -38,13 +38,13 @@ var user_tests = []TestCase{
 		AuthAs:         "dev_user1:1",
 	},
 
-	// creating same user again – UNIQUE constraint error (SQLite lowercase table name)
+	// creating same user again – UNIQUE constraint error (PostgreSQL)
 	{
 		Method:         http.MethodPost,
 		Endpoint:       "/users",
 		Input:          `{"username":"new_user","bio":"This is a test user.","links":["https://example.com","https://another-link.com"],"picture":"https://example.com/profile.jpg"}`,
 		ExpectedStatus: http.StatusInternalServerError,
-		ExpectedBody:   `{"error":"Internal Server Error","message":"Failed to create user: failed to insert user: constraint failed: UNIQUE constraint failed: users.username (2067)"}`,
+		ExpectedBody:   `{"error":"Internal Server Error","message":"Failed to create user: failed to insert user: pq: duplicate key value violates unique constraint \"users_username_key\" (23505)"}`,
 		AuthAs:         "dev_user1:1",
 	},
 

@@ -2,8 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="$(dirname "$SCRIPT_DIR")"
-cd "$BACKEND_DIR"
+cd "$SCRIPT_DIR/backend"
 
 KEEP_DB=${KEEP_TEST_DB:-false}
 
@@ -31,31 +30,28 @@ else
     export POSTGRES_TEST_PASSWORD=testpass123
 fi
 
-if ! docker compose -f docker-compose.test.yml ps | grep -q "Up"; then
-    echo "Starting test database..."
-    docker compose -f docker-compose.test.yml up -d
+echo "Starting test database..."
+docker compose -f docker-compose.test.yml down -v
+docker compose -f docker-compose.test.yml up -d
 
-    echo "Waiting for database to be ready..."
-    sleep 5
+echo "Waiting for database to be ready..."
+sleep 5
 
-    MAX_ATTEMPTS=30
-    ATTEMPT=0
-    while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-        if docker compose -f docker-compose.test.yml exec -T test-db pg_isready -U testuser -d devbits_test > /dev/null 2>&1; then
-            echo "Database is ready!"
-            break
-        fi
-        ATTEMPT=$((ATTEMPT + 1))
-        echo "Waiting for database... ($ATTEMPT/$MAX_ATTEMPTS)"
-        sleep 2
-    done
-
-    if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-        echo "Error: Database failed to start within timeout"
-        exit 1
+MAX_ATTEMPTS=30
+ATTEMPT=0
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+    if docker compose -f docker-compose.test.yml exec -T test-db pg_isready -U testuser -d devbits_test > /dev/null 2>&1; then
+        echo "Database is ready!"
+        break
     fi
-else
-    echo "Test database is already running."
+    ATTEMPT=$((ATTEMPT + 1))
+    echo "Waiting for database... ($ATTEMPT/$MAX_ATTEMPTS)"
+    sleep 2
+done
+
+if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+    echo "Error: Database failed to start within timeout"
+    exit 1
 fi
 
 export USE_TEST_DB=true
@@ -78,7 +74,7 @@ fi
 if [ "$KEEP_DB" != "true" ]; then
     echo ""
     echo "Stopping test database..."
-    docker compose -f docker-compose.test.yml down
+    docker compose -f docker-compose.test.yml down -v
 else
     echo ""
     echo "Test database is still running."

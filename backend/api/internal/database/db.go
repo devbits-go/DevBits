@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -122,7 +123,9 @@ func ensureSqliteSchema() error {
 }
 
 func execSqlFile(filename string) error {
-	path := filepath.Join("api", "internal", "database", filename)
+	_, callerFile, _, _ := runtime.Caller(0)
+	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(callerFile))))
+	path := filepath.Join(root, "api", "internal", "database", filename)
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", path, err)

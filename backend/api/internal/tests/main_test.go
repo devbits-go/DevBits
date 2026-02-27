@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -137,7 +139,10 @@ func setupTestRouter() *gin.Engine {
 // loadSQLFile executes all statements from a SQL file on db.
 // An optional series of old/new string pairs can be passed to rewrite
 // the SQL before execution (e.g. to make PostgreSQL DDL run on SQLite).
-func loadSQLFile(db *sql.DB, path string, replacements ...string) error {
+func loadSQLFile(db *sql.DB, filename string, replacements ...string) error {
+	_, callerFile, _, _ := runtime.Caller(0)
+	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(callerFile))))
+	path := filepath.Join(root, "api", "internal", "database", filename)
 	sqlBytes, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %v", path, err)
@@ -234,10 +239,10 @@ func TestAPI(t *testing.T) {
 		t.Fatal("Failed to connect to database")
 	}
 
-	if err := loadSQLFile(db, "../database/create_tables.sql"); err != nil {
+	if err := loadSQLFile(db, "create_tables.sql"); err != nil {
 		t.Fatalf("Failed to load schema: %v", err)
 	}
-	if err := loadSQLFile(db, "../database/create_test_data.sql"); err != nil {
+	if err := loadSQLFile(db, "create_test_data.sql"); err != nil {
 		t.Fatalf("Failed to load test data: %v", err)
 	}
 
