@@ -10,6 +10,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
+	_ "modernc.org/sqlite"
 )
 
 var DB *sql.DB // Global database instance
@@ -22,9 +23,33 @@ func Connect() {
 	var err error
 	var dsn string
 
-	// Prefer PostgreSQL connection if DATABASE_URL is set
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL != "" {
+	// Check for test database mode
+	if os.Getenv("USE_TEST_DB") == "true" {
+		driverName = "postgres"
+		db := os.Getenv("POSTGRES_TEST_DB")
+		if db == "" {
+			db = "devbits_test"
+		}
+		user := os.Getenv("POSTGRES_TEST_USER")
+		if user == "" {
+			user = "testuser"
+		}
+		password := os.Getenv("POSTGRES_TEST_PASSWORD")
+		if password == "" {
+			log.Fatal("POSTGRES_TEST_PASSWORD is required when USE_TEST_DB=true")
+		}
+		host := os.Getenv("POSTGRES_TEST_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		port := os.Getenv("POSTGRES_TEST_PORT")
+		if port == "" {
+			port = "5432"
+		}
+		log.Printf("Using test Postgres host: %s", host)
+		dsn = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, password, host, port, db)
+	} else if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		// Production PostgreSQL connection
 		driverName = "postgres"
 		dsn = dbURL
 	} else {
@@ -107,10 +132,24 @@ func ensureSqliteSchema() error {
 }
 
 func execSqlFile(filename string) error {
-	path := filepath.Join("api", "internal", "database", filename)
-	content, err := os.ReadFile(path)
+	rel := filepath.Join("api", "internal", "database", filename)
+
+	// Try several locations: current dir, and up to 4 parent dirs.
+	var content []byte
+	var err error
+	tried := []string{}
+	dir := "."
+	for i := 0; i < 5; i++ {
+		path := filepath.Clean(filepath.Join(dir, rel))
+		tried = append(tried, path)
+		content, err = os.ReadFile(path)
+		if err == nil {
+			break
+		}
+		dir = filepath.Join(dir, "..")
+	}
 	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", path, err)
+		return fmt.Errorf("failed to read %s (tried: %v): %w", rel, tried, err)
 	}
 
 	statements := strings.Split(string(content), ";")

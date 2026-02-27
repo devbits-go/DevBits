@@ -21,117 +21,56 @@ Some quirky names for things (frontend only)
 - Database: PostgreSQL or MySQL
 - Host: On AWS, full system design pending
 
-## Local Testing
+## Local Development
 
-### Backend Testing
+### Quick Start
 
-Install the following packages:
-
-- [**Go**](https://go.dev/doc/install) (for running the API)
-- [**SQLite3**](https://www.sqlite.org/index.html) (for database operations)
-
-#### 1. Navigate to the Project Root
-
-Change into the project directory:
+Start only the frontend (choose production or local backend at launch):
 
 ```bash
-cd /path/to/DevBits
+./run-front.sh
 ```
 
-#### 2. Start the Database
-
-1. Open a terminal and navigate to the database directory:
-
-   ```bash
-   cd backend/api/internal/database
-   ```
-
-2. Launch the SQLite database:
-
-   ```bash
-   sqlite3 dev.sqlite3
-   ```
-
-3. (Optional) Open the `create_tables.sql` file in a new terminal for reference:
-
-   ```bash
-   nvim create_tables.sql
-   ```
-
-#### 3. Start the API
-
-1. Open another terminal and navigate to the backend directory:
-
-   ```bash
-   cd backend
-   ```
-
-2. Run the API:
-
-   ```bash
-   go run ./api
-   ```
-
-That's it! You're ready to start working with the DevBits API and database.
-
----
-
-### Frontend Testing
-
-Install the following packages:
-
-- [**Node**](https://nodejs.org/en/download/package-manager) (for running the React Native App)
-
-#### 1. Navigate to the DevBits Frontend
-
-Change into the project directory:
+Start full local stack (dev PostgreSQL + backend + frontend in local API mode):
 
 ```bash
-cd /path/to/DevBits/frontend
+./run-dev.sh
 ```
 
-#### 2. Check required packages are installed
+Run backend tests using dockerized Go against the dev DB stack:
 
 ```bash
-npm install
+./run-db-tests.sh
 ```
 
-#### 3. Start the app
-
-```bash
-npm run frontend
-```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-### Run app
-
-#### 1. Navigate to the DevBits frontend (required to run npm commands)
-
-Change into the project directory:
-
-```bash
-cd /path/to/DevBits/frontend
-```
-
-#### 2. Run all required commands
-
-```bash
-npm run all
-```
-
-#### Windows quick start (root script)
-
-From the project root, you can launch backend + frontend together:
+PowerShell equivalents:
 
 ```powershell
-./run-all.ps1
+.\run-front.ps1
+.\run-dev.ps1
+.\run-db-tests.ps1
 ```
+
+Scan the QR code with Expo Go on your phone. The app will automatically connect to your local backend.
+
+### Verification Checklist
+
+- Fresh clone frontend check: run `chmod +x run-front.sh run-dev.sh run-db-tests.sh`, then `./run-front.sh`, choose `Production`, and confirm Expo starts.
+- Full local stack: run `./run-dev.sh`, confirm backend health at `http://<LAN-IP>:8080/health`, then validate app API calls from a phone on same WiFi.
+- DB tests: run `./run-db-tests.sh` and confirm it exits with code `0`.
+
+### Prerequisites
+
+1. Install Docker and Docker Compose (v2)
+2. Install Node.js/npm for Expo frontend
+
+### Troubleshooting
+
+- Docker Desktop on Windows: ensure file sharing is enabled for the repo path.
+- If `8080` or `5433` is occupied, the scripts prompt for alternate ports (or allow exit with guidance).
+- WSL/Docker Desktop/Linux engine differences: run scripts from the environment that owns your Docker daemon and ensure localhost port forwarding is enabled.
+
+For detailed instructions, see [INSTRUCTIONS.md](INSTRUCTIONS.md).
 
 ## Deployment DB scripts
 

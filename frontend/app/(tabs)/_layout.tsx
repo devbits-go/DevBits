@@ -14,6 +14,8 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
+        // hide textual labels under icons — we use icons only
+        tabBarShowLabel: false,
         lazy: true,
         freezeOnBlur: true,
         tabBarActiveTintColor: colors.tint,
@@ -39,7 +41,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          // title intentionally blank so no label appears
+          title: "",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="house.fill" color={color} />
           ),
@@ -48,7 +51,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: "Explore",
+          title: "",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="magnifyingglass" color={color} />
           ),
@@ -57,7 +60,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          title: "",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="person.fill" color={color} />
           ),

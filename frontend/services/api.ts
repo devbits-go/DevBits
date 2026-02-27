@@ -22,17 +22,16 @@ type ApiUserWire = ApiUser & {
   links?: unknown;
 };
 
-type CachedEntry<T> = {
-  value: T;
-  cachedAt: number;
-};
-
 export type ApiDirectMessageThread = {
   peer_username: string;
   last_content: string;
   last_at: string;
 };
 
+type CachedEntry<T> = {
+  value: T;
+  cachedAt: number;
+};
 const userCache = new Map<number, CachedEntry<ApiUser>>();
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
 const MAX_USER_CACHE_ENTRIES = 300;
@@ -48,6 +47,58 @@ const MAX_INLINE_MEDIA_FALLBACK_BYTES = 64 * 1024 * 1024;
 const REFRESH_READ_WINDOW_MS = 2500;
 let forceFreshReadsUntil = 0;
 let forceFreshReadToken: number | null = null;
+
+// Dev-only mitigations for Expo Go's limited networking environment.
+// These reduce burstiness, add small random staggering, and limit concurrent
+// requests so Expo Go doesn't abort requests aggressively during heavy loads.
+const DEV_MAX_CONCURRENT_REQUESTS = 6;
+const DEV_MAX_GET_ATTEMPTS = 1;
+const DEV_STAGGER_MS = 120; // max random stagger before starting a request
+const DEV_REQUEST_SHAPING_ENV_KEY = "EXPO_PUBLIC_ENABLE_DEV_REQUEST_SHAPING";
+let devInFlightCount = 0;
+const devQueue: Array<() => void> = [];
+
+const parseTruthyFlag = (value: unknown) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    return normalized !== "0" && normalized !== "false";
+  }
+  return value === true;
+};
+
+const isDevRequestShapingEnabled = (() => {
+  try {
+    const extras = (Constants as any)?.expoConfig?.extra ??
+      (Constants as any)?.manifest2?.extra ??
+      (Constants as any)?.manifest?.extra ??
+      null;
+
+    const raw = extras?.[DEV_REQUEST_SHAPING_ENV_KEY] ??
+      (typeof process !== "undefined" ? process.env?.[DEV_REQUEST_SHAPING_ENV_KEY] : undefined);
+
+    return parseTruthyFlag(raw);
+  } catch {
+    return false;
+  }
+})();
+
+const acquireDevSlot = async () => {
+  if (!__DEV__) return;
+  if (devInFlightCount < DEV_MAX_CONCURRENT_REQUESTS) {
+    devInFlightCount += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => devQueue.push(resolve));
+  devInFlightCount += 1;
+};
+
+const releaseDevSlot = () => {
+  if (!__DEV__) return;
+  devInFlightCount = Math.max(0, devInFlightCount - 1);
+  const next = devQueue.shift();
+  if (next) next();
+};
 
 type RequestOptions = {
   timeoutMs?: number;
@@ -116,6 +167,10 @@ export const invalidateCachedUserById = (userId: number) => {
 };
 
 export const setAuthToken = (token: string | null) => {
+  try {
+    // eslint-disable-next-line no-console
+    console.log("setAuthToken: token present=", !!token);
+  } catch {}
   const changed = authToken !== token;
   authToken = token;
   if (changed) {
@@ -153,39 +208,70 @@ const getHostFromUri = (uri?: string | null) => {
   return host || null;
 };
 
-const getLocalDevBaseUrl = () => {
-  if (!__DEV__) {
-    return null;
-  }
-
-  const legacyConstants = Constants as unknown as {
-    manifest?: { debuggerHost?: string };
-    manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
-  };
-
-  const hostUri =
-    Constants.expoConfig?.hostUri ??
-    legacyConstants.manifest?.debuggerHost ??
-    legacyConstants.manifest2?.extra?.expoClient?.hostUri ??
-    null;
-
-  const host = getHostFromUri(hostUri);
-  if (!host) {
-    return null;
-  }
-
-  return `http://${host}`;
-};
+// Removed `getLocalDevBaseUrl` — it was unused and duplicated logic in `getDefaultBaseUrl`.
 
 const getDefaultBaseUrl = () => {
-  // Use local API only when explicitly requested.
-  const shouldUseLocalApi = process.env.EXPO_PUBLIC_USE_LOCAL_API?.trim() === "1";
-  if (__DEV__ && shouldUseLocalApi) {
+  // Check for overrides provided via Expo `extra` or environment variables.
+  // This allows running the Expo client locally while targeting a remote
+  // backend (for example devbits.ddns.net) from any developer machine.
+  try {
+    const extras = (Constants as any)?.expoConfig?.extra ??
+      (Constants as any)?.manifest2?.extra ??
+      (Constants as any)?.manifest?.extra ?? null;
+
+    const envCandidate =
+      extras?.EXPO_PUBLIC_API_URL ??
+      extras?.API_URL ??
+      extras?.API_BASE_URL ??
+      (typeof process !== "undefined" ? process.env?.EXPO_PUBLIC_API_URL ?? process.env?.API_URL ?? null : null);
+
+    const useLocalRaw =
+      extras?.EXPO_PUBLIC_USE_LOCAL_API ??
+      (typeof process !== "undefined" ? process.env?.EXPO_PUBLIC_USE_LOCAL_API : undefined);
+
+    const useLocal = typeof useLocalRaw === "string"
+      ? !/^(0|false)$/i.test(useLocalRaw.trim())
+      : true;
+
+    // If the developer has provided an explicit local API URL and opted into
+    // using the local API, prefer that URL so devices on the same Wi‑Fi can
+    // connect directly to the local server instead of hairpinning through
+    // the router's external DDNS address. Validate the candidate so malformed
+    // values like "http://" are ignored.
+    const localCandidate = extras?.EXPO_PUBLIC_LOCAL_API_URL ??
+      (typeof process !== "undefined" ? process.env?.EXPO_PUBLIC_LOCAL_API_URL : undefined);
+    try {
+      if (useLocal && typeof localCandidate === "string" && localCandidate.trim()) {
+        const parsed = new URL(localCandidate.trim());
+        if (parsed.hostname) {
+          return `${parsed.protocol}//${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`;
+        }
+      }
+    } catch {
+      // ignore invalid local candidate and fall back
+    }
+
+    if (typeof envCandidate === "string" && envCandidate.trim()) {
+      return envCandidate.trim();
+    }
+
+    // If the developer explicitly disables using the local API in dev, use
+    // the production DDNS endpoint even when __DEV__ is true.
+    if (!useLocal) {
+      return "https://devbits.ddns.net";
+    }
+  } catch {
+    // ignore and fall back to defaults below
+  }
+
+  // In development mode, by default connect to local backend (auto-detect computer's IP)
+  if (__DEV__) {
     const legacyConstants = Constants as unknown as {
       manifest?: { debuggerHost?: string };
       manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
     };
 
+    // Get the host IP from Expo's configuration (Metro bundler's IP)
     const hostUri =
       Constants.expoConfig?.hostUri ??
       legacyConstants.manifest?.debuggerHost ??
@@ -194,17 +280,19 @@ const getDefaultBaseUrl = () => {
 
     const host = getHostFromUri(hostUri);
     if (host) {
-      return `http://${host}`;
+      return `http://${host}:8080`;
     }
 
+    // Fallbacks for different platforms
     if (Platform.OS === "android") {
-      return "http://10.0.2.2";
+      return "http://10.0.2.2:8080";
     }
 
-    return "http://localhost";
+    // iOS simulator or web - try localhost
+    return "http://localhost:8080";
   }
 
-  // Default to the live server for all other cases.
+  // Production: use live server
   return "https://devbits.ddns.net";
 };
 
@@ -229,23 +317,40 @@ const buildBaseUrlList = (...candidates: Array<string | null | undefined>) => {
   return urls;
 };
 
-export const API_BASE_URL = normalizeBaseUrl(
-  process.env.EXPO_PUBLIC_API_URL?.trim() || getDefaultBaseUrl(),
-);
+export const API_BASE_URL = normalizeBaseUrl(getDefaultBaseUrl());
 
-const LOCAL_DEV_BASE_URL = getLocalDevBaseUrl();
-
-const IS_LOCAL_API_MODE =
-  __DEV__ && process.env.EXPO_PUBLIC_USE_LOCAL_API?.trim() === "1";
+// Defensive runtime validation: if the resolved URL is malformed (e.g. "http://"
+// with no host) fall back to the public DDNS host and log an error so developers
+// can see the problem in the Metro/Expo console.
+try {
+  const checkUrl = new URL(API_BASE_URL);
+  if (!checkUrl.hostname) {
+    // eslint-disable-next-line no-console
+    console.error("Invalid API_BASE_URL resolved; falling back to https://devbits.ddns.net", API_BASE_URL);
+    // normalize and overwrite
+    (exports as any).API_BASE_URL = normalizeBaseUrl("https://devbits.ddns.net");
+  }
+} catch (e) {
+  // If parsing fails entirely, fallback and log.
+  try {
+    // eslint-disable-next-line no-console
+    console.error("Failed to parse API_BASE_URL; falling back to https://devbits.ddns.net", API_BASE_URL, String(e));
+  } catch {}
+  (exports as any).API_BASE_URL = normalizeBaseUrl("https://devbits.ddns.net");
+}
 
 const API_FALLBACK_URL = normalizeBaseUrl(
-  process.env.EXPO_PUBLIC_API_FALLBACK_URL?.trim() ||
-    (IS_LOCAL_API_MODE ? "" : "https://devbits.ddns.net"),
+  __DEV__ ? "" : "https://devbits.ddns.net",
 );
 
-const API_REQUEST_BASE_URLS = buildBaseUrlList(LOCAL_DEV_BASE_URL, API_BASE_URL, API_FALLBACK_URL);
+const API_REQUEST_BASE_URLS = buildBaseUrlList(API_BASE_URL, API_FALLBACK_URL);
 const API_UPLOAD_BASE_URLS = API_REQUEST_BASE_URLS;
 const BASE_URL_FAILURE_COOLDOWN_MS = 12000;
+
+// Cooldown for repeated failures to the same request path to avoid tight
+// infinite re-queue loops from components that aggressively retry on error.
+const PATH_FAILURE_COOLDOWN_MS = 5000;
+const pathFailState = new Map<string, number>();
 
 type BaseUrlFailState = {
   failedAt: number;
@@ -255,6 +360,8 @@ type BaseUrlFailState = {
 
 const baseUrlFailState = new Map<string, BaseUrlFailState>();
 let preferredBaseUrl: string | null = API_REQUEST_BASE_URLS[0] ?? null;
+
+const EFFECTIVE_REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 
 const getOrderedBaseUrls = (baseUrls: string[] = API_REQUEST_BASE_URLS) => {
   const now = Date.now();
@@ -327,7 +434,7 @@ const isBlockedManagedUploadPath = (pathValue: string) => {
   return BLOCKED_MANAGED_UPLOAD_EXTENSIONS.has(getPathExtension(pathValue));
 };
 
-const isTransientRequestError = (error: unknown) => {
+const isTransientNetworkError = (error: unknown) => {
   if (error instanceof Error && error.name === "AbortError") {
     return true;
   }
@@ -349,6 +456,11 @@ const fetchWithFailover = async (
 ) => {
   const orderedBaseUrls = getOrderedBaseUrls(baseUrls);
   let lastError: unknown = null;
+  // Debug: show which base URLs we'll try
+  try {
+    // eslint-disable-next-line no-console
+    console.log("fetchWithFailover: orderedBaseUrls=", orderedBaseUrls);
+  } catch {}
 
   for (const baseUrl of orderedBaseUrls) {
     const controller = new AbortController();
@@ -356,7 +468,14 @@ const fetchWithFailover = async (
       timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
     try {
-      const response = await fetch(buildPath(baseUrl), {
+      const url = buildPath(baseUrl);
+      // Debug: log attempted request URL
+      try {
+        // eslint-disable-next-line no-console
+        console.log("fetchWithFailover: trying", url);
+      } catch {}
+
+      const response = await fetch(url, {
         ...init,
         signal: controller.signal,
       });
@@ -364,6 +483,10 @@ const fetchWithFailover = async (
       return response;
     } catch (error) {
       lastError = error;
+      try {
+        // eslint-disable-next-line no-console
+        console.error("fetchWithFailover: baseUrl failed", baseUrl, String(error));
+      } catch {}
       markBaseUrlFailure(baseUrl);
     } finally {
       if (timeoutId) {
@@ -375,51 +498,9 @@ const fetchWithFailover = async (
   throw lastError ?? new Error("No API base URL available");
 };
 
-const isTransientUploadError = (error: unknown) => {
-  if (error instanceof Error && error.name === "AbortError") {
-    return true;
-  }
-  const message =
-    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return (
-    message.includes("network") ||
-    message.includes("timed out") ||
-    message.includes("failed to fetch") ||
-    message.includes("connection")
-  );
-};
+// Reuse isTransientNetworkError for upload errors as well.
 
-const fetchUploadWithFallback = async (
-  path: string,
-  init: RequestInit,
-) => {
-  let lastError: unknown = null;
-
-  for (const baseUrl of API_UPLOAD_BASE_URLS) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-    try {
-      const response = await fetch(`${baseUrl}${path}`, {
-        ...init,
-        signal: controller.signal,
-      });
-      return response;
-    } catch (error) {
-      lastError = error;
-      continue;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  if (lastError instanceof Error && lastError.name === "AbortError") {
-    throw new Error(
-      `Upload timed out after ${UPLOAD_TIMEOUT_MS / 1000}s. Check API connectivity to ${API_BASE_URL}.`,
-    );
-  }
-  const detail = lastError instanceof Error ? lastError.message : String(lastError);
-  throw new Error(`Upload failed while connecting to ${API_BASE_URL}: ${detail}`);
-};
+// removed unused fetchUploadWithFallback — uploadMultipartWithFallback is used instead
 
 const uploadMultipartWithFallback = async (
   path: string,
@@ -427,11 +508,21 @@ const uploadMultipartWithFallback = async (
   headers: Headers,
 ) => {
   let lastError: unknown = null;
+  try {
+    // Debug: show upload multipart base urls
+    // eslint-disable-next-line no-console
+    console.log("uploadMultipartWithFallback: upload base urls=", API_UPLOAD_BASE_URLS, "path=", path);
+  } catch {}
 
   for (const baseUrl of API_UPLOAD_BASE_URLS) {
     const targetUrl = `${baseUrl}${path}`;
 
     try {
+      try {
+        // eslint-disable-next-line no-console
+        console.log("uploadMultipartWithFallback: trying multipart upload to", targetUrl);
+      } catch {}
+
       const result = await new Promise<{
         status: number;
         responseText: string;
@@ -504,10 +595,13 @@ const uploadMultipartWithFallback = async (
 
         xhr.send(body);
       });
-
       return result;
     } catch (error) {
       lastError = error;
+      try {
+        // eslint-disable-next-line no-console
+        console.error("uploadMultipartWithFallback: multipart upload failed to", baseUrl, String(error));
+      } catch {}
       continue;
     }
   }
@@ -628,7 +722,7 @@ export const resolveMediaUrl = (value?: string | null) => {
     return `${API_BASE_URL}${trimmed}`;
   }
 
-  const normalized = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
+  const normalized = trimmed;
   if (normalized.startsWith("uploads/")) {
     if (isBlockedManagedUploadPath(normalized)) {
       return "";
@@ -656,9 +750,14 @@ const request = async <T>(
   const timeoutMs =
     typeof options?.timeoutMs === "number"
       ? Math.max(0, options.timeoutMs)
-      : REQUEST_TIMEOUT_MS;
+      : EFFECTIVE_REQUEST_TIMEOUT_MS;
 
   if (isGetRequest) {
+    const cooldownUntil = pathFailState.get(requestPath);
+    if (cooldownUntil && cooldownUntil > Date.now()) {
+      throw new Error(`Recent failures for ${requestPath}; throttling requests briefly.`);
+    }
+
     const existing = inFlightGetRequests.get(inFlightKey);
     if (existing) {
       return existing as Promise<T>;
@@ -666,71 +765,100 @@ const request = async <T>(
   }
 
   const execute = async (): Promise<T> => {
-    const headers = new Headers(init?.headers as HeadersInit | undefined);
-    const hasBody = !!init?.body;
-    const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-    if (hasBody && !isFormData && !headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
-    }
-    if (authToken) {
-      headers.set("Authorization", `Bearer ${authToken}`);
-    }
-    if (isGetRequest) {
-      headers.set("Cache-Control", "no-cache");
-      headers.set("Pragma", "no-cache");
+    let didAcquire = false;
+
+    // Stagger + acquire dev slot if running in dev
+    if (__DEV__ && isDevRequestShapingEnabled) {
+      const stagger = Math.floor(Math.random() * DEV_STAGGER_MS);
+      if (stagger > 0) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, stagger));
+      }
+      await acquireDevSlot();
+      didAcquire = true;
     }
 
-    const maxAttempts = isGetRequest ? 2 : 1;
-    let response: Response | null = null;
-    let lastError: unknown = null;
+    // Wrap headers setup, fetch attempts and parsing in a try/finally so the
+    // dev slot is always released even if the retry loop or parsing throws.
+    try {
+      const headers = new Headers(init?.headers as HeadersInit | undefined);
+      const hasBody = !!init?.body;
+      const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+      if (hasBody && !isFormData && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
+      if (authToken) {
+        headers.set("Authorization", `Bearer ${authToken}`);
+      }
+      if (isGetRequest) {
+        headers.set("Cache-Control", "no-cache");
+        headers.set("Pragma", "no-cache");
+      }
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        response = await fetchWithFailover(
-          (baseUrl) => `${baseUrl}${requestPath}`,
-          {
-            ...init,
-            headers,
-          },
-          timeoutMs,
-        );
-        lastError = null;
-        break;
-      } catch (error) {
-        lastError = error;
-        const canRetry =
-          attempt < maxAttempts && isGetRequest && isTransientRequestError(error);
-        if (canRetry) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          continue;
+      const maxAttempts = isGetRequest
+        ? (__DEV__ && isDevRequestShapingEnabled ? DEV_MAX_GET_ATTEMPTS : 2)
+        : 1;
+      let response: Response | null = null;
+      let lastError: unknown = null;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          response = await fetchWithFailover(
+            (baseUrl) => `${baseUrl}${requestPath}`,
+            {
+              ...init,
+              headers,
+            },
+            timeoutMs,
+          );
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          const canRetry =
+            attempt < maxAttempts && isGetRequest && isTransientNetworkError(error);
+          if (canRetry) {
+            const backoff = Math.min(2000, 250 * Math.pow(2, attempt - 1));
+            const jitter = Math.floor(Math.random() * 200);
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((resolve) => setTimeout(resolve, backoff + jitter));
+            continue;
+          }
         }
       }
-    }
 
-    if (!response) {
-      if (lastError instanceof Error && lastError.name === "AbortError") {
-        throw new Error(
-          `Request timed out after ${timeoutMs / 1000}s. Check API connectivity to ${API_BASE_URL}.`,
-        );
+      if (!response) {
+        // Throttle repeated failures to the same path to avoid tight retry loops
+        // from higher-level UI code.
+        try {
+          pathFailState.set(requestPath, Date.now() + PATH_FAILURE_COOLDOWN_MS);
+        } catch {}
+        if (lastError instanceof Error && lastError.name === "AbortError") {
+          throw new Error(
+            `Request timed out after ${timeoutMs / 1000}s. Check API connectivity to ${API_BASE_URL}.`,
+          );
+        }
+        const detail = lastError instanceof Error ? lastError.message : String(lastError);
+        throw new Error(`Network error connecting to ${API_BASE_URL}: ${detail}`);
       }
-      const detail = lastError instanceof Error ? lastError.message : String(lastError);
-      throw new Error(`Network error connecting to ${API_BASE_URL}: ${detail}`);
-    }
 
-    const text = await response.text();
+      const text = await response.text();
 
-    if (!response.ok) {
-      throw new Error(text || `Request failed (${response.status})`);
-    }
+      if (!response.ok) {
+        throw new Error(text || `Request failed (${response.status})`);
+      }
 
-    if (!text) {
-      return (null as unknown) as T;
-    }
+      if (!text) {
+        return (null as unknown) as T;
+      }
 
-    try {
       return JSON.parse(text) as T;
-    } catch {
-      throw new Error(`Invalid JSON response: ${text}`);
+    } finally {
+      if (didAcquire) {
+        try {
+          releaseDevSlot();
+        } catch {}
+      }
     }
   };
 
@@ -1096,7 +1224,7 @@ export const updateUser = async (username: string, payload: UpdateUserRequest) =
   const pictureValue = typeof payload.picture === "string" ? payload.picture.trim() : "";
   const timeoutMs = pictureValue.startsWith("data:")
     ? LARGE_REQUEST_TIMEOUT_MS
-    : REQUEST_TIMEOUT_MS;
+    : EFFECTIVE_REQUEST_TIMEOUT_MS;
   // Use POST /users/:username/update instead of PUT /users/:username
   // because iOS CFNetwork intermittently drops PUT request bodies,
   // causing silent 400 errors.  POST bodies are delivered reliably.
@@ -1328,7 +1456,7 @@ export const uploadMedia = async (file: {
       lastError = err;
       const retryableError =
         (err as { retryable?: boolean } | null)?.retryable === true ||
-        isTransientUploadError(err);
+        isTransientNetworkError(err);
 
       if (attempt < MAX_RETRIES && retryableError) {
         await new Promise((r) => setTimeout(r, 250));
