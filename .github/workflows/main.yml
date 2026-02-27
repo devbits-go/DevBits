@@ -1,0 +1,56 @@
+name: Add BUG Issues to Milestone
+
+on:
+  workflow_dispatch:  # run manually only
+
+jobs:
+  add-bug-milestone:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add BUG issues to milestone
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const milestoneTitle = "V1.0.3 Release 17"; // your milestone name
+            const bugLabel = "BUG";
+
+            // get milestone number
+            const milestones = await github.rest.issues.listMilestones({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open"
+            });
+
+            const milestone = milestones.data.find(m => m.title === milestoneTitle);
+
+            if (!milestone) {
+              console.log(`Milestone "${milestoneTitle}" not found.`);
+              return;
+            }
+
+            const milestoneNumber = milestone.number;
+
+            // get issues with the BUG label
+            const issues = await github.paginate(
+              github.rest.issues.listForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: bugLabel,
+                state: "open"
+              }
+            );
+
+            for (const issue of issues) {
+              // skip PRs
+              if (issue.pull_request) continue;
+
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                milestone: milestoneNumber
+              });
+
+              console.log(`Added issue #${issue.number} to milestone "${milestoneTitle}"`);
+            }

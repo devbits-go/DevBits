@@ -172,7 +172,12 @@ If you haven't already, or if you've pulled new changes, install the necessary N
 npm install
 ```
 
-### Build the Android App
+### Build the Android App.
+
+> [!NOTE]
+> If you want to build ios, just replace android with ios and fill out proper credentials.
+>
+> *right now it is just my credentials that work. I need to add yall.* `my = Eli`
 
 To create a production build of the Android application for the Google Play Store:
 

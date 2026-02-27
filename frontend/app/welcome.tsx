@@ -37,7 +37,7 @@ const slides: Slide[] = [
     bulletA: "Streams = projects",
     bulletB: "Bytes = posts",
     bulletC:
-      "Profiles, follows, saves, comments, and DMs keep everything connected",
+      "Profiles, follows, saves, bits, and DMs keep everything connected",
   },
   {
     id: "streams",
@@ -52,7 +52,7 @@ const slides: Slide[] = [
     title: "Bytes are your posts",
     body: "Publish quick updates, demos, media, and notes as bytes.",
     bulletA: "Post to a stream to keep progress organized",
-    bulletB: "People can save, comment, and react",
+    bulletB: "People can save, add bits, and react",
     bulletC: "Use bytes for daily updates or major milestones",
   },
   {
