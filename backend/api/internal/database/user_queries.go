@@ -228,7 +228,7 @@ func DeleteUser(username string) error {
 	return nil
 }
 
-// SearchUsers retrieves users whose username starts with the given prefix (case-insensitive), limited to 10 results.
+// SearchUsers retrieves users whose username starts with the given prefix (case-insensitive), limited to the specified limit.
 func SearchUsers(prefix string, limit int) ([]*ApiUser, error) {
 	query := `
 		SELECT id, username, picture, bio, links, settings, creation_date
@@ -267,6 +267,9 @@ func SearchUsers(prefix string, limit int) ([]*ApiUser, error) {
 		users = append(users, user)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate over user search results: %w", err)
+	}
 	return users, nil
 }
 
