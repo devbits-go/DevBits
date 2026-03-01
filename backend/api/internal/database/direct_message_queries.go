@@ -19,6 +19,7 @@ type DirectMessage struct {
 
 type DirectMessageThread struct {
 	PeerUsername string    `json:"peer_username"`
+	PeerPicture  string    `json:"peer_picture"`
 	LastContent  string    `json:"last_content"`
 	LastAt       time.Time `json:"last_at"`
 }
@@ -209,7 +210,7 @@ func QueryDirectMessageThreads(username string, start int, count int) ([]DirectM
 		FROM directmessages dm
 		WHERE dm.sender_id = $1 OR dm.recipient_id = $1
 	)
-	SELECT u.username, rt.content, rt.creation_date
+	SELECT u.username, COALESCE(u.picture, ''), rt.content, rt.creation_date
 	FROM ranked_threads rt
 	JOIN users u ON u.id = rt.peer_id
 	WHERE rt.rank_in_thread = 1
@@ -225,7 +226,7 @@ func QueryDirectMessageThreads(username string, start int, count int) ([]DirectM
 	threads := make([]DirectMessageThread, 0)
 	for rows.Next() {
 		var thread DirectMessageThread
-		if err := rows.Scan(&thread.PeerUsername, &thread.LastContent, &thread.LastAt); err != nil {
+		if err := rows.Scan(&thread.PeerUsername, &thread.PeerPicture, &thread.LastContent, &thread.LastAt); err != nil {
 			return nil, http.StatusInternalServerError, fmt.Errorf("failed to scan direct message thread: %w", err)
 		}
 		threads = append(threads, thread)

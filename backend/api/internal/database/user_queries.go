@@ -228,6 +228,48 @@ func DeleteUser(username string) error {
 	return nil
 }
 
+// SearchUsers retrieves users whose username starts with the given prefix (case-insensitive), limited to 10 results.
+func SearchUsers(prefix string, limit int) ([]*ApiUser, error) {
+	query := `
+		SELECT id, username, picture, bio, links, settings, creation_date
+		FROM users
+		WHERE LOWER(username) LIKE LOWER($1)
+		ORDER BY username ASC
+		LIMIT $2;
+	`
+	rows, err := DB.Query(query, prefix+"%", limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*ApiUser
+	for rows.Next() {
+		user := &ApiUser{}
+		var links, settings []byte
+		if err := rows.Scan(
+			&user.Id,
+			&user.Username,
+			&user.Picture,
+			&user.Bio,
+			&links,
+			&settings,
+			&user.CreationDate,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan user row: %w", err)
+		}
+		if err := json.Unmarshal(links, &user.Links); err != nil {
+			log.Printf("WARN: could not unmarshal user links: %v", err)
+		}
+		if err := json.Unmarshal(settings, &user.Settings); err != nil {
+			log.Printf("WARN: could not unmarshal user settings: %v", err)
+		}
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
 // GetUsers retrieves a list of all users
 func GetUsers() ([]*ApiUser, error) {
 	query := `
@@ -537,4 +579,3 @@ func CreateUserLoginInfo(info *UserLoginInfo) error {
 	}
 	return nil
 }
-

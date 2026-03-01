@@ -31,7 +31,7 @@ export default function ConversationScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { username: recipientUsername } = useLocalSearchParams<{ username: string }>();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
 
   const [messages, setMessages] = useState<MessageWithState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,8 +52,7 @@ export default function ConversationScreen() {
         0,
         100
       );
-      // Reverse to show oldest first (for inverted FlatList)
-      setMessages(response.reverse());
+      setMessages(response ?? []);
     } catch (err) {
       console.error("Failed to fetch messages:", err);
       setError("Failed to load messages");
@@ -69,14 +68,19 @@ export default function ConversationScreen() {
 
   // WebSocket connection for real-time messages
   useEffect(() => {
-    if (!user?.username) return;
+    if (!user?.username || !token) return;
 
     // Connect to WebSocket (reuse existing connection pattern from terminal)
     const protocol = __DEV__ ? "ws" : "wss";
     const host = __DEV__ ? "10.0.2.2:8080" : "devbits.ddns.net";
-    const wsUrl = `${protocol}://${host}/ws?username=${encodeURIComponent(user.username)}`;
+    const wsUrl = `${protocol}://${host}/messages/${encodeURIComponent(user.username)}/stream?token=${encodeURIComponent(token)}`;
 
     try {
+      // Close any existing socket from a previous run before creating a new one
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        wsRef.current.close();
+      }
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -131,7 +135,7 @@ export default function ConversationScreen() {
     } catch (err) {
       console.error("Failed to connect WebSocket:", err);
     }
-  }, [user?.username, recipientUsername]);
+  }, [user?.username, recipientUsername, token]);
 
   // Send message with optimistic UI
   const handleSendMessage = async (content: string) => {
@@ -183,18 +187,9 @@ export default function ConversationScreen() {
 
       Alert.alert("Failed to send", "Your message could not be sent. Please try again.", [
         {
-          text: "Retry",
+          text: "OK",
           onPress: () => {
-            // Remove failed message and retry
-            setMessages((prev) => prev.filter((msg) => msg.tempId !== tempId));
-            handleSendMessage(content);
-          },
-        },
-        {
-          text: "Cancel",
-          style: "cancel",
-          onPress: () => {
-            // Remove failed message
+            // Remove failed message so the user can re-send from the composer
             setMessages((prev) => prev.filter((msg) => msg.tempId !== tempId));
           },
         },
@@ -246,11 +241,11 @@ export default function ConversationScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardView}
-        keyboardVerticalOffset={0}
-      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.keyboardView}
+          keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 56 : 0}
+        >
         {/* Header */}
         <View
           style={[

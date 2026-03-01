@@ -29,6 +29,7 @@ type CachedEntry<T> = {
 
 export type ApiDirectMessageThread = {
   peer_username: string;
+  peer_picture: string;
   last_content: string;
   last_at: string;
 };
@@ -938,6 +939,13 @@ export const deleteMyManagedMedia = (
 export const getAllUsers = async (start = 0, count = 50) => {
   const users = await request<ApiUserWire[]>(`/users?start=${start}&count=${count}`);
   return users.map(normalizeUser);
+};
+
+export const searchUsers = async (q: string, count = 10) => {
+  const users = await request<ApiUserWire[]>(
+    `/users/search?q=${encodeURIComponent(q)}&count=${count}`
+  );
+  return (users ?? []).map(normalizeUser);
 };
 
 export const getProjectById = async (projectId: number) => {

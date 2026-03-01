@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { View, StyleSheet, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { ThemedText } from "@/components/ThemedText";
 import { FadeInImage } from "@/components/FadeInImage";
 import { useAppColors } from "@/hooks/useAppColors";
+import { resolveMediaUrl } from "@/services/api";
 
 interface MessageThreadItemProps {
   username: string;
@@ -24,6 +25,18 @@ export function MessageThreadItem({
 }: MessageThreadItemProps) {
   const colors = useAppColors();
   const router = useRouter();
+  const [userPicFailed, setUserPicFailed] = useState(false);
+
+  const resolvedUserPicture = resolveMediaUrl(avatarUrl);
+
+  const initials = useMemo(() => {
+    return username
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  }, [username]);
 
   const handlePress = () => {
     router.push(`/conversation/${username}`);
@@ -42,12 +55,19 @@ export function MessageThreadItem({
       ]}
     >
       <View style={styles.avatarContainer}>
-        <FadeInImage
-          source={{
-            uri: avatarUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${username}`,
-          }}
-          style={styles.avatar}
-        />
+        {resolvedUserPicture && !userPicFailed ? (
+          <FadeInImage
+            source={{ uri: resolvedUserPicture }}
+            style={styles.avatar}
+            onLoadFailed={() => setUserPicFailed(true)}
+          />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: colors.surfaceAlt }]}>
+            <ThemedText type="caption" style={styles.avatarText}>
+              {initials}
+            </ThemedText>
+          </View>
+        )}
         {isOnline && (
           <View
             style={[
@@ -114,6 +134,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    lineHeight: undefined,
   },
   onlineIndicator: {
     position: "absolute",

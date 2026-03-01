@@ -18,6 +18,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// SearchUsers handles GET /users/search?q=<prefix>&count=<n>
+// Returns up to `count` users (max 20, default 10) whose username starts with `q`.
+func SearchUsers(context *gin.Context) {
+	q := strings.TrimSpace(context.Query("q"))
+	if q == "" {
+		context.JSON(http.StatusOK, []*database.ApiUser{})
+		return
+	}
+
+	limit := 10
+	if strCount := context.Query("count"); strCount != "" {
+		if parsed, err := strconv.Atoi(strCount); err == nil && parsed > 0 {
+			if parsed > 20 {
+				parsed = 20
+			}
+			limit = parsed
+		}
+	}
+
+	users, err := database.SearchUsers(q, limit)
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to search users: %v", err))
+		return
+	}
+
+	if users == nil {
+		users = []*database.ApiUser{}
+	}
+
+	context.JSON(http.StatusOK, users)
+}
+
 // GetUsernameById handles GET requests to fetch a user by their username.
 // It expects the `username` parameter in the URL.
 // Returns:
