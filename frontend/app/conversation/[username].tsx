@@ -17,13 +17,26 @@ import { MessageBubble } from "@/components/MessageBubble";
 import { MessageComposer } from "@/components/MessageComposer";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuth } from "@/contexts/AuthContext";
-import { getDirectMessages, createDirectMessage } from "@/services/api";
+import { API_BASE_URL, getDirectMessages, createDirectMessage } from "@/services/api";
 import { ApiDirectMessage } from "@/constants/Types";
 
 type MessageWithState = ApiDirectMessage & {
   isPending?: boolean;
   isError?: boolean;
   tempId?: string;
+};
+
+const getWebSocketBaseUrl = (baseUrl?: string) => {
+  if (!baseUrl) {
+    return "";
+  }
+  if (baseUrl.startsWith("https://")) {
+    return `wss://${baseUrl.slice("https://".length)}`;
+  }
+  if (baseUrl.startsWith("http://")) {
+    return `ws://${baseUrl.slice("http://".length)}`;
+  }
+  return baseUrl;
 };
 
 export default function ConversationScreen() {
@@ -74,14 +87,11 @@ export default function ConversationScreen() {
     let reconnectAttempts = 0;
     let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let isActive = true;
-
-    // Connect to WebSocket (reuse existing connection pattern from terminal)
-    const protocol = __DEV__ ? "ws" : "wss";
-    const host = __DEV__ ? "10.0.2.2:8080" : "devbits.ddns.net";
-    const wsUrl = `${protocol}://${host}/messages/${encodeURIComponent(
+    // Connect to WebSocket using API_BASE_URL
+    const wsBase = getWebSocketBaseUrl(API_BASE_URL);
+    const wsUrl = `${wsBase}/messages/${encodeURIComponent(
       user.username
     )}/stream?token=${encodeURIComponent(token)}`;
-
     const connect = () => {
       if (!isActive) {
         return;
