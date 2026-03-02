@@ -83,70 +83,137 @@ export default function ConversationScreen() {
   useEffect(() => {
     if (!user?.username || !token) return;
 
+    // Track reconnection state within this effect
+    let reconnectAttempts = 0;
+    let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let isActive = true;
+
     // Connect to WebSocket using API_BASE_URL
     const wsBase = getWebSocketBaseUrl(API_BASE_URL);
-    const wsUrl = `${wsBase}/messages/${encodeURIComponent(user.username)}/stream?token=${encodeURIComponent(token)}`;
+    const wsUrl = `${wsBase}/messages/${encodeURIComponent(
+      user.username
+    )}/stream?token=${encodeURIComponent(token)}`;
 
-    try {
-      // Close any existing socket from a previous run before creating a new one
-      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
-        wsRef.current.close();
+    const connect = () => {
+      if (!isActive) {
+        return;
       }
 
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      try {
+        // Close any existing socket from a previous run before creating a new one
+        if (
+          wsRef.current &&
+          (wsRef.current.readyState === WebSocket.OPEN ||
+            wsRef.current.readyState === WebSocket.CONNECTING)
+        ) {
+          wsRef.current.close();
+        }
 
-      ws.onopen = () => {
-        console.log("WebSocket connected for conversation");
-      };
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Handle incoming direct message
-          if (data.type === "direct_message") {
-            const newMessage = data.direct_message as ApiDirectMessage;
-            
-            // Only add if it's from the current conversation
-            if (
-              newMessage.sender_name === recipientUsername ||
-              newMessage.recipient_name === recipientUsername
-            ) {
-              setMessages((prev) => {
-                // Check if message already exists (avoid duplicates)
-                const exists = prev.some((m) => m.id === newMessage.id);
-                if (exists) return prev;
-                return [...prev, newMessage];
-              });
-              
-              // Scroll to bottom
-              setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-              }, 100);
+        ws.onopen = () => {
+          console.log("WebSocket connected for conversation");
+          // Reset reconnect attempts on successful connection
+          reconnectAttempts = 0;
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+
+            // Handle incoming direct message
+            if (data.type === "direct_message") {
+              const newMessage = data.direct_message as ApiDirectMessage;
+
+              // Only add if it's from the current conversation
+              if (
+                newMessage.sender_name === recipientUsername ||
+                newMessage.recipient_name === recipientUsername
+              ) {
+                setMessages((prev) => {
+                  // Check if message already exists (avoid duplicates)
+                  const exists = prev.some((m) => m.id === newMessage.id);
+                  if (exists) return prev;
+                  return [...prev, newMessage];
+                });
+
+                // Scroll to bottom
+                setTimeout(() => {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                }, 100);
+              }
             }
+          } catch (err) {
+            console.error("Failed to parse WebSocket message:", err);
           }
-        } catch (err) {
-          console.error("Failed to parse WebSocket message:", err);
-        }
-      };
+        };
 
-      ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-      };
+        ws.onerror = (error) => {
+          console.error("WebSocket error:", error);
+        };
 
-      ws.onclose = () => {
-        console.log("WebSocket closed");
-      };
+        ws.onclose = (event) => {
+          console.log(
+            "WebSocket closed",
+            event?.code,
+            event?.reason ?? ""
+          );
 
-      return () => {
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-      };
-    } catch (err) {
-      console.error("Failed to connect WebSocket:", err);
-    }
+          if (!isActive) {
+            // Component unmounted or effect cleaned up; do not attempt to reconnect
+            return;
+          }
+
+          const maxAttempts = 5;
+          if (reconnectAttempts >= maxAttempts) {
+            console.log("Max WebSocket reconnect attempts reached; giving up.");
+            return;
+          }
+
+          const baseDelayMs = 1000;
+          const maxDelayMs = 10000;
+          const delayMs = Math.min(
+            baseDelayMs * Math.pow(2, reconnectAttempts),
+            maxDelayMs
+          );
+          reconnectAttempts += 1;
+
+          console.log(
+            `Attempting WebSocket reconnect #${reconnectAttempts} in ${delayMs}ms`
+          );
+
+          reconnectTimeoutId = setTimeout(() => {
+            reconnectTimeoutId = null;
+            connect();
+          }, delayMs);
+        };
+      } catch (err) {
+        console.error("Failed to connect WebSocket:", err);
+      }
+    };
+
+    // Initial connection
+    connect();
+
+    return () => {
+      // Prevent any further reconnect attempts
+      isActive = false;
+
+      if (reconnectTimeoutId !== null) {
+        clearTimeout(reconnectTimeoutId);
+        reconnectTimeoutId = null;
+      }
+
+      const ws = wsRef.current;
+      if (
+        ws &&
+        (ws.readyState === WebSocket.OPEN ||
+          ws.readyState === WebSocket.CONNECTING)
+      ) {
+        ws.close();
+      }
+    };
   }, [user?.username, recipientUsername, token]);
 
   // Send message with optimistic UI
