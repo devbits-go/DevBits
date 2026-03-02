@@ -87,13 +87,11 @@ export default function ConversationScreen() {
     let reconnectAttempts = 0;
     let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let isActive = true;
-
     // Connect to WebSocket using API_BASE_URL
     const wsBase = getWebSocketBaseUrl(API_BASE_URL);
     const wsUrl = `${wsBase}/messages/${encodeURIComponent(
       user.username
     )}/stream?token=${encodeURIComponent(token)}`;
-
     const connect = () => {
       if (!isActive) {
         return;

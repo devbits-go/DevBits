@@ -39,7 +39,10 @@ export function MessageThreadItem({
   }, [username]);
 
   const handlePress = () => {
-    router.push(`/conversation/${username}`);
+    router.push({
+      pathname: "/conversation/[username]",
+      params: { username },
+    });
   };
 
   return (
