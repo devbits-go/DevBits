@@ -29,6 +29,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { HyprBackdrop } from "@/components/HyprBackdrop";
 import { BootScreen } from "@/components/BootScreen";
 import { InAppNotificationBanner } from "@/components/InAppNotificationBanner";
+import { API_BASE_URL } from "@/services/api";
 // Prevent the splash screen from auto-hiding before asset loading is complete
 SplashScreen.preventAutoHideAsync();
 
@@ -184,6 +185,22 @@ function RootLayoutNav() {
       SplashScreen.hideAsync();
     }
   }, [fontsReady]);
+
+  useEffect(() => {
+    // Debug: print resolved API base URL and expo extras so we can confirm
+    // the JS runtime is seeing the intended backend when running via Expo.
+    try {
+      // eslint-disable-next-line no-console
+      console.log("Resolved API_BASE_URL:", API_BASE_URL);
+      // eslint-disable-next-line no-console
+      console.log(
+        "Expo extras:",
+        Constants.expoConfig?.extra ?? Constants.manifest?.extra ?? null,
+      );
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (!fontsReady || isLoading) {

@@ -262,7 +262,8 @@ func QueryGetProjectFollowers(projectID int) ([]int, int, error) {
         SELECT u.id
 	FROM users u
 	JOIN projectfollows pf ON u.id = pf.user_id
-	WHERE pf.project_id = $1`
+	WHERE pf.project_id = $1
+	ORDER BY u.id`
 
 	return getProjectFollowersOrFollowing(query, projectID)
 }
@@ -281,7 +282,8 @@ func QueryGetProjectFollowersUsernames(projectID int) ([]string, int, error) {
         SELECT u.username
 	FROM users u
 	JOIN projectfollows pf ON u.id = pf.user_id
-	WHERE pf.project_id = $1`
+	WHERE pf.project_id = $1
+	ORDER BY u.username`
 
 	return getProjectFollowersOrFollowingUsernames(query, projectID)
 }
@@ -305,7 +307,8 @@ func QueryGetProjectFollowing(username string) ([]int, int, error) {
         SELECT p.id
 	FROM projects p
 	JOIN projectfollows pf ON p.id = pf.project_id
-	WHERE pf.user_id = $1`
+	WHERE pf.user_id = $1
+	ORDER BY p.id`
 
 	return getProjectFollowersOrFollowing(query, userID)
 }
@@ -329,7 +332,8 @@ func QueryGetProjectFollowingNames(username string) ([]string, int, error) {
         SELECT p.name
 	FROM projects p
 	JOIN projectfollows pf ON p.id = pf.project_id
-	WHERE pf.user_id = $1`
+	WHERE pf.user_id = $1
+	ORDER BY p.name`
 
 	return getProjectFollowersOrFollowingUsernames(query, userID)
 }
