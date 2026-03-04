@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -538,6 +539,45 @@ func QueryDeleteComment(id int) (int16, error) {
 	}
 
 	return http.StatusOK, nil
+}
+
+// QueryCommentsByFilter searches comments by content substring (case-insensitive).
+func QueryCommentsByFilter(filter string) ([]Comment, error) {
+	like := "%" + strings.ToLower(strings.TrimSpace(filter)) + "%"
+	query := `SELECT id, user_id, content, COALESCE(media, '[]'), likes, creation_date, parent_comment_id
+		FROM comments
+		WHERE LOWER(content) LIKE $1
+		ORDER BY creation_date DESC
+		LIMIT 500;`
+
+	rows, err := DB.Query(query, like)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	comments := []Comment{}
+	for rows.Next() {
+		var comment Comment
+		var mediaJSON string
+		if err := rows.Scan(
+			&comment.ID,
+			&comment.User,
+			&comment.Content,
+			&mediaJSON,
+			&comment.Likes,
+			&comment.CreationDate,
+			&comment.ParentComment,
+		); err != nil {
+			return nil, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &comment.Media); err != nil {
+			return nil, err
+		}
+		comments = append(comments, comment)
+	}
+
+	return comments, nil
 }
 
 // QueryUpdateComment updates comment fields with validation on edit time.

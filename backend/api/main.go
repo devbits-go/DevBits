@@ -1,8 +1,10 @@
 package main
 
 import (
+	"github.com/joho/godotenv"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"backend/api/internal/database"
@@ -17,6 +19,7 @@ import (
 
 const debugEnvKey = "DEVBITS_DEBUG"
 const corsOriginsEnvKey = "DEVBITS_CORS_ORIGINS"
+const listenAddrEnvKey = "DEVBITS_API_ADDR"
 
 func isDebugMode() bool {
 	return os.Getenv(debugEnvKey) == "1"
@@ -47,11 +50,39 @@ func getAllowedOrigins() []string {
 	}
 }
 
+func getListenAddr() string {
+	addr := strings.TrimSpace(os.Getenv(listenAddrEnvKey))
+	if addr != "" {
+		return addr
+	}
+	return "0.0.0.0:8080"
+}
+
 func HealthCheck(context *gin.Context) {
 	context.JSON(200, gin.H{"message": "API is running!"})
 }
 
+func resolveAdminDir() string {
+	candidates := []string{
+		"./admin",
+		"../admin",
+		"../../backend/api/admin",
+		"./backend/api/admin",
+	}
+
+	for _, candidate := range candidates {
+		indexFile := filepath.Join(candidate, "index.html")
+		if _, err := os.Stat(indexFile); err == nil {
+			return candidate
+		}
+	}
+
+	return "./admin"
+}
+
 func main() {
+	// Load local .env for development (ignored if missing)
+	_ = godotenv.Load(".env", "../.env", "../../.env")
 	if isDebugMode() {
 		gin.SetMode(gin.DebugMode)
 	} else {
@@ -105,6 +136,63 @@ func main() {
 	router.Use(cors.New(corsConfig))
 
 	router.Static("/uploads", "./uploads")
+	adminDir := resolveAdminDir()
+	log.Printf("INFO: admin UI dir: %s", adminDir)
+	adminLocalOnly := strings.EqualFold(strings.TrimSpace(os.Getenv("DEVBITS_ADMIN_LOCAL_ONLY")), "1")
+	if adminLocalOnly {
+		log.Printf("INFO: admin access mode: localhost-only")
+	} else {
+		log.Printf("WARN: admin access mode: remote-enabled (DEVBITS_ADMIN_LOCAL_ONLY=0)")
+	}
+
+	adminLocal := router.Group("/admin")
+	if adminLocalOnly {
+		adminLocal.Use(handlers.RequireLocalhost())
+	}
+	adminLocal.GET("", func(c *gin.Context) {
+		c.File(filepath.Join(adminDir, "index.html"))
+	})
+	adminLocal.GET("/", func(c *gin.Context) {
+		c.File(filepath.Join(adminDir, "index.html"))
+	})
+	adminLocal.GET("/console", func(c *gin.Context) {
+		c.File(filepath.Join(adminDir, "console.html"))
+	})
+	adminLocal.GET("/console/", func(c *gin.Context) {
+		c.File(filepath.Join(adminDir, "console.html"))
+	})
+	adminLocal.Static("/static", filepath.Join(adminDir, "static"))
+
+	adminApi := router.Group("/admin")
+	if adminLocalOnly {
+		adminApi.Use(handlers.RequireLocalhost(), handlers.RequireAdmin())
+	} else {
+		adminApi.Use(handlers.RequireAdmin())
+	}
+	adminApi.GET("/overview", handlers.AdminOverview)
+	adminApi.GET("/me", handlers.AdminMe)
+	adminApi.GET("/users", handlers.AdminListUsers)
+	adminApi.POST("/users/:username/admin", handlers.AdminSetUserAdmin)
+	adminApi.POST("/users/:username/ban", handlers.AdminBanUser)
+	adminApi.POST("/users/:username/unban", handlers.AdminUnbanUser)
+	adminApi.DELETE("/users/:username", handlers.AdminDeleteUser)
+	adminApi.GET("/posts", handlers.AdminListPosts)
+	adminApi.DELETE("/posts/:post_id", handlers.AdminDeletePost)
+	adminApi.GET("/projects", handlers.AdminListProjects)
+	adminApi.DELETE("/projects/:project_id", handlers.AdminDeleteProject)
+	adminApi.GET("/comments", handlers.AdminListComments)
+	adminApi.DELETE("/comments/:comment_id", handlers.AdminDeleteComment)
+
+	if strings.TrimSpace(os.Getenv("DEVBITS_ADMIN_KEY")) == "" {
+		log.Printf("WARN: DEVBITS_ADMIN_KEY is empty; admin API calls will be rejected")
+	}
+	if _, err := os.Stat(filepath.Join(adminDir, "index.html")); err != nil {
+		log.Printf("WARN: admin UI index not found at %s (%v)", filepath.Join(adminDir, "index.html"), err)
+	} else if adminLocalOnly {
+		log.Printf("INFO: admin UI available at /admin (localhost only)")
+	} else {
+		log.Printf("INFO: admin UI available at /admin (key-protected)")
+	}
 
 	router.GET("/", func(c *gin.Context) {
 		c.String(200, "Welcome to the DevBits API! Everything is running correctly.")
@@ -212,10 +300,12 @@ func main() {
 	router.DELETE("/notifications/:notification_id", handlers.RequireAuth(), handlers.DeleteNotification)
 	router.DELETE("/notifications", handlers.RequireAuth(), handlers.ClearNotifications)
 
-	if err := router.Run("0.0.0.0:8080"); err != nil {
-		log.Printf("ERROR: failed to start API server on 0.0.0.0:8080: %v", err)
+	listenAddr := getListenAddr()
+	log.Printf("INFO: API listen address: %s", listenAddr)
+	if err := router.Run(listenAddr); err != nil {
+		log.Printf("ERROR: failed to start API server on %s: %v", listenAddr, err)
 		if isDebugMode() {
-			log.Println("HINT: port 8080 is likely already in use. Stop the existing backend process or run only one launcher.")
+			log.Println("HINT: address is likely in use. Set DEVBITS_API_ADDR (e.g. 127.0.0.1:18080) or stop the existing process.")
 		}
 		os.Exit(1)
 	}

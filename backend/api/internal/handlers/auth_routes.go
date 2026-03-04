@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"backend/api/internal/auth"
 	"backend/api/internal/database"
@@ -131,6 +132,26 @@ func Login(context *gin.Context) {
 	user, err := database.GetUserByUsername(request.Username)
 	if err != nil || user == nil {
 		RespondWithError(context, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
+
+	activeBan, err := database.GetActiveBanByUserID(int64(user.Id))
+	if err != nil {
+		RespondWithError(context, http.StatusInternalServerError, "Failed to verify account status")
+		return
+	}
+	if activeBan != nil {
+		remainingSeconds := int(time.Until(activeBan.BannedUntil).Seconds())
+		if remainingSeconds < 0 {
+			remainingSeconds = 0
+		}
+		context.JSON(http.StatusForbidden, gin.H{
+			"error":             "Account banned",
+			"message":           "Your account is temporarily banned.",
+			"reason":            activeBan.Reason,
+			"banned_until":      activeBan.BannedUntil.UTC().Format(time.RFC3339),
+			"seconds_remaining": remainingSeconds,
+		})
 		return
 	}
 

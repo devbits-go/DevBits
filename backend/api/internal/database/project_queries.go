@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -803,4 +804,78 @@ func QueryProjectLike(username string, strProjId string) (int, bool, error) {
 		return http.StatusOK, false, nil
 	}
 
+}
+
+// QueryProjectsByFilter searches projects by name substring (case-insensitive).
+func QueryProjectsByFilter(filter string) ([]Project, error) {
+	like := "%" + strings.ToLower(strings.TrimSpace(filter)) + "%"
+	query := `SELECT id, name, description, COALESCE(about_md, ''), status, likes,
+			  COALESCE((SELECT COUNT(*) FROM projectfollows pf WHERE pf.project_id = projects.id), 0),
+			  COALESCE(links, '[]'), COALESCE(tags, '[]'), COALESCE(media, '[]'), owner, creation_date
+			  FROM projects WHERE LOWER(name) LIKE $1 LIMIT 500;`
+	rows, err := DB.Query(query, like)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	projects := []Project{}
+	for rows.Next() {
+		var id sql.NullInt64
+		var name sql.NullString
+		var description sql.NullString
+		var aboutMd sql.NullString
+		var status sql.NullInt64
+		var likes sql.NullInt64
+		var saves sql.NullInt64
+		var linksJSON, tagsJSON, mediaJSON string
+		var owner sql.NullInt64
+		var creationDate sql.NullTime
+		if err := rows.Scan(
+			&id,
+			&name,
+			&description,
+			&aboutMd,
+			&status,
+			&likes,
+			&saves,
+			&linksJSON,
+			&tagsJSON,
+			&mediaJSON,
+			&owner,
+			&creationDate,
+		); err != nil {
+			return nil, err
+		}
+		if !id.Valid || !owner.Valid {
+			continue
+		}
+
+		project := Project{
+			ID:          int64(id.Int64),
+			Name:        name.String,
+			Description: description.String,
+			AboutMd:     aboutMd.String,
+			Likes:       likes.Int64,
+			Saves:       saves.Int64,
+			Owner:       owner.Int64,
+		}
+		if status.Valid {
+			project.Status = int16(status.Int64)
+		}
+		if creationDate.Valid {
+			project.CreationDate = creationDate.Time
+		}
+		if err := UnmarshalFromJSON(linksJSON, &project.Links); err != nil {
+			return nil, err
+		}
+		if err := UnmarshalFromJSON(tagsJSON, &project.Tags); err != nil {
+			return nil, err
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &project.Media); err != nil {
+			return nil, err
+		}
+		projects = append(projects, project)
+	}
+	return projects, nil
 }
