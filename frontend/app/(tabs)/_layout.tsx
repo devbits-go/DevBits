@@ -62,7 +62,7 @@ export default function TabLayout() {
         options={{
           title: "Messages",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="bubble.left.and.bubble.right.fill" color={color} />
+            <IconSymbol size={28} name="terminal.fill" color={color} />
           ),
         }}
       />

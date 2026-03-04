@@ -50,9 +50,9 @@ export default function SettingsHelpNavigationScreen() {
           onPress={() => router.push("/notifications")}
         />
         <ActionRow
-          label="Terminal"
-          detail="Open direct messages and chats"
-          onPress={() => router.push("/terminal")}
+          label="Messages"
+          detail="Open conversations"
+          onPress={() => router.push("/message")}
         />
         <ActionRow
           label="Public profile"

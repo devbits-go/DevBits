@@ -9,6 +9,7 @@ interface MessageBubbleProps {
   isSent: boolean;
   isPending?: boolean;
   isError?: boolean;
+  authorLabel?: string;
 }
 
 export function MessageBubble({
@@ -17,6 +18,7 @@ export function MessageBubble({
   isSent,
   isPending = false,
   isError = false,
+  authorLabel,
 }: MessageBubbleProps) {
   const colors = useAppColors();
 
@@ -41,7 +43,10 @@ export function MessageBubble({
           styles.bubble,
           isSent
             ? [styles.sentBubble, { backgroundColor: colors.tint }]
-            : [styles.receivedBubble, { backgroundColor: colors.surface, borderColor: colors.border }],
+            : [
+                styles.receivedBubble,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ],
           isPending && styles.pendingBubble,
           isError && styles.errorBubble,
         ]}
@@ -54,6 +59,7 @@ export function MessageBubble({
             isPending && { opacity: 0.6 },
           ]}
         >
+          {authorLabel ? `${authorLabel}: ` : ""}
           {content}
         </ThemedText>
         <ThemedText
@@ -61,9 +67,7 @@ export function MessageBubble({
           style={[
             styles.timestamp,
             {
-              color: isSent
-                ? colors.onTint
-                : colors.muted,
+              color: isSent ? colors.onTint : colors.muted,
               opacity: isSent ? 0.8 : 1,
             },
           ]}
@@ -89,16 +93,17 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   bubble: {
-    maxWidth: "75%",
-    borderRadius: 12,
-    padding: 12,
+    maxWidth: "92%",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     gap: 4,
   },
   sentBubble: {
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: 3,
   },
   receivedBubble: {
-    borderBottomLeftRadius: 4,
+    borderBottomLeftRadius: 3,
     borderWidth: 1,
   },
   pendingBubble: {
@@ -108,11 +113,13 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   content: {
-    fontSize: 15,
+    fontFamily: "SpaceMono",
+    fontSize: 14,
     lineHeight: 20,
   },
   timestamp: {
-    fontSize: 11,
+    fontFamily: "SpaceMono",
+    fontSize: 10,
     marginTop: 2,
   },
 });

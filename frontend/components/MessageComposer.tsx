@@ -1,7 +1,17 @@
-import React, { useState } from "react";
-import { View, StyleSheet, TextInput, Pressable, ActivityIndicator, Platform } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  StyleSheet,
+  TextInput,
+  Pressable,
+  ActivityIndicator,
+  Platform,
+  LayoutAnimation,
+  UIManager,
+} from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useMotionConfig } from "@/hooks/useMotionConfig";
 
 interface MessageComposerProps {
   onSend: (message: string) => Promise<void>;
@@ -15,9 +25,32 @@ export function MessageComposer({
   autoFocus = false,
 }: MessageComposerProps) {
   const colors = useAppColors();
+  const motion = useMotionConfig();
   const [text, setText] = useState("");
   const [height, setHeight] = useState(40);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (
+      Platform.OS === "android" &&
+      UIManager.setLayoutAnimationEnabledExperimental
+    ) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  const animateResize = () => {
+    LayoutAnimation.configureNext({
+      duration: motion.duration(140),
+      update: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+      },
+      create: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+    });
+  };
 
   const handleSend = async () => {
     const trimmed = text.trim();
@@ -26,6 +59,7 @@ export function MessageComposer({
     setIsLoading(true);
     try {
       await onSend(trimmed);
+      animateResize();
       setText("");
       setHeight(40); // Reset height after sending
     } catch (error) {
@@ -38,7 +72,12 @@ export function MessageComposer({
   const handleContentSizeChange = (event: any) => {
     const newHeight = event.nativeEvent.contentSize.height;
     // Min 40, max 120
-    setHeight(Math.min(Math.max(40, newHeight), 120));
+    const nextHeight = Math.min(Math.max(40, newHeight), 120);
+    if (Math.abs(nextHeight - height) < 2) {
+      return;
+    }
+    animateResize();
+    setHeight(nextHeight);
   };
 
   const canSend = text.trim().length > 0 && !isLoading;
@@ -72,8 +111,8 @@ export function MessageComposer({
         autoFocus={autoFocus}
         blurOnSubmit={false}
         returnKeyType="default"
+        scrollEnabled={height >= 120}
         onContentSizeChange={handleContentSizeChange}
-        editable={!isLoading}
       />
       <Pressable
         onPress={handleSend}
@@ -109,7 +148,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 0,
   },
   input: {
     flex: 1,

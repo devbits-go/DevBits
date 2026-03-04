@@ -105,6 +105,31 @@ function RootLayoutNav() {
     [fontError, fontFallbackReady, loaded, showBoot],
   );
   const fontsReady = loaded || !!fontError || fontFallbackReady;
+  const onMessagingScreen = useMemo(() => {
+    const first = String(segments[0] ?? "");
+    const second = String(segments[1] ?? "");
+
+    if (first === "(tabs)" && second === "message") {
+      return true;
+    }
+    if (first === "conversation") {
+      return true;
+    }
+    return false;
+  }, [segments]);
+
+  const suppressDirectMessageBanner = useMemo(() => {
+    const type = String(
+      (inAppBanner?.payload as Record<string, unknown> | undefined)?.type ?? "",
+    ).toLowerCase();
+    return onMessagingScreen && type === "direct_message";
+  }, [inAppBanner?.payload, onMessagingScreen]);
+
+  useEffect(() => {
+    if (suppressDirectMessageBanner && inAppBanner) {
+      dismissInAppBanner();
+    }
+  }, [dismissInAppBanner, inAppBanner, suppressDirectMessageBanner]);
   const stackAnimation = useMemo(() => {
     switch (preferences.pageTransitionEffect) {
       case "none":
@@ -132,7 +157,10 @@ function RootLayoutNav() {
       };
 
       if (type === "direct_message" && actorName) {
-        router.push({ pathname: "/terminal", params: { chat: actorName } });
+        router.push({
+          pathname: "/conversation/[username]",
+          params: { username: actorName },
+        });
         return;
       }
 
@@ -315,7 +343,7 @@ function RootLayoutNav() {
           />
         ) : null}
         <InAppNotificationBanner
-          visible={!!inAppBanner}
+          visible={!!inAppBanner && !suppressDirectMessageBanner}
           title={inAppBanner?.title ?? "Notification"}
           body={inAppBanner?.body ?? "You have new activity."}
           onDismiss={dismissInAppBanner}

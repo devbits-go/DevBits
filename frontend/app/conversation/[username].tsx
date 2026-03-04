@@ -4,6 +4,7 @@ import {
   StyleSheet,
   FlatList,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
   Pressable,
@@ -17,13 +18,39 @@ import { MessageBubble } from "@/components/MessageBubble";
 import { MessageComposer } from "@/components/MessageComposer";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuth } from "@/contexts/AuthContext";
-import { API_BASE_URL, getDirectMessages, createDirectMessage } from "@/services/api";
+import {
+  API_BASE_URL,
+  getDirectMessages,
+  createDirectMessage,
+} from "@/services/api";
 import { ApiDirectMessage } from "@/constants/Types";
 
 type MessageWithState = ApiDirectMessage & {
   isPending?: boolean;
   isError?: boolean;
   tempId?: string;
+};
+
+const dedupeMessages = (items: MessageWithState[]) => {
+  const seen = new Set<string>();
+  const output: MessageWithState[] = [];
+
+  items.forEach((item) => {
+    const idKey =
+      typeof item.id === "number" && item.id > 0 ? `id:${item.id}` : null;
+    const key =
+      item.tempId ||
+      idKey ||
+      `fallback:${item.sender_name}:${item.recipient_name}:${item.created_at}:${item.content}`;
+
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    output.push(item);
+  });
+
+  return output;
 };
 
 const getWebSocketBaseUrl = (baseUrl?: string) => {
@@ -43,7 +70,9 @@ export default function ConversationScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { username: recipientUsername } = useLocalSearchParams<{ username: string }>();
+  const { username: recipientUsername } = useLocalSearchParams<{
+    username: string;
+  }>();
   const { user, token } = useAuth();
 
   const [messages, setMessages] = useState<MessageWithState[]>([]);
@@ -63,9 +92,9 @@ export default function ConversationScreen() {
         user.username,
         recipientUsername as string,
         0,
-        100
+        100,
       );
-      setMessages(response ?? []);
+      setMessages(dedupeMessages(response ?? []));
     } catch (err) {
       console.error("Failed to fetch messages:", err);
       setError("Failed to load messages");
@@ -90,7 +119,7 @@ export default function ConversationScreen() {
     // Connect to WebSocket using API_BASE_URL
     const wsBase = getWebSocketBaseUrl(API_BASE_URL);
     const wsUrl = `${wsBase}/messages/${encodeURIComponent(
-      user.username
+      user.username,
     )}/stream?token=${encodeURIComponent(token)}`;
     const connect = () => {
       if (!isActive) {
@@ -133,7 +162,7 @@ export default function ConversationScreen() {
                   // Check if message already exists (avoid duplicates)
                   const exists = prev.some((m) => m.id === newMessage.id);
                   if (exists) return prev;
-                  return [...prev, newMessage];
+                  return dedupeMessages([...prev, newMessage]);
                 });
 
                 // Scroll to bottom
@@ -152,11 +181,7 @@ export default function ConversationScreen() {
         };
 
         ws.onclose = (event) => {
-          console.log(
-            "WebSocket closed",
-            event?.code,
-            event?.reason ?? ""
-          );
+          console.log("WebSocket closed", event?.code, event?.reason ?? "");
 
           if (!isActive) {
             // Component unmounted or effect cleaned up; do not attempt to reconnect
@@ -173,12 +198,12 @@ export default function ConversationScreen() {
           const maxDelayMs = 10000;
           const delayMs = Math.min(
             baseDelayMs * Math.pow(2, reconnectAttempts),
-            maxDelayMs
+            maxDelayMs,
           );
           reconnectAttempts += 1;
 
           console.log(
-            `Attempting WebSocket reconnect #${reconnectAttempts} in ${delayMs}ms`
+            `Attempting WebSocket reconnect #${reconnectAttempts} in ${delayMs}ms`,
           );
 
           reconnectTimeoutId = setTimeout(() => {
@@ -232,7 +257,7 @@ export default function ConversationScreen() {
     };
 
     // Add optimistic message
-    setMessages((prev) => [...prev, optimisticMessage]);
+    setMessages((prev) => dedupeMessages([...prev, optimisticMessage]));
 
     // Scroll to bottom
     setTimeout(() => {
@@ -243,34 +268,43 @@ export default function ConversationScreen() {
       const response = await createDirectMessage(
         user.username,
         recipientUsername as string,
-        content
+        content,
       );
 
       // Replace optimistic message with real one
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.tempId === tempId ? response.direct_message : msg
-        )
-      );
+      setMessages((prev) => {
+        const replaced = prev.map((msg) =>
+          msg.tempId === tempId ? response.direct_message : msg,
+        );
+        return dedupeMessages(replaced);
+      });
     } catch (err) {
       console.error("Failed to send message:", err);
 
       // Mark message as error
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.tempId === tempId ? { ...msg, isPending: false, isError: true } : msg
-        )
+          msg.tempId === tempId
+            ? { ...msg, isPending: false, isError: true }
+            : msg,
+        ),
       );
 
-      Alert.alert("Failed to send", "Your message could not be sent. Please try again.", [
-        {
-          text: "OK",
-          onPress: () => {
-            // Remove failed message so the user can re-send from the composer
-            setMessages((prev) => prev.filter((msg) => msg.tempId !== tempId));
+      Alert.alert(
+        "Failed to send",
+        "Your message could not be sent. Please try again.",
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // Remove failed message so the user can re-send from the composer
+              setMessages((prev) =>
+                prev.filter((msg) => msg.tempId !== tempId),
+              );
+            },
           },
-        },
-      ]);
+        ],
+      );
     }
   };
 
@@ -287,6 +321,7 @@ export default function ConversationScreen() {
         isSent={isSent}
         isPending={item.isPending}
         isError={item.isError}
+        authorLabel={isSent ? "you" : (recipientUsername as string)}
       />
     );
   };
@@ -296,7 +331,10 @@ export default function ConversationScreen() {
 
     return (
       <View style={styles.emptyState}>
-        <ThemedText type="caption" style={{ color: colors.muted, textAlign: "center" }}>
+        <ThemedText
+          type="caption"
+          style={{ color: colors.muted, textAlign: "center" }}
+        >
           No messages yet.{"\n"}
           Start the conversation!
         </ThemedText>
@@ -309,7 +347,10 @@ export default function ConversationScreen() {
 
     return (
       <View style={styles.emptyState}>
-        <ThemedText type="caption" style={{ color: colors.muted, textAlign: "center" }}>
+        <ThemedText
+          type="caption"
+          style={{ color: colors.muted, textAlign: "center" }}
+        >
           {error}
         </ThemedText>
       </View>
@@ -318,75 +359,87 @@ export default function ConversationScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 56 : 0}
+      {/* Header */}
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.surface,
+            borderBottomColor: colors.border,
+            paddingTop: insets.top + 8,
+          },
+        ]}
+      >
+        <Pressable
+          onPress={handleBack}
+          style={[styles.backButton, { backgroundColor: colors.surfaceAlt }]}
         >
-        {/* Header */}
+          <Feather name="chevron-left" size={24} color={colors.text} />
+        </Pressable>
+        <View style={styles.headerContent}>
+          <ThemedText type="defaultSemiBold" numberOfLines={1}>
+            {recipientUsername}
+          </ThemedText>
+        </View>
+        <View style={styles.headerRight}>
+          {/* Placeholder for future actions (e.g., settings, info) */}
+        </View>
+      </View>
+
+      {/* Messages */}
+      {isLoading ? (
         <View
           style={[
-            styles.header,
-            {
-              backgroundColor: colors.surface,
-              borderBottomColor: colors.border,
-              paddingTop: insets.top + 8,
-            },
+            styles.screen,
+            { justifyContent: "center", alignItems: "center" },
           ]}
         >
-          <Pressable
-            onPress={handleBack}
-            style={[styles.backButton, { backgroundColor: colors.surfaceAlt }]}
-          >
-            <Feather name="chevron-left" size={24} color={colors.text} />
-          </Pressable>
-          <View style={styles.headerContent}>
-            <ThemedText type="defaultSemiBold" numberOfLines={1}>
-              {recipientUsername}
-            </ThemedText>
-          </View>
-          <View style={styles.headerRight}>
-            {/* Placeholder for future actions (e.g., settings, info) */}
-          </View>
+          <ActivityIndicator size="large" color={colors.tint} />
         </View>
+      ) : error ? (
+        renderError()
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item, index) =>
+            item.tempId || item.id?.toString() || index.toString()
+          }
+          contentContainerStyle={[
+            styles.messageList,
+            messages.length === 0 && { flex: 1 },
+          ]}
+          ListEmptyComponent={renderEmpty}
+          onContentSizeChange={() => {
+            if (messages.length > 0) {
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
+          onLayout={() => {
+            if (messages.length > 0) {
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode={
+            Platform.OS === "ios" ? "interactive" : "on-drag"
+          }
+          onScrollBeginDrag={() => {
+            Keyboard.dismiss();
+          }}
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 10,
+          }}
+        />
+      )}
 
-        {/* Messages */}
-        {isLoading ? (
-          <View style={[styles.screen, { justifyContent: "center", alignItems: "center" }]}>
-            <ActivityIndicator size="large" color={colors.tint} />
-          </View>
-        ) : error ? (
-          renderError()
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item, index) => item.tempId || item.id?.toString() || index.toString()}
-            contentContainerStyle={[
-              styles.messageList,
-              messages.length === 0 && { flex: 1 },
-            ]}
-            ListEmptyComponent={renderEmpty}
-            onContentSizeChange={() => {
-              if (messages.length > 0) {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
-            onLayout={() => {
-              if (messages.length > 0) {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
-            keyboardShouldPersistTaps="handled"
-            maintainVisibleContentPosition={{
-              minIndexForVisible: 0,
-              autoscrollToTopThreshold: 10,
-            }}
-          />
-        )}
-
-        {/* Message Input */}
+      {/* Message Input */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
+      >
         <View style={{ paddingBottom: insets.bottom }}>
           <MessageComposer onSend={handleSendMessage} autoFocus={false} />
         </View>
@@ -397,9 +450,6 @@ export default function ConversationScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-  },
-  keyboardView: {
     flex: 1,
   },
   header: {

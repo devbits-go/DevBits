@@ -12,15 +12,131 @@ import {
   Alert,
   KeyboardAvoidingView,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { ThemedText } from "@/components/ThemedText";
 import { MessageThreadItem } from "@/components/MessageThreadItem";
+import { FadeInImage } from "@/components/FadeInImage";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuth } from "@/contexts/AuthContext";
-import { getDirectMessageThreads, searchUsers, ApiDirectMessageThread } from "@/services/api";
+import {
+  getDirectMessageThreads,
+  getAllUsers,
+  searchUsers,
+  resolveMediaUrl,
+  ApiDirectMessageThread,
+} from "@/services/api";
 import { ApiUser } from "@/constants/Types";
+
+const dedupeThreadsByPeer = (items: ApiDirectMessageThread[]) => {
+  const byPeer = new Map<string, ApiDirectMessageThread>();
+  items.forEach((item) => {
+    const peer = (item.peer_username || "").trim().toLowerCase();
+    if (!peer) return;
+    const existing = byPeer.get(peer);
+    if (!existing) {
+      byPeer.set(peer, item);
+      return;
+    }
+    const existingAt = new Date(existing.last_at).getTime();
+    const nextAt = new Date(item.last_at).getTime();
+    if (
+      Number.isFinite(nextAt) &&
+      (!Number.isFinite(existingAt) || nextAt >= existingAt)
+    ) {
+      byPeer.set(peer, item);
+    }
+  });
+  return Array.from(byPeer.values()).sort(
+    (a, b) => new Date(b.last_at).getTime() - new Date(a.last_at).getTime(),
+  );
+};
+
+const normalizeUsernameInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  return withoutAt.replace(/@devbits$/i, "");
+};
+
+const sortSuggestions = (items: ApiUser[], query: string) => {
+  const q = query.toLowerCase();
+  return [...items].sort((a, b) => {
+    const aName = a.username.toLowerCase();
+    const bName = b.username.toLowerCase();
+    const aStarts = aName.startsWith(q) ? 0 : 1;
+    const bStarts = bName.startsWith(q) ? 0 : 1;
+    if (aStarts !== bStarts) {
+      return aStarts - bStarts;
+    }
+    return aName.localeCompare(bName);
+  });
+};
+
+const filterUsersByQuery = (
+  items: ApiUser[],
+  query: string,
+  currentUsername?: string,
+) => {
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    return [] as ApiUser[];
+  }
+
+  return items.filter((item) => {
+    const username = (item.username || "").trim().toLowerCase();
+    if (!username) return false;
+    if (currentUsername && username === currentUsername.toLowerCase())
+      return false;
+    return username.startsWith(q) || username.includes(q);
+  });
+};
+
+function SuggestionAvatar({
+  pictureUrl,
+  initial,
+  colors,
+}: {
+  pictureUrl: string;
+  initial: string;
+  colors: ReturnType<typeof useAppColors>;
+}) {
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    setLoadFailed(false);
+  }, [pictureUrl]);
+
+  const showPicture = Boolean(pictureUrl) && !loadFailed;
+
+  return (
+    <View
+      style={[
+        styles.suggestionAvatar,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+        },
+      ]}
+    >
+      {showPicture ? (
+        <FadeInImage
+          source={{ uri: pictureUrl }}
+          style={styles.suggestionAvatarImage}
+          onLoadFailed={() => setLoadFailed(true)}
+        />
+      ) : (
+        <ThemedText type="caption" style={{ color: colors.muted }}>
+          {initial}
+        </ThemedText>
+      )}
+    </View>
+  );
+}
 
 export default function MessageScreen() {
   const colors = useAppColors();
@@ -37,30 +153,70 @@ export default function MessageScreen() {
   const [suggestions, setSuggestions] = useState<ApiUser[]>([]);
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSearchRequestRef = useRef(0);
+  const allUsersCacheRef = useRef<ApiUser[] | null>(null);
+  const normalizedQuery = normalizeUsernameInput(searchQuery);
 
   // Debounced autocomplete
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    const q = searchQuery.trim();
+    const q = normalizedQuery;
     if (!q) {
+      latestSearchRequestRef.current += 1;
       setSuggestions([]);
+      setIsSuggestionsLoading(false);
       return;
     }
+
+    setIsSuggestionsLoading(true);
+
     debounceRef.current = setTimeout(async () => {
-      setIsSuggestionsLoading(true);
+      const requestId = latestSearchRequestRef.current + 1;
+      latestSearchRequestRef.current = requestId;
       try {
-        const results = await searchUsers(q, 8);
-        setSuggestions(results);
+        const results = await searchUsers(q, 12);
+        if (requestId !== latestSearchRequestRef.current) {
+          return;
+        }
+
+        let filtered = filterUsersByQuery(results ?? [], q, user?.username);
+
+        if (filtered.length === 0) {
+          let allUsers = allUsersCacheRef.current;
+          if (!allUsers) {
+            allUsers = await getAllUsers(0, 200);
+            allUsersCacheRef.current = allUsers;
+          }
+          filtered = filterUsersByQuery(allUsers, q, user?.username);
+        }
+
+        setSuggestions(sortSuggestions(filtered, q).slice(0, 8));
       } catch {
-        setSuggestions([]);
+        if (requestId !== latestSearchRequestRef.current) {
+          return;
+        }
+
+        try {
+          let allUsers = allUsersCacheRef.current;
+          if (!allUsers) {
+            allUsers = await getAllUsers(0, 200);
+            allUsersCacheRef.current = allUsers;
+          }
+          const fallback = filterUsersByQuery(allUsers, q, user?.username);
+          setSuggestions(sortSuggestions(fallback, q).slice(0, 8));
+        } catch {
+          setSuggestions([]);
+        }
       } finally {
-        setIsSuggestionsLoading(false);
+        if (requestId === latestSearchRequestRef.current) {
+          setIsSuggestionsLoading(false);
+        }
       }
-    }, 250);
+    }, 150);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchQuery]);
+  }, [normalizedQuery, user?.username]);
 
   const fetchThreads = useCallback(async () => {
     if (!user?.username) return;
@@ -68,7 +224,7 @@ export default function MessageScreen() {
     try {
       setError(null);
       const threads = await getDirectMessageThreads(user.username, 0, 50);
-      setThreads(threads);
+      setThreads(dedupeThreadsByPeer(Array.isArray(threads) ? threads : []));
     } catch (err) {
       console.error("Failed to fetch message threads:", err);
       setError("Failed to load messages");
@@ -82,7 +238,7 @@ export default function MessageScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchThreads();
-    }, [fetchThreads])
+    }, [fetchThreads]),
   );
 
   const handleRefresh = () => {
@@ -110,7 +266,10 @@ export default function MessageScreen() {
 
     return (
       <View style={[styles.emptyState, styles.content]}>
-        <ThemedText type="caption" style={{ color: colors.muted, textAlign: "center" }}>
+        <ThemedText
+          type="caption"
+          style={{ color: colors.muted, textAlign: "center" }}
+        >
           No messages yet.{"\n"}
           Tap the + button to start a new conversation.
         </ThemedText>
@@ -123,7 +282,10 @@ export default function MessageScreen() {
 
     return (
       <View style={[styles.emptyState, styles.content]}>
-        <ThemedText type="caption" style={{ color: colors.muted, textAlign: "center" }}>
+        <ThemedText
+          type="caption"
+          style={{ color: colors.muted, textAlign: "center" }}
+        >
           {error}
         </ThemedText>
       </View>
@@ -155,13 +317,25 @@ export default function MessageScreen() {
   };
 
   const handleNewChat = () => {
+    if (!allUsersCacheRef.current) {
+      getAllUsers(0, 200)
+        .then((users) => {
+          allUsersCacheRef.current = users;
+        })
+        .catch(() => {
+          // Ignore; search endpoint or future retries can still populate suggestions.
+        });
+    }
     setShowNewChatModal(true);
   };
 
   const handleStartChat = () => {
-    const username = searchQuery.trim();
+    const username = normalizeUsernameInput(searchQuery);
     if (!username) {
-      Alert.alert("Enter username", "Please enter a username to start a conversation.");
+      Alert.alert(
+        "Enter username",
+        "Please enter a username to start a conversation.",
+      );
       return;
     }
 
@@ -171,8 +345,49 @@ export default function MessageScreen() {
     router.push(`/conversation/${username}`);
   };
 
+  const renderSuggestion = ({
+    item,
+    index,
+  }: {
+    item: ApiUser;
+    index: number;
+  }) => {
+    const pictureUrl = resolveMediaUrl(item.picture);
+    const initial = item.username?.[0]?.toUpperCase() || "?";
+
+    return (
+      <Pressable
+        key={item.id || item.username}
+        onPress={() => handleSelectSuggestion(item.username)}
+        style={({ pressed }) => [
+          styles.suggestionItem,
+          index < suggestions.length - 1 && {
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          },
+          pressed && styles.suggestionItemPressed,
+        ]}
+      >
+        <SuggestionAvatar
+          pictureUrl={pictureUrl}
+          initial={initial}
+          colors={colors}
+        />
+
+        <View style={styles.suggestionTextWrap}>
+          <ThemedText type="defaultSemiBold" numberOfLines={1}>
+            {item.username}
+          </ThemedText>
+        </View>
+      </Pressable>
+    );
+  };
+
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={["top"]}>
+    <SafeAreaView
+      style={[styles.screen, { backgroundColor: colors.background }]}
+      edges={["top"]}
+    >
       <View style={{ flex: 1 }}>
         {/* Header */}
         <View style={styles.headerSection}>
@@ -253,10 +468,7 @@ export default function MessageScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{ flex: 1 }}
         >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={handleCloseModal}
-          >
+          <Pressable style={styles.modalOverlay} onPress={handleCloseModal}>
             <Pressable
               style={[
                 styles.modalContent,
@@ -267,99 +479,119 @@ export default function MessageScreen() {
               ]}
               onPress={(e) => e.stopPropagation()}
             >
-            <View style={styles.modalHeader}>
-              <ThemedText type="defaultSemiBold">New Conversation</ThemedText>
-              <Pressable
-                onPress={handleCloseModal}
-                style={[styles.closeButton, { backgroundColor: colors.surfaceAlt }]}
-              >
-                <Feather name="x" size={20} color={colors.text} />
-              </Pressable>
-            </View>
-
-            <ThemedText type="caption" style={{ color: colors.muted, marginBottom: 12 }}>
-              Enter the username of the person you want to message
-            </ThemedText>
-
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Username"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.searchInput,
-                {
-                  color: colors.text,
-                  backgroundColor: colors.surfaceAlt,
-                  borderColor: colors.border,
-                  marginBottom: suggestions.length > 0 || isSuggestionsLoading ? 8 : 16,
-                },
-              ]}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              returnKeyType="go"
-              onSubmitEditing={handleStartChat}
-            />
-
-            {/* Autocomplete suggestions */}
-            {(suggestions.length > 0 || isSuggestionsLoading) && (
-              <View
-                style={[
-                  styles.suggestionsContainer,
-                  { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
-                ]}
-              >
-                {isSuggestionsLoading ? (
-                  <ActivityIndicator size="small" color={colors.tint} style={{ paddingVertical: 10 }} />
-                ) : (
-                  suggestions.map((s, i) => (
-                    <Pressable
-                      key={s.username}
-                      onPress={() => handleSelectSuggestion(s.username)}
-                      style={({ pressed }) => [
-                        styles.suggestionItem,
-                        i < suggestions.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                        pressed && { backgroundColor: colors.surface },
-                      ]}
-                    >
-                      <ThemedText type="default">{s.username}</ThemedText>
-                    </Pressable>
-                  ))
-                )}
+              <View style={styles.modalHeader}>
+                <ThemedText type="defaultSemiBold">New Conversation</ThemedText>
+                <Pressable
+                  onPress={handleCloseModal}
+                  style={[
+                    styles.closeButton,
+                    { backgroundColor: colors.surfaceAlt },
+                  ]}
+                >
+                  <Feather name="x" size={20} color={colors.text} />
+                </Pressable>
               </View>
-            )}
 
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={handleCloseModal}
+              <ThemedText
+                type="caption"
+                style={{ color: colors.muted, marginBottom: 12 }}
+              >
+                Enter the username of the person you want to message
+              </ThemedText>
+
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Username"
+                placeholderTextColor={colors.muted}
                 style={[
-                  styles.modalButton,
+                  styles.searchInput,
                   {
+                    color: colors.text,
                     backgroundColor: colors.surfaceAlt,
                     borderColor: colors.border,
+                    marginBottom: 10,
                   },
                 ]}
-              >
-                <ThemedText type="caption" style={{ color: colors.muted }}>
-                  Cancel
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                onPress={handleStartChat}
-                style={[
-                  styles.modalButton,
-                  {
-                    backgroundColor: colors.tint,
-                  },
-                ]}
-              >
-                <ThemedText type="caption" style={{ color: colors.onTint }}>
-                  Start Chat
-                </ThemedText>
-              </Pressable>
-            </View>
-          </Pressable>
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                returnKeyType="go"
+                onSubmitEditing={handleStartChat}
+              />
+
+              {/* Autocomplete suggestions */}
+              {normalizedQuery.length > 0 && (
+                <View
+                  style={[
+                    styles.suggestionsContainer,
+                    {
+                      backgroundColor: colors.surfaceAlt,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  {isSuggestionsLoading ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.tint}
+                      style={{ paddingVertical: 10 }}
+                    />
+                  ) : (
+                    <FlatList
+                      data={suggestions}
+                      keyExtractor={(item) => String(item.id ?? item.username)}
+                      renderItem={renderSuggestion}
+                      keyboardShouldPersistTaps="always"
+                      nestedScrollEnabled
+                      initialNumToRender={8}
+                      maxToRenderPerBatch={8}
+                      windowSize={3}
+                      ListEmptyComponent={
+                        <View style={styles.suggestionsEmpty}>
+                          <ThemedText
+                            type="caption"
+                            style={{ color: colors.muted }}
+                          >
+                            No users found
+                          </ThemedText>
+                        </View>
+                      }
+                    />
+                  )}
+                </View>
+              )}
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={handleCloseModal}
+                  style={[
+                    styles.modalButton,
+                    {
+                      backgroundColor: colors.surfaceAlt,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <ThemedText type="caption" style={{ color: colors.muted }}>
+                    Cancel
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={handleStartChat}
+                  style={[
+                    styles.modalButton,
+                    {
+                      backgroundColor: colors.tint,
+                    },
+                  ]}
+                >
+                  <ThemedText type="caption" style={{ color: colors.onTint }}>
+                    Start Chat
+                  </ThemedText>
+                </Pressable>
+              </View>
+            </Pressable>
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
@@ -445,10 +677,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 16,
     overflow: "hidden",
+    maxHeight: 250,
   },
   suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    minHeight: 50,
+  },
+  suggestionItemPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
+  },
+  suggestionAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderWidth: 1,
+  },
+  suggestionAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  suggestionTextWrap: {
+    flex: 1,
+  },
+  suggestionsEmpty: {
     paddingHorizontal: 12,
-    paddingVertical: 11,
+    paddingVertical: 12,
+    alignItems: "center",
   },
   modalActions: {
     flexDirection: "row",
