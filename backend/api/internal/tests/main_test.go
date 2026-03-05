@@ -80,6 +80,7 @@ func setupTestRouter() *gin.Engine {
 	router.GET("/auth/me", handlers.RequireAuth(), handlers.GetMe)
 
 	router.GET("/users", handlers.GetUsers)
+	router.GET("/users/search", handlers.SearchUsers)
 	router.GET("/users/:username", handlers.GetUserByUsername)
 	router.GET("/users/id/:user_id", handlers.GetUserById)
 	router.POST("/users", handlers.RequireAuth(), handlers.CreateUser)
