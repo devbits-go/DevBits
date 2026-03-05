@@ -32,6 +32,9 @@ COPY --from=builder /app/main .
 COPY --from=builder /app/api/internal/database/dev.sqlite3 ./api/internal/database/
 COPY --from=builder /app/api/internal/database/create_tables.sql ./api/internal/database/
 
+# Copy admin UI static files
+COPY --from=builder /app/api/admin ./admin
+
 # Copy the uploads directory
 # Note: This assumes your application needs access to this directory.
 # If it's for temporary uploads, you might want to use a Docker volume instead.

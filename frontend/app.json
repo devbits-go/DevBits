@@ -14,7 +14,11 @@
       "bundleIdentifier": "com.devbits.frontend",
       "buildNumber": "16",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "DevBits requests access to your photo library to let you pick images to attach to posts or save images from the app. Example: selecting a photo to upload when creating a byte.",
+        "NSPhotoLibraryAddUsageDescription": "DevBits may save images you create or download (for example, saving a snapshot of a post) to your photo library when you choose to do so.",
+        "NSCameraUsageDescription": "DevBits requests access to the camera so you can capture photos or videos to attach to posts. Example: taking a photo while creating a byte.",
+        "NSMicrophoneUsageDescription": "DevBits requests access to the microphone to record audio for posts or streams. Example: recording a short audio clip when creating content."
       },
       "associatedDomains": [
         "applinks:devbits.ddns.net"

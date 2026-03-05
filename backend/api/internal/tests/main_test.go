@@ -157,7 +157,11 @@ func loadSQLFile(db *sql.DB, filename string, replacements ...string) error {
 			continue
 		}
 		if _, err := db.Exec(stmt); err != nil {
-			return fmt.Errorf("failed to exec statement from %s: %v", path, err)
+			stmtPreview := stmt
+			if len(stmtPreview) > 220 {
+				stmtPreview = stmtPreview[:220] + "..."
+			}
+			return fmt.Errorf("failed to exec statement from %s: %v\nstatement: %s", path, err, stmtPreview)
 		}
 	}
 	return nil
@@ -233,13 +237,32 @@ func TestAPI(t *testing.T) {
 	logger.InitLogger()
 
 	database.DB = nil
-	database.Connect()
-	db := database.DB
-	if db == nil {
-		t.Fatal("Failed to connect to database")
+	testDbPath := filepath.Join(t.TempDir(), "api_tests.sqlite3")
+	db, err := sql.Open("sqlite", testDbPath)
+	if err != nil {
+		t.Fatalf("Failed to open test sqlite database: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	if _, err := db.Exec("PRAGMA foreign_keys=ON;"); err != nil {
+		t.Fatalf("Failed to enable sqlite foreign keys: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA journal_mode=WAL;"); err != nil {
+		t.Fatalf("Failed to set sqlite WAL mode: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA busy_timeout=5000;"); err != nil {
+		t.Fatalf("Failed to set sqlite busy timeout: %v", err)
 	}
 
-	if err := loadSQLFile(db, "create_tables.sql"); err != nil {
+	database.DB = db
+
+	if err := loadSQLFile(
+		db,
+		"create_tables.sql",
+		"SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT",
+	); err != nil {
 		t.Fatalf("Failed to load schema: %v", err)
 	}
 	if err := loadSQLFile(db, "create_test_data.sql"); err != nil {

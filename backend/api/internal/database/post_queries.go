@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -33,7 +34,7 @@ func QueryPost(id int) (*Post, error) {
 		&post.Content,
 		&mediaJSON,
 		&post.Likes,
-			&post.Saves,
+		&post.Saves,
 		&post.CreationDate,
 	)
 	if err != nil {
@@ -209,6 +210,58 @@ func QueryPostsByProjectId(projectId int) ([]Post, int, error) {
 	return posts, http.StatusOK, nil
 }
 
+// QueryPostsByFilter searches posts by content substring (case-insensitive). Returns posts matching content.
+func QueryPostsByFilter(filter string) ([]Post, error) {
+	like := "%" + strings.ToLower(strings.TrimSpace(filter)) + "%"
+	query := `SELECT id, user_id, project_id, content, COALESCE(media, '[]'),
+	COALESCE((SELECT COUNT(*) FROM postlikes pl WHERE pl.post_id = posts.id), 0),
+	COALESCE((SELECT COUNT(*) FROM postsaves ps WHERE ps.post_id = posts.id), 0),
+	creation_date
+	FROM posts WHERE LOWER(content) LIKE $1 LIMIT 500;`
+
+	rows, err := DB.Query(query, like)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	posts := []Post{}
+	for rows.Next() {
+		var id sql.NullInt64
+		var userID sql.NullInt64
+		var projectID sql.NullInt64
+		var content sql.NullString
+		var mediaJSON string
+		var likes sql.NullInt64
+		var saves sql.NullInt64
+		var creationDate sql.NullTime
+
+		if err := rows.Scan(&id, &userID, &projectID, &content, &mediaJSON, &likes, &saves, &creationDate); err != nil {
+			return nil, err
+		}
+		if !id.Valid || !userID.Valid || !projectID.Valid {
+			continue
+		}
+
+		post := Post{
+			ID:      int64(id.Int64),
+			User:    userID.Int64,
+			Project: projectID.Int64,
+			Content: content.String,
+			Likes:   likes.Int64,
+			Saves:   saves.Int64,
+		}
+		if creationDate.Valid {
+			post.CreationDate = creationDate.Time
+		}
+		if err := UnmarshalFromJSON(mediaJSON, &post.Media); err != nil {
+			return nil, err
+		}
+		posts = append(posts, post)
+	}
+	return posts, nil
+}
+
 func CreatePostLike(username string, postId string) (int, error) {
 	userID, err := GetUserIdByUsername(username)
 	if err != nil {
@@ -330,4 +383,3 @@ func QueryPostLike(username string, postId string) (int, bool, error) {
 	}
 	return http.StatusOK, exists, nil
 }
-

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -21,6 +22,56 @@ type ApiUser struct {
 type UserLoginInfo struct {
 	Username     string `json:"username"`
 	PasswordHash string `json:"password_hash"`
+}
+
+func scanApiUserRow(rows *sql.Rows) (*ApiUser, error) {
+	var id sql.NullInt64
+	var username sql.NullString
+	var picture sql.NullString
+	var bio sql.NullString
+	var links []byte
+	var settings []byte
+	var creationDate sql.NullString
+
+	if err := rows.Scan(
+		&id,
+		&username,
+		&picture,
+		&bio,
+		&links,
+		&settings,
+		&creationDate,
+	); err != nil {
+		return nil, err
+	}
+
+	if !id.Valid || !username.Valid {
+		log.Printf("WARN: skipping malformed user row (id_valid=%v username_valid=%v)", id.Valid, username.Valid)
+		return nil, nil
+	}
+
+	user := &ApiUser{
+		Id:           int(id.Int64),
+		Username:     username.String,
+		Picture:      picture.String,
+		Bio:          bio.String,
+		CreationDate: creationDate.String,
+		Links:        []string{},
+		Settings:     map[string]interface{}{},
+	}
+
+	if len(links) > 0 {
+		if err := json.Unmarshal(links, &user.Links); err != nil {
+			log.Printf("WARN: could not unmarshal user links: %v", err)
+		}
+	}
+	if len(settings) > 0 {
+		if err := json.Unmarshal(settings, &user.Settings); err != nil {
+			log.Printf("WARN: could not unmarshal user settings: %v", err)
+		}
+	}
+
+	return user, nil
 }
 
 // CreateUser inserts a new user into the database
@@ -242,25 +293,44 @@ func GetUsers() ([]*ApiUser, error) {
 
 	var users []*ApiUser
 	for rows.Next() {
-		user := &ApiUser{}
-		var links, settings []byte
-		if err := rows.Scan(
-			&user.Id,
-			&user.Username,
-			&user.Picture,
-			&user.Bio,
-			&links,
-			&settings,
-			&user.CreationDate,
-		); err != nil {
+		user, err := scanApiUserRow(rows)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan user row: %w", err)
 		}
-
-		if err := json.Unmarshal(links, &user.Links); err != nil {
-			log.Printf("WARN: could not unmarshal user links: %v", err)
+		if user == nil {
+			continue
 		}
-		if err := json.Unmarshal(settings, &user.Settings); err != nil {
-			log.Printf("WARN: could not unmarshal user settings: %v", err)
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+// QueryUsersByFilter searches users by username substring (case-insensitive).
+// Limits results to 200 rows to avoid returning an excessively large list.
+func QueryUsersByFilter(filter string) ([]*ApiUser, error) {
+	like := "%" + strings.ToLower(strings.TrimSpace(filter)) + "%"
+	query := `
+		SELECT id, username, picture, bio, links, settings, creation_date
+		FROM users
+		WHERE LOWER(username) LIKE $1
+		ORDER BY id
+		LIMIT 200;
+	`
+	rows, err := DB.Query(query, like)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users by filter: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*ApiUser
+	for rows.Next() {
+		user, err := scanApiUserRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user row: %w", err)
+		}
+		if user == nil {
+			continue
 		}
 		users = append(users, user)
 	}

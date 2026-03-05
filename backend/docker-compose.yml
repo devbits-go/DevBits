@@ -39,6 +39,8 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER:-devbits}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-devbits}?sslmode=disable
+      - DEVBITS_ADMIN_KEY=${DEVBITS_ADMIN_KEY}
+      - DEVBITS_ADMIN_LOCAL_ONLY=${DEVBITS_ADMIN_LOCAL_ONLY:-0}
 
   nginx:
     image: nginx:latest

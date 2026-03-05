@@ -18,6 +18,23 @@ var DB *sql.DB // Global database instance
 // driverName stores the active database driver ("postgres" or "sqlite").
 var driverName string
 
+func resolveSqlitePath() string {
+	candidates := []string{
+		filepath.Join(".", "api", "internal", "database", "dev.sqlite3"),
+		filepath.Join(".", "internal", "database", "dev.sqlite3"),
+		filepath.Join(".", "dev.sqlite3"),
+	}
+
+	for _, candidate := range candidates {
+		dir := filepath.Dir(candidate)
+		if stat, err := os.Stat(dir); err == nil && stat.IsDir() {
+			return candidate
+		}
+	}
+
+	return filepath.Join(".", "internal", "database", "dev.sqlite3")
+}
+
 // Connect initializes a database connection
 func Connect() {
 	var err error
@@ -55,7 +72,10 @@ func Connect() {
 	} else {
 		// Fallback to SQLite for local development
 		driverName = "sqlite"
-		dbPath := filepath.Join(".", "api", "internal", "database", "dev.sqlite3")
+		dbPath := resolveSqlitePath()
+		if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+			log.Fatalf("Failed to create sqlite directory: %v", err)
+		}
 		dsn = dbPath
 	}
 

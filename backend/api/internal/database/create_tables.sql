@@ -183,6 +183,28 @@ CREATE TABLE IF NOT EXISTS userpushtokens (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Admin Users (users allowed to access admin console via credentials)
+CREATE TABLE IF NOT EXISTS adminusers (
+    user_id INTEGER PRIMARY KEY,
+    granted_at TIMESTAMP NOT NULL,
+    granted_by INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Timed User Bans
+CREATE TABLE IF NOT EXISTS userbans (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    banned_until TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    banned_by INTEGER,
+    lifted_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (banned_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner);
@@ -208,3 +230,6 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created_at ON notifications(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read_at ON notifications(user_id, read_at);
 CREATE INDEX IF NOT EXISTS idx_userpushtokens_user_id ON userpushtokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_adminusers_user_id ON adminusers(user_id);
+CREATE INDEX IF NOT EXISTS idx_userbans_user_id ON userbans(user_id);
+CREATE INDEX IF NOT EXISTS idx_userbans_user_active ON userbans(user_id, lifted_at, banned_until);

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DevBits Admin Sign In</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --db-bg: #05070a;
+        --db-surface: #10141a;
+        --db-border: #1f2732;
+        --db-text: #f0f3f7;
+        --db-muted: #94a0af;
+        --db-tint: #00f329;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--db-bg);
+        color: var(--db-text);
+        font-family:
+          Inter,
+          Segoe UI,
+          Roboto,
+          Arial,
+          sans-serif;
+        display: grid;
+        place-items: center;
+      }
+      .card {
+        width: min(420px, 92vw);
+        background: var(--db-surface);
+        border: 1px solid var(--db-border);
+        border-radius: 14px;
+        padding: 18px;
+      }
+      .title {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0 0 4px;
+      }
+      .muted {
+        margin: 0 0 16px;
+        color: var(--db-muted);
+        font-size: 14px;
+      }
+      .input {
+        width: 100%;
+        box-sizing: border-box;
+        background: #0c1016;
+        border: 1px solid var(--db-border);
+        border-radius: 12px;
+        color: var(--db-text);
+        padding: 12px;
+        font-size: 15px;
+        margin-bottom: 10px;
+      }
+      .input:focus {
+        outline: 2px solid color-mix(in srgb, var(--db-tint) 35%, transparent);
+        border-color: var(--db-tint);
+      }
+      .btn {
+        width: 100%;
+        border: 0;
+        border-radius: 12px;
+        background: var(--db-tint);
+        color: #0a0d12;
+        font-weight: 700;
+        font-size: 15px;
+        padding: 12px;
+        cursor: pointer;
+      }
+      .status {
+        margin-top: 10px;
+        min-height: 18px;
+        color: var(--db-muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1 class="title">DevBits</h1>
+      <p class="muted">
+        Sign in as Administrator (password = ultimate key) or with an admin user
+        account.
+      </p>
+      <input
+        id="username-input"
+        class="input"
+        type="text"
+        placeholder="Username"
+        autocomplete="username"
+      />
+      <input
+        id="password-input"
+        class="input"
+        type="password"
+        placeholder="Password"
+        autocomplete="current-password"
+      />
+      <button id="sign-in" class="btn">Sign in</button>
+      <div id="status" class="status"></div>
+    </div>
+    <script src="/admin/static/login.js"></script>
+  </body>
+</html>
