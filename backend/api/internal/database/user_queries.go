@@ -233,7 +233,7 @@ func SearchUsers(prefix string, limit int) ([]*ApiUser, error) {
 	query := `
 		SELECT id, username, picture, bio, links, settings, creation_date
 		FROM users
-		WHERE LOWER(username) LIKE LOWER($1)
+		WHERE LOWER(username) LIKE LOWER($1) AND id > 0
 		ORDER BY username ASC
 		LIMIT $2;
 	`

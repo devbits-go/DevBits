@@ -212,13 +212,13 @@ var user_tests = []TestCase{
 		Method:         http.MethodGet,
 		Endpoint:       "/users/search?q=dev",
 		ExpectedStatus: http.StatusOK,
-		ExpectedBody:   `[{"bio":"Full-stack developer passionate about open-source projects.","creation_date":"2023-12-13T00:00:00Z","id":1,"links":["https://github.com/dev_user1","https://devuser1.com"],"picture":"https://example.com/dev_user1.jpg","settings":{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"refreshIntervalMs":120000,"zenMode":false},"username":"dev_user1"}]`,
+		ExpectedBody:   `[{"bio":"Updated developer bio.","creation_date":"2023-12-13T00:00:00Z","id":1,"links":["https://github.com/dev_user1","https://devuser1.com"],"picture":"https://example.com/dev_user1.jpg","settings":{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"refreshIntervalMs":120000,"zenMode":false},"username":"dev_user1"}]`,
 	},
 	// search users – count is capped at 20
 	{
 		Method:         http.MethodGet,
 		Endpoint:       "/users/search?q=d&count=100",
 		ExpectedStatus: http.StatusOK,
-		ExpectedBody:   `[{"bio":"Data scientist with a passion for machine learning.","creation_date":"2023-06-13T00:00:00Z","id":3,"links":["https://github.com/data_scientist3","https://datascientist3.com"],"picture":"https://example.com/data_scientist3.jpg","settings":{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"refreshIntervalMs":120000,"zenMode":false},"username":"data_scientist3"},{"bio":"Full-stack developer passionate about open-source projects.","creation_date":"2023-12-13T00:00:00Z","id":1,"links":["https://github.com/dev_user1","https://devuser1.com"],"picture":"https://example.com/dev_user1.jpg","settings":{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"refreshIntervalMs":120000,"zenMode":false},"username":"dev_user1"}]`,
+		ExpectedBody:   `[{"bio":"Data scientist with a passion for machine learning.","creation_date":"2023-06-13T00:00:00Z","id":3,"links":["https://github.com/data_scientist3","https://datascientist3.com"],"picture":"https://example.com/data_scientist3.jpg","settings":{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"refreshIntervalMs":120000,"zenMode":false},"username":"data_scientist3"},{"bio":"Updated developer bio.","creation_date":"2023-12-13T00:00:00Z","id":1,"links":["https://github.com/dev_user1","https://devuser1.com"],"picture":"https://example.com/dev_user1.jpg","settings":{"accentColor":"","backgroundRefreshEnabled":false,"compactMode":false,"refreshIntervalMs":120000,"zenMode":false},"username":"dev_user1"}]`,
 	},
 }
