@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -60,6 +62,10 @@ export function SettingsPageShell({
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.screen} edges={["top"]}>
+        <KeyboardAvoidingView
+          style={styles.screen}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
         <Animated.ScrollView
           ref={scrollRef}
           onScroll={onScroll}
@@ -113,6 +119,7 @@ export function SettingsPageShell({
             <View style={styles.body}>{children}</View>
           </Animated.View>
         </Animated.ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
       <FloatingScrollTopButton

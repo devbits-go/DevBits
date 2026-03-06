@@ -10,6 +10,8 @@ import {
   Animated,
   InteractionManager,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -527,6 +529,10 @@ export default function ExploreScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.background} pointerEvents="none" />
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
+        <KeyboardAvoidingView
+          style={styles.safeArea}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <Animated.ScrollView
             ref={scrollRef}
@@ -955,6 +961,7 @@ export default function ExploreScreen() {
             ) : null}
           </Animated.ScrollView>
         </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
       <FloatingScrollTopButton

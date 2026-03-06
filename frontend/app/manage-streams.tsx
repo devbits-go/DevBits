@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -215,6 +217,10 @@ export default function ManageStreamsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
+        <KeyboardAvoidingView
+          style={styles.screen}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
         <Animated.ScrollView
           ref={scrollRef}
           contentInsetAdjustmentBehavior="never"
@@ -461,6 +467,7 @@ export default function ManageStreamsScreen() {
             </View>
           )}
         </Animated.ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
       <TopBlur scrollY={scrollY} />
       <FloatingScrollTopButton

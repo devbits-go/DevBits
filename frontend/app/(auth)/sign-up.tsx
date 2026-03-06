@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   TextInput,
@@ -70,6 +72,10 @@ export default function SignUpScreen() {
       style={[styles.screen, { backgroundColor: colors.background }]}
       edges={[]}
     >
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
       <Animated.View
         style={[
           styles.content,
@@ -158,6 +164,7 @@ export default function SignUpScreen() {
           </View>
         </View>
       </Animated.View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
