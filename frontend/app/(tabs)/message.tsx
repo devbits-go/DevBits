@@ -313,7 +313,7 @@ export default function MessageScreen() {
     setShowNewChatModal(false);
     setSearchQuery("");
     setSuggestions([]);
-    router.push(`/conversation/${username}`);
+    router.push({ pathname: "/conversation/[username]", params: { username } });
   };
 
   const handleNewChat = () => {
@@ -342,7 +342,7 @@ export default function MessageScreen() {
     setShowNewChatModal(false);
     setSearchQuery("");
     setSuggestions([]);
-    router.push(`/conversation/${username}`);
+    router.push({ pathname: "/conversation/[username]", params: { username } });
   };
 
   const renderSuggestion = ({
