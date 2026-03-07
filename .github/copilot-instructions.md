@@ -17,7 +17,7 @@ DevBits/
 │   ├── api/
 │   │   ├── main.go    # Entry point, router setup
 │   │   ├── admin/     # Admin UI (static HTML)
-│   │   ├── devbits-api/ # (additional API modules)
+│   │   ├── devbits-api  # Pre-compiled Go binary (checked-in executable)
 │   │   └── internal/
 │   │       ├── auth/      # JWT authentication middleware
 │   │       ├── database/  # DB connection, migrations, queries
@@ -70,10 +70,10 @@ DevBits/
 
 ```bash
 # Frontend only (connects to production API)
-./run-front.sh        # or .\run-front.ps1 on Windows
+./Bash-Scripts/run-front.sh        # or .\Powershell-Scripts\run-front.ps1 on Windows
 
 # Full local stack (PostgreSQL + backend + frontend)
-./run-dev.sh          # or .\run-dev.ps1 on Windows
+./Bash-Scripts/run-dev.sh          # or .\Powershell-Scripts\run-dev.ps1 on Windows
 
 # Backend only
 cd backend && go run ./api
@@ -86,7 +86,7 @@ cd frontend && npm run frontend
 
 ```bash
 # Backend integration tests (shell script uses Docker/PostgreSQL; direct go test uses SQLite)
-./run-db-tests.sh     # or .\run-db-tests.ps1 on Windows
+./Bash-Scripts/run-db-tests.sh     # or .\Powershell-Scripts\run-db-tests.ps1 on Windows
 # Direct: cd backend && go test -v ./api/internal/tests/...
 
 # Frontend unit tests
