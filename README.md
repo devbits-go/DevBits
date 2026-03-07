@@ -74,6 +74,15 @@ Scan the QR code with Expo Go on your phone. The app will automatically connect 
 
 For detailed instructions, see [INSTRUCTIONS.md](INSTRUCTIONS.md).
 
+## Static file sync
+
+`backend/api/static/` is the source of truth for compliance and deep-linking files
+(`apple-app-site-association`, `privacy-policy.html`, `account-deletion.html`).
+The same files are mirrored into `frontend/public/` for the Expo web build.
+
+Run `Bash-Scripts/sync-static.sh` after editing any file in `backend/api/static/`
+to keep the frontend copy in sync.
+
 ## Deployment DB scripts
 
 All deployment database script commands and usage are documented in:
