@@ -55,13 +55,14 @@ Alternative (if you use Play App Signing)
 
 4. Update `assetlinks.json`
 
-- Open `frontend/public/.well-known/assetlinks.json` and replace `<SHA256_CERT_FINGERPRINT>` with the SHA-256 fingerprint (format: uppercase hex with colons or without; either is accepted by Android).
+- Open `backend/api/static/assetlinks.json` and replace `<SHA256_CERT_FINGERPRINT>` with the SHA-256 fingerprint (format: uppercase hex with colons or without; either is accepted by Android).
 
 5. Deploy static files to your server/domain
 
-- Host `frontend/public/apple-app-site-association` and `frontend/public/.well-known/assetlinks.json` at:
-  - https://devbits.app/apple-app-site-association
-  - https://devbits.app/.well-known/assetlinks.json
+- The Go backend now serves these files directly from `backend/api/static/`. No separate static hosting is needed.
+  - `https://devbits.app/apple-app-site-association` → served from `backend/api/static/apple-app-site-association` (also available at `/.well-known/apple-app-site-association`)
+  - `https://devbits.app/.well-known/assetlinks.json` → served from `backend/api/static/assetlinks.json`
+- To update these files, edit them in `backend/api/static/` and redeploy the backend.
 
 6. Verify
 

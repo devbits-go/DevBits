@@ -30,6 +30,12 @@ if [[ ! -x "$BINARY_PATH" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$TEMPLATE_PATH" ]]; then
+  echo "Missing systemd service template: $TEMPLATE_PATH" >&2
+  echo "Ensure the deploy/systemd/devbits-api.service template is present." >&2
+  exit 1
+fi
+
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
   echo "Service user does not exist: $SERVICE_USER" >&2
   exit 1

@@ -20,6 +20,11 @@ import (
 
 const uploadDir = "uploads"
 
+// trustProxy is evaluated once at startup to avoid repeated os.Getenv calls
+// on every upload request. Set DEVBITS_TRUST_PROXY=true only when the backend
+// runs behind a trusted reverse proxy (e.g. AWS ALB) that sets X-Forwarded-Proto.
+var trustProxy = os.Getenv("DEVBITS_TRUST_PROXY") == "true"
+
 var allowedImageExtensions = map[string]struct{}{
 	".jpg":  {},
 	".jpeg": {},
@@ -207,13 +212,15 @@ func UploadMedia(context *gin.Context) {
 	}
 
 	scheme := "http"
-	if forwardedProto := strings.TrimSpace(context.GetHeader("X-Forwarded-Proto")); forwardedProto != "" {
-		scheme = strings.ToLower(strings.TrimSpace(strings.Split(forwardedProto, ",")[0]))
-		if scheme != "http" && scheme != "https" {
-			scheme = "http"
-		}
-	} else if context.Request.TLS != nil {
+	if context.Request.TLS != nil {
 		scheme = "https"
+	} else if trustProxy {
+		if forwardedProto := strings.TrimSpace(context.GetHeader("X-Forwarded-Proto")); forwardedProto != "" {
+			scheme = strings.ToLower(strings.TrimSpace(strings.Split(forwardedProto, ",")[0]))
+			if scheme != "http" && scheme != "https" {
+				scheme = "http"
+			}
+		}
 	}
 	relativeURL := fmt.Sprintf("/%s/%s", uploadDir, filename)
 	absoluteURL := fmt.Sprintf("%s://%s%s", scheme, context.Request.Host, relativeURL)
