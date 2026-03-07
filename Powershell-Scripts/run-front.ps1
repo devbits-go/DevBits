@@ -56,7 +56,7 @@ elseif ($Production) {
     $mode = "production"
 }
 else {
-    Write-Host "Select backend: 1) Production (devbits.ddns.net) 2) Local (LAN IP:8080)"
+    Write-Host "Select backend: 1) Production (devbits.app) 2) Local (LAN IP:8080)"
     $selection = Read-Host "Choose [1/2]"
     switch ($selection) {
         "1" { $mode = "production" }
@@ -76,8 +76,8 @@ else {
     Remove-Item Env:REACT_NATIVE_PACKAGER_HOSTNAME -ErrorAction SilentlyContinue
     Remove-Item Env:EXPO_PACKAGER_HOSTNAME -ErrorAction SilentlyContinue
 }
-$env:EXPO_PUBLIC_API_URL = "https://devbits.ddns.net"
-$env:EXPO_PUBLIC_API_FALLBACK_URL = "https://devbits.ddns.net"
+$env:EXPO_PUBLIC_API_URL = "https://devbits.app"
+$env:EXPO_PUBLIC_API_FALLBACK_URL = "https://devbits.app"
 
 if ($mode -eq "local") {
     $port = if ($env:EXPO_PUBLIC_LOCAL_API_PORT) { $env:EXPO_PUBLIC_LOCAL_API_PORT } else { "8080" }
@@ -88,7 +88,7 @@ if ($mode -eq "local") {
 else {
     $env:EXPO_PUBLIC_USE_LOCAL_API = "0"
     Remove-Item Env:EXPO_PUBLIC_LOCAL_API_URL -ErrorAction SilentlyContinue
-    Write-Host "Using production backend: https://devbits.ddns.net" -ForegroundColor Green
+    Write-Host "Using production backend: https://devbits.app" -ForegroundColor Green
 }
 
 Push-Location $frontendDir

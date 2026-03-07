@@ -57,16 +57,16 @@ Alternative (if you use Play App Signing)
 
 - Open `frontend/public/.well-known/assetlinks.json` and replace `<SHA256_CERT_FINGERPRINT>` with the SHA-256 fingerprint (format: uppercase hex with colons or without; either is accepted by Android).
 
-5. Deploy static files to your server
+5. Deploy static files to your server/domain
 
-- Build the frontend static output and copy contents of `frontend/public/` to the nginx static folder (`/usr/share/nginx/html`) so files are reachable at:
-  - https://devbits.ddns.net/apple-app-site-association
-  - https://devbits.ddns.net/.well-known/assetlinks.json
+- Host `frontend/public/apple-app-site-association` and `frontend/public/.well-known/assetlinks.json` at:
+  - https://devbits.app/apple-app-site-association
+  - https://devbits.app/.well-known/assetlinks.json
 
 6. Verify
 
 - iOS: use Apple's AASA validator or check device logs when opening a Universal Link.
-- Android: open `https://devbits.ddns.net/.well-known/assetlinks.json` and use `adb shell am start -a android.intent.action.VIEW -d "https://devbits.ddns.net/some/path"` on a device with the app installed, or check Play Console URL handling tests.
+- Android: open `https://devbits.app/.well-known/assetlinks.json` and use `adb shell am start -a android.intent.action.VIEW -d "https://devbits.app/some/path"` on a device with the app installed, or check Play Console URL handling tests.
 
 Notes
 

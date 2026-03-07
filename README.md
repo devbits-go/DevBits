@@ -79,3 +79,4 @@ For detailed instructions, see [INSTRUCTIONS.md](INSTRUCTIONS.md).
 All deployment database script commands and usage are documented in:
 
 - [backend/scripts/README.md](backend/scripts/README.md)
+- [backend/docs/AWS_TRANSFER_NO_NGINX.md](backend/docs/AWS_TRANSFER_NO_NGINX.md)

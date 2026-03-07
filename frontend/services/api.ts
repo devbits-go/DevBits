@@ -214,7 +214,7 @@ const getHostFromUri = (uri?: string | null) => {
 const getDefaultBaseUrl = () => {
   // Check for overrides provided via Expo `extra` or environment variables.
   // This allows running the Expo client locally while targeting a remote
-  // backend (for example devbits.ddns.net) from any developer machine.
+  // backend (for example devbits.app) from any developer machine.
   try {
     const extras = (Constants as any)?.expoConfig?.extra ??
       (Constants as any)?.manifest2?.extra ??
@@ -257,9 +257,9 @@ const getDefaultBaseUrl = () => {
     }
 
     // If the developer explicitly disables using the local API in dev, use
-    // the production DDNS endpoint even when __DEV__ is true.
+    // the production endpoint even when __DEV__ is true.
     if (!useLocal) {
-      return "https://devbits.ddns.net";
+      return "https://devbits.app";
     }
   } catch {
     // ignore and fall back to defaults below
@@ -294,7 +294,7 @@ const getDefaultBaseUrl = () => {
   }
 
   // Production: use live server
-  return "https://devbits.ddns.net";
+  return "https://devbits.app";
 };
 
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, "");
@@ -321,27 +321,27 @@ const buildBaseUrlList = (...candidates: Array<string | null | undefined>) => {
 export const API_BASE_URL = normalizeBaseUrl(getDefaultBaseUrl());
 
 // Defensive runtime validation: if the resolved URL is malformed (e.g. "http://"
-// with no host) fall back to the public DDNS host and log an error so developers
+// with no host) fall back to the public host and log an error so developers
 // can see the problem in the Metro/Expo console.
 try {
   const checkUrl = new URL(API_BASE_URL);
   if (!checkUrl.hostname) {
     // eslint-disable-next-line no-console
-    console.error("Invalid API_BASE_URL resolved; falling back to https://devbits.ddns.net", API_BASE_URL);
+    console.error("Invalid API_BASE_URL resolved; falling back to https://devbits.app", API_BASE_URL);
     // normalize and overwrite
-    (exports as any).API_BASE_URL = normalizeBaseUrl("https://devbits.ddns.net");
+    (exports as any).API_BASE_URL = normalizeBaseUrl("https://devbits.app");
   }
 } catch (e) {
   // If parsing fails entirely, fallback and log.
   try {
     // eslint-disable-next-line no-console
-    console.error("Failed to parse API_BASE_URL; falling back to https://devbits.ddns.net", API_BASE_URL, String(e));
+    console.error("Failed to parse API_BASE_URL; falling back to https://devbits.app", API_BASE_URL, String(e));
   } catch {}
-  (exports as any).API_BASE_URL = normalizeBaseUrl("https://devbits.ddns.net");
+  (exports as any).API_BASE_URL = normalizeBaseUrl("https://devbits.app");
 }
 
 const API_FALLBACK_URL = normalizeBaseUrl(
-  __DEV__ ? "" : "https://devbits.ddns.net",
+  __DEV__ ? "" : "https://devbits.app",
 );
 
 const API_REQUEST_BASE_URLS = buildBaseUrlList(API_BASE_URL, API_FALLBACK_URL);

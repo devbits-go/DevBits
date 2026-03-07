@@ -42,7 +42,8 @@ func getAllowedOrigins() []string {
 	}
 
 	return []string{
-		"https://devbits.ddns.net",
+		"https://devbits.app",
+		"https://www.devbits.app",
 		"http://localhost:8081",
 		"http://localhost:19006",
 		"http://127.0.0.1:8081",
@@ -65,6 +66,7 @@ func HealthCheck(context *gin.Context) {
 func resolveAdminDir() string {
 	candidates := []string{
 		"./admin",
+		"./api/admin",
 		"../admin",
 		"../../backend/api/admin",
 		"./backend/api/admin",
@@ -193,6 +195,10 @@ func main() {
 	} else {
 		log.Printf("INFO: admin UI available at /admin (key-protected)")
 	}
+	router.StaticFile("/apple-app-site-association", "./api/static/apple-app-site-association")
+	router.StaticFile("/.well-known/assetlinks.json", "./api/static/assetlinks.json")
+	router.StaticFile("/privacy-policy", "./api/static/privacy-policy.html")
+	router.StaticFile("/account-deletion", "./api/static/account-deletion.html")
 
 	router.GET("/", func(c *gin.Context) {
 		c.String(200, "Welcome to the DevBits API! Everything is running correctly.")

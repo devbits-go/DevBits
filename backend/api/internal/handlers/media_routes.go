@@ -207,19 +207,24 @@ func UploadMedia(context *gin.Context) {
 	}
 
 	scheme := "http"
-	if context.Request.TLS != nil {
+	if forwardedProto := strings.TrimSpace(context.GetHeader("X-Forwarded-Proto")); forwardedProto != "" {
+		scheme = strings.ToLower(strings.TrimSpace(strings.Split(forwardedProto, ",")[0]))
+		if scheme != "http" && scheme != "https" {
+			scheme = "http"
+		}
+	} else if context.Request.TLS != nil {
 		scheme = "https"
 	}
 	relativeURL := fmt.Sprintf("/%s/%s", uploadDir, filename)
 	absoluteURL := fmt.Sprintf("%s://%s%s", scheme, context.Request.Host, relativeURL)
 
 	context.JSON(http.StatusOK, gin.H{
-		"url":         relativeURL,
+		"url":          relativeURL,
 		"absolute_url": absoluteURL,
-		"filename":    filename,
-		"contentType": file.Header.Get("Content-Type"),
-		"mediaType":   mediaKind,
-		"size":        file.Size,
+		"filename":     filename,
+		"contentType":  file.Header.Get("Content-Type"),
+		"mediaType":    mediaKind,
+		"size":         file.Size,
 	})
 }
 
