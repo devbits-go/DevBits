@@ -318,27 +318,27 @@ const buildBaseUrlList = (...candidates: Array<string | null | undefined>) => {
   return urls;
 };
 
-export const API_BASE_URL = normalizeBaseUrl(getDefaultBaseUrl());
-
-// Defensive runtime validation: if the resolved URL is malformed (e.g. "http://"
-// with no host) fall back to the public host and log an error so developers
-// can see the problem in the Metro/Expo console.
-try {
-  const checkUrl = new URL(API_BASE_URL);
-  if (!checkUrl.hostname) {
-    // eslint-disable-next-line no-console
-    console.error("Invalid API_BASE_URL resolved; falling back to https://devbits.app", API_BASE_URL);
-    // normalize and overwrite
-    (exports as any).API_BASE_URL = normalizeBaseUrl("https://devbits.app");
-  }
-} catch (e) {
-  // If parsing fails entirely, fallback and log.
+// Validate the resolved URL at module load time; if it is malformed (e.g.
+// "http://" with no host) fall back to the public host and log an error so
+// developers can see the problem in the Metro/Expo console.
+function getValidatedBaseUrl(): string {
+  const raw = normalizeBaseUrl(getDefaultBaseUrl());
   try {
+    const checkUrl = new URL(raw);
+    if (!checkUrl.hostname) {
+      // eslint-disable-next-line no-console
+      console.error("Invalid API_BASE_URL resolved; falling back to https://devbits.app", raw);
+      return normalizeBaseUrl("https://devbits.app");
+    }
+    return raw;
+  } catch (e) {
     // eslint-disable-next-line no-console
-    console.error("Failed to parse API_BASE_URL; falling back to https://devbits.app", API_BASE_URL, String(e));
-  } catch {}
-  (exports as any).API_BASE_URL = normalizeBaseUrl("https://devbits.app");
+    console.error("Failed to parse API_BASE_URL; falling back to https://devbits.app", raw, String(e));
+    return normalizeBaseUrl("https://devbits.app");
+  }
 }
+
+export const API_BASE_URL = getValidatedBaseUrl();
 
 const API_FALLBACK_URL = normalizeBaseUrl(
   __DEV__ ? "" : "https://devbits.app",

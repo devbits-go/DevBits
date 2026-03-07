@@ -195,8 +195,18 @@ func main() {
 	} else {
 		log.Printf("INFO: admin UI available at /admin (key-protected)")
 	}
-	router.StaticFile("/apple-app-site-association", "./api/static/apple-app-site-association")
-	router.StaticFile("/.well-known/assetlinks.json", "./api/static/assetlinks.json")
+	router.GET("/apple-app-site-association", func(c *gin.Context) {
+		c.Header("Content-Type", "application/json")
+		c.File("./api/static/apple-app-site-association")
+	})
+	router.GET("/.well-known/apple-app-site-association", func(c *gin.Context) {
+		c.Header("Content-Type", "application/json")
+		c.File("./api/static/apple-app-site-association")
+	})
+	router.GET("/.well-known/assetlinks.json", func(c *gin.Context) {
+		c.Header("Content-Type", "application/json")
+		c.File("./api/static/assetlinks.json")
+	})
 	router.StaticFile("/privacy-policy", "./api/static/privacy-policy.html")
 	router.StaticFile("/account-deletion", "./api/static/account-deletion.html")
 
