@@ -85,7 +85,7 @@ cd frontend && npm run frontend
 ### Running tests
 
 ```bash
-# Backend integration tests (requires PostgreSQL)
+# Backend integration tests (shell script uses Docker/PostgreSQL; direct go test uses SQLite)
 ./run-db-tests.sh     # or .\run-db-tests.ps1 on Windows
 # Direct: cd backend && go test -v ./api/internal/tests/...
 
