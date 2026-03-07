@@ -219,7 +219,14 @@ export default function MessageScreen() {
   }, [normalizedQuery, user?.username]);
 
   const fetchThreads = useCallback(async () => {
-    if (!user?.username) return;
+    if (!user?.username) {
+      // No authenticated user: stop any loading/refresh indicators
+      setIsLoading(false);
+      setIsRefreshing(false);
+      setThreads([]);
+      setError(null);
+      return;
+    }
 
     try {
       setError(null);

@@ -84,7 +84,12 @@ export default function ConversationScreen() {
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
-    if (!user?.username || !recipientUsername) return;
+    if (!user?.username || !recipientUsername) {
+      // If we don't have the necessary identifiers, stop loading and show an error/empty state
+      setIsLoading(false);
+      setError("Unable to load conversation.");
+      return;
+    }
 
     try {
       setError(null);
@@ -159,7 +164,32 @@ export default function ConversationScreen() {
                 newMessage.recipient_name === recipientUsername
               ) {
                 setMessages((prev) => {
-                  // Check if message already exists (avoid duplicates)
+                  // First, try to reconcile against any pending optimistic message
+                  const pendingIndex = prev.findIndex(
+                    (m) =>
+                      m.isPending &&
+                      m.id === -1 &&
+                      m.sender_name === newMessage.sender_name &&
+                      m.recipient_name === newMessage.recipient_name &&
+                      m.content === newMessage.content
+                  );
+
+                  if (pendingIndex !== -1) {
+                    const updated = [...prev];
+                    const pendingMessage = updated[pendingIndex];
+
+                    // Replace the optimistic message with the real one, preserving client-only fields
+                    updated[pendingIndex] = {
+                      ...pendingMessage,
+                      ...newMessage,
+                      isPending: false,
+                      isError: false,
+                    };
+
+                    return dedupeMessages(updated);
+                  }
+
+                  // Check if message already exists (avoid duplicates by server id)
                   const exists = prev.some((m) => m.id === newMessage.id);
                   if (exists) return prev;
                   return dedupeMessages([...prev, newMessage]);
