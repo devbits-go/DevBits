@@ -31,6 +31,7 @@ COPY --from=builder /app/main .
 # Copy the database file
 COPY --from=builder /app/api/internal/database/dev.sqlite3 ./api/internal/database/
 COPY --from=builder /app/api/internal/database/create_tables.sql ./api/internal/database/
+COPY --from=builder /app/api/static ./api/static
 
 # Copy admin UI static files
 COPY --from=builder /app/api/admin ./admin

@@ -21,7 +21,7 @@
         "NSMicrophoneUsageDescription": "DevBits requests access to the microphone to record audio for posts or streams. Example: recording a short audio clip when creating content."
       },
       "associatedDomains": [
-        "applinks:devbits.ddns.net"
+        "applinks:devbits.app"
       ]
     },
     "android": {
