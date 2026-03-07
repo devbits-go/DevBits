@@ -1,6 +1,8 @@
 # DevBits
 
-## Goal: Create an X and LinkedIn crossover for posting real content about your projects, semi-formally
+An for developers to share their projects.
+
+Goal: Create an X and LinkedIn crossover for posting real content about your projects, semi-formally
 
 ### Outline
 
@@ -16,10 +18,10 @@ Some quirky names for things (frontend only)
 
 ### Tech Stack
 
-- Backend/API in Go, Elixir/Scala if need big data processing
-- Frontend: ReactNative and Expo
-- Database: PostgreSQL or MySQL
-- Host: On AWS, full system design pending
+- Backend/API in Go using Gin framework
+- Frontend: ReactNative (iOS and Android)
+- Database: PostgreSQL
+- Host: AWS ec2 for backend, AWS RDS for PostgreSQL
 
 ## Local Development
 
