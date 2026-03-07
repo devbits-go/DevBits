@@ -13,6 +13,7 @@ const MAPPING = {
   magnifyingglass: "search",
   "person.fill": "person",
   "paperplane.fill": "send",
+  "terminal.fill": "terminal",
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
 } as Partial<

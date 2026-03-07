@@ -138,7 +138,6 @@ export default function HomeScreen() {
     const task = InteractionManager.runAfterInteractions(() => {
       router.prefetch("/streams");
       router.prefetch("/bytes");
-      router.prefetch("/terminal");
     });
 
     return () => {

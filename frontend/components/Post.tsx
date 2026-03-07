@@ -22,7 +22,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSaved } from "@/contexts/SavedContext";
 import { useRouter } from "expo-router";
 import {
-  getPostById,
   getCommentsByPostId,
   isPostLiked,
   likePost,

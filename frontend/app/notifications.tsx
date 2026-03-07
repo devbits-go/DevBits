@@ -96,8 +96,8 @@ export default function NotificationsScreen() {
     await markRead(item.id);
     if (item.type === "direct_message" && item.actor_name) {
       router.push({
-        pathname: "/terminal",
-        params: { chat: item.actor_name },
+        pathname: "/conversation/[username]",
+        params: { username: item.actor_name },
       });
       return;
     }

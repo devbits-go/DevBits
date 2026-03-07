@@ -207,6 +207,7 @@ func main() {
 	router.POST("/media/upload", handlers.RequireAuth(), handlers.UploadMedia)
 
 	router.GET("/users", handlers.GetUsers)
+	router.GET("/users/search", handlers.SearchUsers)
 	router.GET("/users/:username", handlers.GetUserByUsername)
 	router.GET("/users/id/:user_id", handlers.GetUserById)
 	router.POST("/users", handlers.RequireAuth(), handlers.CreateUser)

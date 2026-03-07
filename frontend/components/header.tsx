@@ -17,29 +17,6 @@ export function MyHeader() {
   const bellGlow = useRef(
     new Animated.Value(unreadCount > 0 ? 1 : 0.25),
   ).current;
-  const terminalScale = useRef(new Animated.Value(1)).current;
-  const terminalGlow = useRef(new Animated.Value(0.45)).current;
-
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(terminalGlow, {
-          toValue: 0.8,
-          duration: 900,
-          useNativeDriver: false,
-        }),
-        Animated.timing(terminalGlow, {
-          toValue: 0.35,
-          duration: 900,
-          useNativeDriver: false,
-        }),
-      ]),
-    );
-    pulse.start();
-    return () => {
-      pulse.stop();
-    };
-  }, [terminalGlow]);
 
   useEffect(() => {
     Animated.timing(bellGlow, {
@@ -51,15 +28,6 @@ export function MyHeader() {
 
   const animateBell = (toValue: number) => {
     Animated.spring(bellScale, {
-      toValue,
-      speed: 22,
-      bounciness: 5,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const animateTerminal = (toValue: number) => {
-    Animated.spring(terminalScale, {
       toValue,
       speed: 22,
       bounciness: 5,
@@ -133,46 +101,6 @@ export function MyHeader() {
             </Pressable>
           </Animated.View>
         </Animated.View>
-        <Animated.View
-          style={[
-            styles.iconShell,
-            {
-              shadowColor: colors.tint,
-              shadowOpacity: terminalGlow.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.1, 0.36],
-              }) as unknown as number,
-              shadowRadius: terminalGlow.interpolate({
-                inputRange: [0, 1],
-                outputRange: [2, 9],
-              }) as unknown as number,
-              shadowOffset: { width: 0, height: 0 },
-              elevation: 3,
-            },
-          ]}
-        >
-          <Animated.View style={{ transform: [{ scale: terminalScale }] }}>
-            <Pressable
-              hitSlop={10}
-              onPressIn={() => animateTerminal(0.93)}
-              onPressOut={() => animateTerminal(1)}
-              style={[
-                styles.iconButton,
-                {
-                  borderColor: colors.tint,
-                  backgroundColor: colors.surfaceAlt,
-                  shadowColor: colors.tint,
-                },
-              ]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                router.push("/terminal");
-              }}
-            >
-              <Feather name="terminal" color={colors.tint} size={19} />
-            </Pressable>
-          </Animated.View>
-        </Animated.View>
       </View>
     </View>
   );
@@ -216,9 +144,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 0 },
     elevation: 2,
-  },
-  iconShell: {
-    borderRadius: IconButton.borderRadius,
   },
   badge: {
     position: "absolute",
