@@ -1,6 +1,6 @@
 # DevBits
 
-An for developers to share their projects.
+A place for developers to share their projects.
 
 Goal: Create an X and LinkedIn crossover for posting real content about your projects, semi-formally
 
