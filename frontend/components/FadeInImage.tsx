@@ -148,9 +148,9 @@ export function FadeInImage({
     onError?.(event);
   };
 
-  const handleLoadEnd: ImageProps["onLoadEnd"] = (event) => {
+  const handleLoadEnd: ImageProps["onLoadEnd"] = () => {
     reveal();
-    onLoadEnd?.(event);
+    onLoadEnd?.();
   };
 
   if (loadFailed) {

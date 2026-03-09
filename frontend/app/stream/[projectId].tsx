@@ -9,6 +9,7 @@ import {
   Animated,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -108,7 +109,7 @@ export default function StreamDetailScreen() {
   const bottom = useBottomTabOverflow();
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const hasLoadedOnceRef = useRef(false);
   const loadSequenceRef = useRef(0);

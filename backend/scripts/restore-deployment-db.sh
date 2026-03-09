@@ -9,19 +9,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ -f ".env" ]]; then
-  set -a
-  . ./.env
-  set +a
+if [[ ! -f ".env" ]]; then
+  echo "Missing $ROOT_DIR/.env. Create it from backend/.env.example and set real values." >&2
+  exit 1
 fi
 
-DB_USER="${POSTGRES_USER:-devbits}"
-DB_NAME="${POSTGRES_DB:-devbits}"
+set -a
+. ./.env
+set +a
 
-if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root"
-  sudo "$0" "$@"
-  exit
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  echo "Missing DATABASE_URL in $ROOT_DIR/.env" >&2
+  exit 1
+fi
+
+if ! command -v psql >/dev/null 2>&1; then
+  echo "psql is required. Install PostgreSQL client tools first." >&2
+  exit 1
 fi
 
 if [[ ! -d "$BACKUP_DIR" ]]; then
@@ -39,10 +43,9 @@ RESOLVED_BACKUP="$LATEST_FILE"
 
 echo "Using backup: $RESOLVED_BACKUP"
 
-docker compose exec -T db psql -U "$DB_USER" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${DB_NAME}' AND pid <> pg_backend_pid();"
-docker compose exec -T db psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";"
-docker compose exec -T db psql -U "$DB_USER" -d postgres -c "CREATE DATABASE \"${DB_NAME}\";"
-docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" < "$RESOLVED_BACKUP"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE;"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE SCHEMA public;"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 < "$RESOLVED_BACKUP"
 
 db_file_name="$(basename "$RESOLVED_BACKUP")"
 db_timestamp="${db_file_name#devbits-db-}"
@@ -65,22 +68,15 @@ else
   echo "No matching uploads backup found for timestamp $db_timestamp, keeping current uploads directory."
 fi
 
-echo "Restore complete. Rebuilding deployment services..."
-docker compose up -d --build
-
-echo "Restore complete and services rebuilt."
-
-live_backend_state="unavailable"
-if backend_status_output="$(docker compose ps backend 2>/dev/null)"; then
-  if echo "$backend_status_output" | grep -q "Up"; then
-    live_backend_state="running"
-  else
-    live_backend_state="not running"
-  fi
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q '^devbits-api\.service'; then
+  echo "Restarting devbits-api service..."
+  sudo systemctl restart devbits-api
 fi
+
+echo "Restore complete."
 
 echo
 echo "===== Summary ====="
 echo "Action: Deployment DB restore executed"
-echo "Updated: Database restored and matching uploads restored when available; services rebuilt"
-echo "Live backend: $live_backend_state"
+echo "Updated: Database restored and matching uploads restored when available"
+echo "Database restore target: DATABASE_URL"

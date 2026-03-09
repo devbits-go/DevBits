@@ -14,9 +14,9 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://devbits.ddns.net",
-        "EXPO_PUBLIC_API_FALLBACK_URL": "https://devbits.ddns.net",
-        "EXPO_PUBLIC_SITE_URL": "https://devbits.ddns.net"
+        "EXPO_PUBLIC_API_URL": "https://devbits.app",
+        "EXPO_PUBLIC_API_FALLBACK_URL": "https://devbits.app",
+        "EXPO_PUBLIC_SITE_URL": "https://devbits.app"
       }
       ,
       "credentialsSource": "remote"

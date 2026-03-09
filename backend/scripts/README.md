@@ -1,165 +1,118 @@
-# DevBits Database Scripts
+# DevBits Backend Scripts
 
-All deployment database scripts are in this folder.
+Run scripts from `backend/`.
 
-## Environment separation (important)
+## 1) Update backend on AWS
 
-### Local DB (development machine)
-
-Run from project root:
-
-```powershell
-cd c:\Users\eligf\DevBits
-```
-
-Use compose file path explicitly:
-
-```powershell
-docker compose -f backend/docker-compose.yml up -d
-docker compose -f backend/docker-compose.yml logs -f db
-```
-
-### Live DB (deployed server)
-
-Run on server in backend directory:
+Build locally, then copy binary to EC2 (recommended):
 
 ```bash
-cd /path/to/DevBits/backend
-docker compose up -d
-docker compose logs -f db
+# local machine
+cd /home/ws-73/OldFiles/projects/DevBits/backend
+TARGET_GOOS=linux TARGET_GOARCH=amd64 ./scripts/build-backend-linux.sh
+scp -i <key.pem> ./bin/devbits-api ec2-user@<EC2_PUBLIC_IP>:/tmp/devbits-api
 ```
 
-Only run reset/restore in the environment you mean to modify.
+On the EC2 host:
 
-## Script location
-
-Run script commands from `backend`:
-
-```powershell
+```bash
+cd /opt/devbits
+# Save any local EC2 edits before pulling
+git stash push -u -m "ec2-local-before-pull-$(date +%Y%m%d-%H%M%S)"
+git pull origin aws-ready-main
 cd backend
+sudo mv /tmp/devbits-api ./bin/devbits-api
+sudo chown ec2-user:ec2-user ./bin/devbits-api
+sudo chmod +x ./bin/devbits-api
+sudo ./scripts/install-aws-systemd-service.sh
 ```
 
-## Required env file
-
-Before running deploy/reset/update scripts, ensure `backend/.env` exists:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Set a strong `POSTGRES_PASSWORD` value in `.env`.
-
-## Scripts
-
-- `scripts/reset-deployment-db.ps1` / `scripts/reset-deployment-db.sh`
-- `scripts/backup-deployment-db.ps1` / `scripts/backup-deployment-db.sh`
-- `scripts/restore-deployment-db.ps1` / `scripts/restore-deployment-db.sh`
-- `scripts/setup-daily-backup-task.ps1`
-- `scripts/disable-daily-backup-task.ps1`
-
-## 1) Reset DB (blank slate)
-
-Warning: this wipes all app data in that environment.
-
-PowerShell:
-
-```powershell
-./scripts/reset-deployment-db.ps1
-```
-
-Keep uploads while resetting only DB volume:
-
-```powershell
-./scripts/reset-deployment-db.ps1 -KeepUploads
-```
-
-Bash:
+If you intentionally want to discard local EC2 changes instead:
 
 ```bash
-./scripts/reset-deployment-db.sh
-./scripts/reset-deployment-db.sh --keep-uploads
+cd /opt/devbits
+git reset --hard
+git clean -fd
+git pull origin aws-ready-main
+cd backend
+./scripts/deploy-aws-native.sh
 ```
 
-## 2) Backup DB (single-backup retention)
-
-Safe for both local and live. Run it in the target environment.
-
-PowerShell:
-
-```powershell
-./scripts/backup-deployment-db.ps1
-```
-
-Bash:
+Verify:
 
 ```bash
-./scripts/backup-deployment-db.sh
+sudo systemctl status devbits-api --no-pager
+curl -i http://127.0.0.1:8080/health
 ```
 
-Backup location:
+## 1.1) Extra AWS checks
 
-- `backend/backups/db`
-
-Retention policy:
-
-- keeps only the newest `devbits-*.sql`
-- deletes older backup files automatically
-
-Backup type:
-
-- Logical SQL dump created with `pg_dump` from the running DB container
-- Not a Docker volume snapshot/image snapshot
-
-## 3) Restore DB from latest backup
-
-Warning: restore terminates sessions and recreates DB in that environment.
-
-PowerShell:
-
-```powershell
-./scripts/restore-deployment-db.ps1
-```
-
-Bash:
+Run on EC2:
 
 ```bash
-./scripts/restore-deployment-db.sh
+# Service state
+sudo systemctl is-active devbits-api
+sudo systemctl status devbits-api --no-pager
+
+# Process is listening on 8080
+sudo ss -ltnp | grep ':8080'
+
+# Recent service logs
+sudo journalctl -u devbits-api -n 150 --no-pager
+
+# Follow logs live while testing app traffic
+sudo journalctl -u devbits-api -f
 ```
 
-Restore behavior:
+Database connectivity check (from EC2):
 
-- picks latest backup file from `backend/backups/db`
-- terminates active DB sessions
-- drops and recreates `devbits`
-- applies SQL dump
+```bash
+# Ensure PostgreSQL client tools are installed
+sudo dnf install -y postgresql15
 
-## 4) Enable daily auto backup (Windows)
-
-Create a scheduled task at 03:00 daily:
-
-```powershell
-./scripts/setup-daily-backup-task.ps1
+# Uses DATABASE_URL from backend/.env
+cd /opt/devbits/backend
+set -a; . ./.env; set +a
+psql "$DATABASE_URL" -c "select current_user, current_database();"
 ```
 
-Custom time:
+DNS/public checks (from local machine or EC2):
 
-```powershell
-./scripts/setup-daily-backup-task.ps1 -RunAt "01:30"
+```bash
+dig +short devbits.app
+curl -i https://devbits.app/health
+curl -i https://devbits.app/privacy-policy
+curl -i https://devbits.app/.well-known/assetlinks.json
+curl -i https://devbits.app/apple-app-site-association
 ```
 
-Notes:
+Target group health check path should return 200:
 
-- Script tries `SYSTEM` first.
-- If shell is not elevated, it falls back to current-user mode.
-
-Verify task:
-
-```powershell
-schtasks /Query /TN DevBitsDailyDbBackup /V /FO LIST
+```bash
+curl -i http://127.0.0.1:8080/health
 ```
 
-## 5) Disable daily auto backup (Windows)
+## 2) Script usage
 
-```powershell
-./scripts/disable-daily-backup-task.ps1
-```
+Deploy/build:
+
+- `scripts/build-backend-linux.sh`
+  - Build backend binary to `bin/devbits-api`.
+- `scripts/install-aws-systemd-service.sh`
+  - Install/restart `devbits-api` systemd service.
+- `scripts/deploy-aws-native.sh`
+  - Build + install/restart in one command.
+- `scripts/update-live.sh`
+  - Wrapper for `deploy-aws-native.sh`.
+
+Database scripts (use `DATABASE_URL` in `backend/.env`):
+
+- `scripts/reset-deployment-db.sh`
+- `--keep-uploads` to keep uploads.
+- `scripts/backup-deployment-db.sh`
+- `scripts/restore-deployment-db.sh`
+- restores latest `devbits-db-*.sql` and matching uploads archive if present.
+
+Required tools for DB scripts:
+
+- Linux: `postgresql` client package (`psql`, `pg_dump`)

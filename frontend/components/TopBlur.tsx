@@ -15,15 +15,19 @@ export function TopBlur({ scrollY }: TopBlurProps) {
   const height = Math.max(insets.top, 12) + 28;
   const veilColors = useMemo(() => {
     if (theme === "dark") {
-      return ["rgba(0, 0, 0, 0.24)", "rgba(0, 0, 0, 0.12)", "rgba(0, 0, 0, 0)"];
+      return [
+        "rgba(0, 0, 0, 0.24)",
+        "rgba(0, 0, 0, 0.12)",
+        "rgba(0, 0, 0, 0)",
+      ] as const;
     }
     return [
       "rgba(255, 255, 255, 0.2)",
       "rgba(255, 255, 255, 0.1)",
       "rgba(255, 255, 255, 0)",
-    ];
+    ] as const;
   }, [theme]);
-  const veilStops = [0, 0.5, 1];
+  const veilStops = [0, 0.5, 1] as const;
   const opacity = scrollY
     ? scrollY.interpolate({
         inputRange: [0, 60],

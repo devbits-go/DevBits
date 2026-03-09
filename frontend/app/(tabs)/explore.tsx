@@ -104,7 +104,7 @@ export default function ExploreScreen() {
   const requestGuard = useRequestGuard();
   const reveal = useRef(new Animated.Value(0.08)).current;
   const hasFocusedRef = useRef(false);
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
 
   useEffect(() => {

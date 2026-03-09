@@ -8,7 +8,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { SettingsPageShell, settingsStyles } from "@/features/settings/shared";
 
 const SITE_BASE_URL = (
-  process.env.EXPO_PUBLIC_SITE_URL?.trim() || "https://devbits.ddns.net"
+  process.env.EXPO_PUBLIC_SITE_URL?.trim() || "https://devbits.app"
 ).replace(/\/+$/, "");
 
 const publicLinks = [

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, StyleSheet, View } from "react-native";
+import { Animated, ScrollView, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -20,7 +20,7 @@ export default function SettingsHubScreen() {
   const router = useRouter();
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
-  const scrollRef = useRef<Animated.ScrollView | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const { user } = useAuth();
 

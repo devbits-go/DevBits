@@ -2,22 +2,50 @@
 
 ## Backend
 
-> **Live/Deployed Stack**
+> **AWS EC2 (Amazon Linux) Native Deploy**
 >
 > ```bash
-> cd /path/to/DevBits/backend
-> docker compose up -d
-> docker compose logs -f db
+> # On your EC2 instance
+> sudo dnf update -y
+> sudo dnf install -y git tar
 > ```
-
-> Rebuild and restart:
+>
+> Install Go 1.24.x (required by `backend/go.mod`):
 >
 > ```bash
-> docker compose up -d --build
+> curl -LO https://go.dev/dl/go1.24.2.linux-amd64.tar.gz
+> sudo rm -rf /usr/local/go
+> sudo tar -C /usr/local -xzf go1.24.2.linux-amd64.tar.gz
+> echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+> source ~/.bashrc
+> go version
 > ```
-
+>
+> Clone and deploy:
+>
+> ```bash
+> sudo mkdir -p /opt/devbits
+> sudo chown -R "$USER":"$USER" /opt/devbits
+> cd /opt/devbits
+> git clone https://github.com/devbits-go/DevBits.git .
+> git checkout aws-ready-main
+> cd backend
+> cp .env.example .env
+> # edit .env with production values (DATABASE_URL, secrets, CORS, etc.)
+> ./scripts/deploy-aws-native.sh
+> ```
+>
+> Verify service:
+>
+> ```bash
+> sudo systemctl status devbits-api --no-pager
+> sudo journalctl -u devbits-api -n 120 --no-pager
+> curl -i http://127.0.0.1:8080/health
+> ```
+>
 > [!TIP]
-> Check `backend/scripts/README.md` for database operations.
+> AWS deploy uses native `systemd` (no Docker or nginx required in production).
+> See `backend/docs/AWS_TRANSFER_NO_NGINX.md` for full runbook.
 
 ## Build
 
@@ -58,4 +86,4 @@
 
 ---
 
-`Workflow: Backend Setup → EAS Build → EAS Submit`
+`Workflow: AWS Backend Deploy → EAS Build → EAS Submit`

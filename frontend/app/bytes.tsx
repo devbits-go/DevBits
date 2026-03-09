@@ -487,6 +487,12 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     flexWrap: "wrap",
   },
+  filterRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingTop: 8,
+    flexWrap: "wrap",
+  },
   filterChip: {
     paddingVertical: 6,
     paddingHorizontal: 10,

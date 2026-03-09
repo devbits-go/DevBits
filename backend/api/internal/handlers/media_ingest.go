@@ -86,7 +86,7 @@ func materializeMediaReference(raw string) (string, error) {
 
 	if parsed.Scheme == "http" || parsed.Scheme == "https" {
 		// Before downloading, check if the URL points to our own managed
-		// uploads directory (e.g. "https://devbits.ddns.net/uploads/abc.jpg").
+		// uploads directory (e.g. "https://devbits.app/uploads/abc.jpg").
 		// If so, treat it as a local file to avoid a self-referential HTTP
 		// request that can hang or loop.
 		if filename, managed := extractManagedUploadFilename(parsed.Path); managed {
