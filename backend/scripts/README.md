@@ -2,35 +2,45 @@
 
 Run scripts from `backend/`.
 
-## Native AWS deploy scripts (recommended)
+## 1) Update backend on AWS
+
+On the EC2 host:
+
+```bash
+cd /opt/devbits
+git pull origin aws-ready-main
+cd backend
+./scripts/update-live.sh
+```
+
+Verify:
+
+```bash
+sudo systemctl status devbits-api --no-pager
+curl -i http://127.0.0.1:8080/health
+```
+
+## 2) Script usage
+
+Deploy/build:
 
 - `scripts/build-backend-linux.sh`
-  - Builds `bin/devbits-api` for Linux.
+  - Build backend binary to `bin/devbits-api`.
 - `scripts/install-aws-systemd-service.sh`
-  - Installs/restarts `devbits-api` systemd service.
+  - Install/restart `devbits-api` systemd service.
 - `scripts/deploy-aws-native.sh`
-  - Build + install/restart service in one command.
+  - Build + install/restart in one command.
 - `scripts/update-live.sh`
-  - Wrapper around native deploy script.
-- `scripts/update-live.ps1`
-  - Runs the Linux deploy script remotely over SSH from Windows.
+  - Wrapper for `deploy-aws-native.sh`.
 
-See: `backend/docs/AWS_TRANSFER_NO_NGINX.md`
+Database scripts (use `DATABASE_URL` in `backend/.env`):
 
-Amazon Linux defaults:
+- `scripts/reset-deployment-db.sh`
+- `--keep-uploads` to keep uploads.
+- `scripts/backup-deployment-db.sh`
+- `scripts/restore-deployment-db.sh`
+- restores latest `devbits-db-*.sql` and matching uploads archive if present.
 
-- SSH user is typically `ec2-user`.
-- Package manager is `dnf`.
-- Native deploy scripts install/run `devbits-api` as a `systemd` service.
+Required tools for DB scripts:
 
-## Database backup/reset scripts (Docker-based)
-
-These scripts are for environments where Postgres runs via `docker compose`:
-
-- `scripts/reset-deployment-db.ps1` / `scripts/reset-deployment-db.sh`
-- `scripts/backup-deployment-db.ps1` / `scripts/backup-deployment-db.sh`
-- `scripts/restore-deployment-db.ps1` / `scripts/restore-deployment-db.sh`
-- `scripts/setup-daily-backup-task.ps1`
-- `scripts/disable-daily-backup-task.ps1`
-
-If production uses RDS/native Postgres, use `pg_dump`/`psql` against RDS instead of these Docker-targeted scripts.
+- Linux: `postgresql` client package (`psql`, `pg_dump`)

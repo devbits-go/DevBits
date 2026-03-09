@@ -9,7 +9,15 @@ cd "$ROOT_DIR"
 mkdir -p bin uploads
 
 TARGET_GOOS="${TARGET_GOOS:-linux}"
-TARGET_GOARCH="${TARGET_GOARCH:-amd64}"
+if [[ -n "${TARGET_GOARCH:-}" ]]; then
+	TARGET_GOARCH="${TARGET_GOARCH}"
+else
+	case "$(uname -m)" in
+		x86_64) TARGET_GOARCH="amd64" ;;
+		aarch64|arm64) TARGET_GOARCH="arm64" ;;
+		*) TARGET_GOARCH="amd64" ;;
+	esac
+fi
 OUTPUT_PATH="${OUTPUT_PATH:-$ROOT_DIR/bin/devbits-api}"
 
 echo "Building DevBits backend for ${TARGET_GOOS}/${TARGET_GOARCH}..."
