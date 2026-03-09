@@ -17,6 +17,12 @@ Run scripts from `backend/`.
 
 See: `backend/docs/AWS_TRANSFER_NO_NGINX.md`
 
+Amazon Linux defaults:
+
+- SSH user is typically `ec2-user`.
+- Package manager is `dnf`.
+- Native deploy scripts install/run `devbits-api` as a `systemd` service.
+
 ## Database backup/reset scripts (Docker-based)
 
 These scripts are for environments where Postgres runs via `docker compose`:

@@ -50,13 +50,14 @@ This runbook deploys the Go backend as a native Linux service on EC2.
    - Listener `80` -> redirect to `443`
    - Listener `443` -> target group on EC2 `:8080`
    - Health check path `/health`
-4. Create EC2 (Ubuntu 24.04 LTS).
+4. Create EC2 (Amazon Linux 2023 recommended).
 5. Security groups:
    - ALB SG: inbound `80/443` from internet
    - EC2 SG: inbound `8080` from ALB SG only, `22` from admin IP only
 6. Provision EC2:
-   - Install Go (`1.24.x`) and git
-   - Clone repo to `/opt/devbits`
+   - Install `git` and `tar`: `sudo dnf install -y git tar`
+   - Install Go `1.24.x` from `go.dev` tarball to `/usr/local/go`
+   - Clone repo to `/opt/devbits` (typically as `ec2-user`)
    - `cd /opt/devbits/backend`
    - `cp .env.example .env` and fill real values
    - `./scripts/deploy-aws-native.sh`
@@ -77,6 +78,12 @@ git pull origin <branch>
 cd backend
 ./scripts/update-live.sh
 ```
+
+Amazon Linux notes:
+
+- Default SSH user is usually `ec2-user`.
+- Use `dnf` (not `apt`) for packages.
+- Keep `/opt/devbits` owned by the deploy user so build/deploy scripts can run without permission issues.
 
 ## Notes
 

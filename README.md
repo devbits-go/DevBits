@@ -33,10 +33,16 @@ Start only the frontend (choose production or local backend at launch):
 ./run-front.sh
 ```
 
-Start full local stack (dev PostgreSQL + backend + frontend in local API mode):
+Start local backend stack only (dev PostgreSQL + backend):
 
 ```bash
 ./run-dev.sh
+```
+
+Then start frontend and choose local or live backend:
+
+```bash
+./run-front.sh
 ```
 
 Run backend tests using dockerized Go against the dev DB stack:
@@ -58,7 +64,8 @@ Scan the QR code with Expo Go on your phone. The app will automatically connect 
 ### Verification Checklist
 
 - Fresh clone frontend check: run `chmod +x run-front.sh run-dev.sh run-db-tests.sh`, then `./run-front.sh`, choose `Production`, and confirm Expo starts.
-- Full local stack: run `./run-dev.sh`, confirm backend health at `http://<LAN-IP>:8080/health`, then validate app API calls from a phone on same WiFi.
+- Backend stack: run `./run-dev.sh`, confirm backend health at `http://<LAN-IP>:8080/health`.
+- Frontend to local backend: run `./run-front.sh --local`, then validate app API calls from a phone on same WiFi.
 - DB tests: run `./run-db-tests.sh` and confirm it exits with code `0`.
 
 ### Prerequisites

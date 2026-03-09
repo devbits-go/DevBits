@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ServerHost,
-    [string]$User = "ubuntu",
+    [string]$User = "ec2-user",
     [string]$ProjectPath = "/opt/devbits/backend",
     [switch]$NoPause
 )
