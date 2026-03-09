@@ -34,11 +34,13 @@ export function HyprBackdrop() {
   });
 
   const baseColors =
-    scheme === "dark" ? ["#0a1110", "#0e1715"] : ["#f2f7f3", "#e6f2eb"];
+    scheme === "dark"
+      ? (["#0a1110", "#0e1715"] as const)
+      : (["#f2f7f3", "#e6f2eb"] as const);
   const glowColors =
     scheme === "dark"
-      ? ["rgba(58, 227, 186, 0.18)", "rgba(51, 184, 255, 0.12)"]
-      : ["rgba(61, 211, 176, 0.22)", "rgba(77, 176, 255, 0.18)"];
+      ? (["rgba(58, 227, 186, 0.18)", "rgba(51, 184, 255, 0.12)"] as const)
+      : (["rgba(61, 211, 176, 0.22)", "rgba(77, 176, 255, 0.18)"] as const);
 
   return (
     <View style={styles.container} pointerEvents="none">

@@ -14,6 +14,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   TextInput,
   TouchableWithoutFeedback,
@@ -97,7 +98,7 @@ export default function PostDetailScreen() {
   const { isSaved, savedPostIds, toggleSave } = useSaved();
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
-  const scrollRef = useRef<Animated.ScrollView | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
   const [post, setPost] = useState<ApiPost | null>(null);
   const [project, setProject] = useState<ApiProject | null>(null);

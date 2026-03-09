@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 # Script: run-dev.sh
-# Does: Boots local dev DB + local backend (isolated compose project), then launches frontend in local mode.
-# Use: ./run-dev.sh [--clear]
+# Does: Boots local dev DB + local backend (isolated compose project) only.
+# Use: ./run-dev.sh
 # DB: devbits_dev (user/pass: devbits_dev/devbits_dev_password) in compose project devbits-dev-local.
 # Ports: backend default :8080, DB default :5433 (DEVBITS_BACKEND_PORT / DEVBITS_DB_PORT override).
-# Modes: Frontend=ON(local API) | Backend=ON(local Docker) | Live stack untouched | Test DB untouched.
+# Modes: Frontend=OFF | Backend=ON(local Docker) | Live stack untouched | Test DB untouched.
 
 set -euo pipefail
 
@@ -14,9 +14,9 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$ROOT/backend"
 COMPOSE_PROJECT="devbits-dev-local"
 
-CLEAR_FRONTEND=""
-if [[ "${1:-}" == "--clear" ]]; then
-  CLEAR_FRONTEND="--clear"
+if [[ "${EUID}" -eq 0 ]]; then
+  echo "Warning: Running as root is not recommended for Expo local mode."
+  echo "Use ./run-dev.sh (without sudo) so LAN IP detection and device connectivity work reliably."
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -109,6 +109,10 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-echo "Launching frontend in local backend mode..."
-cd "$ROOT"
-EXPO_PUBLIC_LOCAL_API_PORT="$DEVBITS_BACKEND_PORT" "$SCRIPT_DIR/run-front.sh" --local $CLEAR_FRONTEND
+echo
+echo "Local backend stack is ready."
+echo "Backend health: http://localhost:${DEVBITS_BACKEND_PORT}/health"
+echo "To launch frontend against local backend, run:"
+echo "  EXPO_PUBLIC_LOCAL_API_PORT=${DEVBITS_BACKEND_PORT} $SCRIPT_DIR/run-front.sh --local"
+echo "To launch frontend against live backend, run:"
+echo "  $SCRIPT_DIR/run-front.sh --live"

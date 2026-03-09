@@ -11,6 +11,7 @@ import {
   Modal,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -87,7 +88,7 @@ export default function UserProfileScreen() {
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
   const hasLoadedRef = useRef(false);
-  const scrollRef = useRef<Animated.ScrollView | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { scrollY, onScroll } = useTopBlurScroll();
 
   const filteredFollowerUsers = useMemo(() => {

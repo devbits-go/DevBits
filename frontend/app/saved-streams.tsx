@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, RefreshControl, StyleSheet, View } from "react-native";
+import {
+  Animated,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -35,7 +41,7 @@ export default function SavedStreamsScreen() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const motion = useMotionConfig();
   const reveal = useRef(new Animated.Value(0.08)).current;
   const { scrollY, onScroll } = useTopBlurScroll();

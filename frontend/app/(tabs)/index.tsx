@@ -4,7 +4,9 @@ import {
   InteractionManager,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
+  ViewStyle,
   View,
 } from "react-native";
 import {
@@ -74,7 +76,7 @@ export default function HomeScreen() {
   const motion = useMotionConfig();
   const hyprMotion = useHyprMotion();
   const requestGuard = useRequestGuard();
-  const scrollRef = useRef<Animated.ScrollView>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const hasFocusedRef = useRef(false);
   const { scrollY, onScroll } = useTopBlurScroll();
   const heroProgress = useSharedValue(0.08);
@@ -350,28 +352,28 @@ export default function HomeScreen() {
 
   useAutoRefresh(() => loadFeed(false), { focusRefresh: false });
 
-  const heroRevealStyle = useAnimatedStyle(() => ({
+  const heroRevealStyle = useAnimatedStyle<ViewStyle>(() => ({
     opacity: heroProgress.value,
     transform: [
       { translateY: (1 - heroProgress.value) * 22 },
       { scale: 0.97 + heroProgress.value * 0.03 },
-    ],
+    ] as any,
   }));
 
-  const streamsRevealStyle = useAnimatedStyle(() => ({
+  const streamsRevealStyle = useAnimatedStyle<ViewStyle>(() => ({
     opacity: streamsProgress.value,
     transform: [
       { translateY: (1 - streamsProgress.value) * 22 },
       { scale: 0.97 + streamsProgress.value * 0.03 },
-    ],
+    ] as any,
   }));
 
-  const postsRevealStyle = useAnimatedStyle(() => ({
+  const postsRevealStyle = useAnimatedStyle<ViewStyle>(() => ({
     opacity: postsProgress.value,
     transform: [
       { translateY: (1 - postsProgress.value) * 22 },
       { scale: 0.97 + postsProgress.value * 0.03 },
-    ],
+    ] as any,
   }));
 
   const cursorStyle = useAnimatedStyle(() => ({
