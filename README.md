@@ -15,7 +15,7 @@
 	<img alt="Expo" src="https://img.shields.io/badge/Expo-SDK_54-000020?style=for-the-badge&logo=expo&logoColor=white" />
 	<img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
 	<img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-Data-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" />
-	<img alt="AWS" src="https://img.shields.io/badge/AWS-Deployed-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white" />
+	<img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
 </p>
 
 ---
@@ -113,7 +113,7 @@ Anyone can react, follow, comment, and join the conversation.
 - Go + Gin REST backend with JWT auth and middleware-protected routes.
 - PostgreSQL production database and SQLite-friendly test workflows.
 - React Native + Expo mobile client for Android and iOS.
-- AWS-hosted backend deployment path.
+- Docker Compose + nginx backend deployment path.
 
 </details>
 
@@ -123,7 +123,7 @@ Anyone can react, follow, comment, and join the conversation.
 Backend:   Go (Gin API, JWT auth, DB query layer)
 Frontend:  TypeScript (React Native + Expo Router)
 Database:  PostgreSQL (production), SQLite (test mode)
-Infra:     AWS EC2 + AWS RDS
+Infra:     Docker Compose + nginx
 ```
 
 ## Architecture at a Glance
@@ -154,4 +154,3 @@ Instead of posting polished outcomes only, builders can share:
 
 - Product and deployment runbook: [INSTRUCTIONS.md](INSTRUCTIONS.md)
 - Backend structure and scripts: [backend/scripts/README.md](backend/scripts/README.md)
-- AWS deployment notes: [docs/AWS_TRANSFER_NO_NGINX.md](docs/AWS_TRANSFER_NO_NGINX.md)

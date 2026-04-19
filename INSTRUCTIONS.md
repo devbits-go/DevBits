@@ -2,57 +2,29 @@
 
 ## Backend
 
-> **AWS EC2 (Amazon Linux) Native Deploy**
+> **Live/Deployed Stack**
 >
 > ```bash
-> # On your EC2 instance
-> sudo dnf update -y
-> sudo dnf install -y git tar
+> cd /path/to/DevBits/backend
+> docker compose up -d
+> docker compose logs -f db
 > ```
->
-> Install Go 1.24.x (required by `backend/go.mod`):
+
+> Rebuild and restart:
 >
 > ```bash
-> curl -LO https://go.dev/dl/go1.24.2.linux-amd64.tar.gz
-> sudo rm -rf /usr/local/go
-> sudo tar -C /usr/local -xzf go1.24.2.linux-amd64.tar.gz
-> echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-> source ~/.bashrc
-> go version
+> docker compose up -d --build
 > ```
->
-> Clone and deploy:
->
-> ```bash
-> sudo mkdir -p /opt/devbits
-> sudo chown -R "$USER":"$USER" /opt/devbits
-> cd /opt/devbits
-> git clone https://github.com/devbits-go/DevBits.git .
-> git checkout aws-ready-main
-> cd backend
-> cp .env.example .env
-> # edit .env with production values (DATABASE_URL, secrets, CORS, etc.)
-> ./scripts/deploy-aws-native.sh
-> ```
->
-> Verify service:
->
-> ```bash
-> sudo systemctl status devbits-api --no-pager
-> sudo journalctl -u devbits-api -n 120 --no-pager
-> curl -i http://127.0.0.1:8080/health
-> ```
->
+
 > [!TIP]
-> AWS deploy uses native `systemd` (no Docker or nginx required in production).
-> See `backend/docs/AWS_TRANSFER_NO_NGINX.md` for full runbook.
+> Check `backend/scripts/README.md` for database operations.
 
 ## Build
 
 > **Android Production Build**
 >
 > ```bash
-> npx eas build -p android --profile production
+> npx --yes eas-cli build -p android --profile production
 > ```
 
 > [!NOTE]
@@ -63,11 +35,12 @@
 > Replace `android` with `ios` and fill out proper credentials.
 >
 > ```bash
-> npx eas build -p ios --profile production
+> npx --yes eas-cli build -p ios --profile production
 > ```
 
 > [!NOTE]
-> Currently requires MY credentials. Need to add team credentials.
+> If iOS build fails with Apple 403 / PLA message, accept the latest Apple Developer Program License Agreement first:
+> https://developer.apple.com/account
 
 ## Submit
 
@@ -76,14 +49,18 @@
 > Copy file out of expo and create new release on Google Play Console.
 
 > [!NOTE]
-> `npx eas submit -p android` failed, so manual submission is required until fix is in place. Im not sure what is happening.
+> Use:
+> ```bash
+> npx --yes eas-cli submit -p android --latest --profile production
+> ```
+> If it fails, verify the service account key path in `frontend/eas.json` points to `../devbits-play-service-account.json` and that Google Play API access is enabled for the linked service account.
 
 > **iOS to App Store**
 >
 > ```bash
-> npx eas submit -p ios --latest --profile production
+> npx --yes eas-cli submit -p ios --latest --profile production
 > ```
 
 ---
 
-`Workflow: AWS Backend Deploy → EAS Build → EAS Submit`
+`Workflow: Backend Setup → EAS Build → EAS Submit`

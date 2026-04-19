@@ -18,7 +18,7 @@ import (
 )
 
 type directMessageStreamEvent struct {
-	Type          string                `json:"type"`
+	Type          string                 `json:"type"`
 	DirectMessage database.DirectMessage `json:"direct_message"`
 }
 
@@ -107,11 +107,46 @@ func normalizeUsername(value string) string {
 	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(value, "@")))
 }
 
+func extractTokenFromWebSocketProtocol(headerValue string) string {
+	if strings.TrimSpace(headerValue) == "" {
+		return ""
+	}
+
+	parts := strings.Split(headerValue, ",")
+	for _, raw := range parts {
+		part := strings.TrimSpace(raw)
+		if part == "" {
+			continue
+		}
+
+		if strings.HasPrefix(strings.ToLower(part), "bearer.") {
+			candidate := strings.TrimSpace(part[len("bearer."):])
+			if candidate != "" {
+				return candidate
+			}
+		}
+
+		if strings.HasPrefix(strings.ToLower(part), "devbits.jwt.") {
+			candidate := strings.TrimSpace(part[len("devbits.jwt."):])
+			if candidate != "" {
+				return candidate
+			}
+		}
+	}
+
+	return ""
+}
+
 func extractToken(context *gin.Context) string {
 	authorization := strings.TrimSpace(context.GetHeader("Authorization"))
 	if strings.HasPrefix(strings.ToLower(authorization), "bearer ") {
 		return strings.TrimSpace(authorization[7:])
 	}
+
+	if protocolToken := extractTokenFromWebSocketProtocol(context.GetHeader("Sec-WebSocket-Protocol")); protocolToken != "" {
+		return protocolToken
+	}
+
 	return strings.TrimSpace(context.Query("token"))
 }
 
@@ -235,20 +270,21 @@ func StreamDirectMessages(context *gin.Context) {
 			"connection": context.GetHeader("Connection"),
 			"user_agent": context.GetHeader("User-Agent"),
 		}).Warn("Direct message stream request missing websocket upgrade headers")
-		RespondWithError(context, http.StatusBadRequest, "Failed to establish stream")
+		context.Header("Upgrade", "websocket")
+		RespondWithError(context, http.StatusUpgradeRequired, "WebSocket upgrade required")
 		return
 	}
 
 	connection, err := wsUpgrader.Upgrade(context.Writer, context.Request, nil)
 	if err != nil {
 		logger.Log.WithFields(map[string]interface{}{
-			"path":                 context.Request.URL.Path,
-			"upgrade":              context.GetHeader("Upgrade"),
-			"connection":           context.GetHeader("Connection"),
-			"sec_websocket_key":    context.GetHeader("Sec-WebSocket-Key") != "",
+			"path":                  context.Request.URL.Path,
+			"upgrade":               context.GetHeader("Upgrade"),
+			"connection":            context.GetHeader("Connection"),
+			"sec_websocket_key":     context.GetHeader("Sec-WebSocket-Key") != "",
 			"sec_websocket_version": context.GetHeader("Sec-WebSocket-Version"),
-			"user_agent":           context.GetHeader("User-Agent"),
-			"error":                err.Error(),
+			"user_agent":            context.GetHeader("User-Agent"),
+			"error":                 err.Error(),
 		}).Warn("Direct message stream websocket upgrade failed")
 		RespondWithError(context, http.StatusBadRequest, "Failed to establish stream")
 		return

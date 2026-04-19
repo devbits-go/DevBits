@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"backend/api/internal/auth"
@@ -29,6 +30,121 @@ type LoginRequest struct {
 type AuthResponse struct {
 	Token string           `json:"token"`
 	User  database.ApiUser `json:"user"`
+}
+
+type loginFailureState struct {
+	failures     int
+	firstFailure time.Time
+	blockedUntil time.Time
+}
+
+var loginFailureMu sync.Mutex
+var loginFailuresByKey = make(map[string]loginFailureState)
+
+const (
+	loginFailureWindow     = 10 * time.Minute
+	loginFailureBlockFor   = 5 * time.Minute
+	maxLoginFailuresByUser = 8
+	maxLoginFailuresByIP   = 20
+)
+
+func loginUserKey(username string) string {
+	normalized := strings.ToLower(strings.TrimSpace(username))
+	if normalized == "" {
+		normalized = "_"
+	}
+	return "user:" + normalized
+}
+
+func loginIPKey(ip string) string {
+	normalized := strings.TrimSpace(ip)
+	if normalized == "" {
+		normalized = "unknown"
+	}
+	return "ip:" + normalized
+}
+
+func resetLoginFailureLocked(key string, now time.Time) {
+	state := loginFailuresByKey[key]
+	if state.failures == 0 && state.blockedUntil.IsZero() {
+		return
+	}
+	if now.Sub(state.firstFailure) > loginFailureWindow {
+		delete(loginFailuresByKey, key)
+		return
+	}
+	state.failures = 0
+	state.firstFailure = time.Time{}
+	state.blockedUntil = time.Time{}
+	loginFailuresByKey[key] = state
+}
+
+func checkLoginRateLimit(ip, username string) (bool, int) {
+	now := time.Now()
+	keys := []string{loginUserKey(username), loginIPKey(ip)}
+
+	loginFailureMu.Lock()
+	defer loginFailureMu.Unlock()
+
+	for _, key := range keys {
+		state, ok := loginFailuresByKey[key]
+		if !ok {
+			continue
+		}
+		if !state.blockedUntil.IsZero() {
+			if now.Before(state.blockedUntil) {
+				remaining := int(time.Until(state.blockedUntil).Seconds())
+				if remaining < 1 {
+					remaining = 1
+				}
+				return true, remaining
+			}
+			state.blockedUntil = time.Time{}
+			state.failures = 0
+			state.firstFailure = time.Time{}
+			loginFailuresByKey[key] = state
+		}
+	}
+
+	return false, 0
+}
+
+func recordLoginFailure(ip, username string) {
+	now := time.Now()
+	keys := []string{loginUserKey(username), loginIPKey(ip)}
+
+	loginFailureMu.Lock()
+	defer loginFailureMu.Unlock()
+
+	for _, key := range keys {
+		state := loginFailuresByKey[key]
+		if state.firstFailure.IsZero() || now.Sub(state.firstFailure) > loginFailureWindow {
+			state = loginFailureState{failures: 0, firstFailure: now}
+		}
+
+		state.failures++
+		limit := maxLoginFailuresByIP
+		if strings.HasPrefix(key, "user:") {
+			limit = maxLoginFailuresByUser
+		}
+		if state.failures >= limit {
+			state.blockedUntil = now.Add(loginFailureBlockFor)
+		}
+
+		loginFailuresByKey[key] = state
+	}
+}
+
+func clearLoginFailures(ip, username string) {
+	now := time.Now()
+	keys := []string{loginUserKey(username), loginIPKey(ip)}
+
+	loginFailureMu.Lock()
+	defer loginFailureMu.Unlock()
+
+	for _, key := range keys {
+		resetLoginFailureLocked(key, now)
+	}
 }
 
 func Register(context *gin.Context) {
@@ -114,23 +230,32 @@ func Login(context *gin.Context) {
 		return
 	}
 
+	if blocked, retryAfter := checkLoginRateLimit(context.ClientIP(), request.Username); blocked {
+		context.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+		RespondWithError(context, http.StatusTooManyRequests, "Too many login attempts. Please try again later.")
+		return
+	}
+
 	loginInfo, err := database.GetUserLoginInfo(request.Username)
 	if err != nil {
 		RespondWithError(context, http.StatusInternalServerError, fmt.Sprintf("Failed to login: %v", err))
 		return
 	}
 	if loginInfo == nil {
+		recordLoginFailure(context.ClientIP(), request.Username)
 		RespondWithError(context, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(loginInfo.PasswordHash), []byte(request.Password)); err != nil {
+		recordLoginFailure(context.ClientIP(), request.Username)
 		RespondWithError(context, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 
 	user, err := database.GetUserByUsername(request.Username)
 	if err != nil || user == nil {
+		recordLoginFailure(context.ClientIP(), request.Username)
 		RespondWithError(context, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
@@ -160,6 +285,8 @@ func Login(context *gin.Context) {
 		RespondWithError(context, http.StatusInternalServerError, "Failed to issue token")
 		return
 	}
+
+	clearLoginFailures(context.ClientIP(), request.Username)
 
 	context.JSON(http.StatusOK, AuthResponse{Token: token, User: *user})
 }

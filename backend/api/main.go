@@ -1,11 +1,14 @@
 package main
 
 import (
-	"github.com/joho/godotenv"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/joho/godotenv"
 
 	"backend/api/internal/database"
 	"backend/api/internal/handlers"
@@ -42,8 +45,7 @@ func getAllowedOrigins() []string {
 	}
 
 	return []string{
-		"https://devbits.app",
-		"https://www.devbits.app",
+		"https://devbits.ddns.net",
 		"http://localhost:8081",
 		"http://localhost:19006",
 		"http://127.0.0.1:8081",
@@ -98,7 +100,28 @@ func main() {
 
 	router := gin.New()
 	router.MaxMultipartMemory = 64 << 20
-	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(gin.LoggerWithFormatter(func(params gin.LogFormatterParams) string {
+		// Never log query strings to avoid leaking credentials/tokens.
+		path := params.Path
+		if path == "" && params.Request != nil && params.Request.URL != nil {
+			path = params.Request.URL.Path
+		}
+
+		userAgent := ""
+		if params.Request != nil {
+			userAgent = params.Request.UserAgent()
+		}
+
+		return fmt.Sprintf("[%s] %d | %13v | %15s | %-7s %s | ua=%q\n",
+			params.TimeStamp.Format(time.RFC3339),
+			params.StatusCode,
+			params.Latency,
+			params.ClientIP,
+			params.Method,
+			path,
+			userAgent,
+		)
+	}), gin.Recovery())
 	router.Use(func(context *gin.Context) {
 		path := context.Request.URL.Path
 		if strings.HasPrefix(path, "/uploads/") {
