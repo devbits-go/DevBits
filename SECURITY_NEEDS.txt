@@ -1,0 +1,89 @@
+DevBits Security Setup (Cloudflare Domain + Cloudflare Tunnel)
+
+0) Before you start
+0.1) Keep current DNS and router setup unchanged until Step 8 verification passes.
+0.2) Keep current domain live during migration (no cutover yet).
+0.3) Have access to: Cloudflare account, domain registrar account, server SSH/root, router admin panel.
+
+1) Cloudflare domain onboarding
+1.1) In Cloudflare, click Add a site.
+1.2) Enter your owned domain (not a shared ddns.net hostname).
+1.3) Select Free plan and continue.
+1.4) Copy the two Cloudflare nameservers shown.
+
+2) Registrar nameserver change
+2.1) Open registrar panel for your owned domain.
+2.2) Go to Nameservers.
+2.3) Replace existing nameservers with the two Cloudflare nameservers.
+2.4) Save changes.
+2.5) If DNSSEC is enabled at registrar, disable it temporarily.
+2.6) Wait until Cloudflare zone status is Active.
+
+3) Create Cloudflare Tunnel
+3.1) In Cloudflare dashboard, open Zero Trust.
+3.2) Go to Networks -> Tunnels.
+3.3) Click Create a tunnel.
+3.4) Select Cloudflared.
+3.5) Set tunnel name: devbits-home.
+3.6) Keep installation/auth command page open.
+
+4) Install cloudflared connector on server
+4.1) SSH into server.
+4.2) Run the exact install/auth command from Cloudflare tunnel page.
+4.3) Confirm tunnel connector shows Healthy/Connected in Cloudflare.
+
+5) Public hostname route for backend
+5.1) In Cloudflare tunnel page, open Public Hostnames.
+5.2) Click Add a public hostname.
+5.3) Subdomain: api (or preferred label).
+5.4) Domain: your owned Cloudflare domain.
+5.5) Service Type: HTTP.
+5.6) URL: localhost:80.
+5.7) Save.
+
+6) Cloudflare edge security controls
+6.1) SSL/TLS -> Overview: set mode to Full (strict).
+6.2) SSL/TLS -> Edge Certificates: enable Always Use HTTPS.
+6.3) Security -> WAF: enable managed rules.
+6.4) Security -> Bots: enable Bot Fight Mode.
+6.5) Security -> Rate Limiting Rules: add
+6.5.1) /auth/login strict limit.
+6.5.2) /auth/register strict limit.
+6.5.3) /api/* moderate limit.
+
+7) Server config updates (before cutover)
+7.1) In backend/.env set DEVBITS_ADMIN_LOCAL_ONLY=1.
+7.2) In backend/.env set DEVBITS_CORS_ORIGINS to the new Cloudflare URL (example: https://api.yourdomain.com).
+7.3) Keep DEVBITS_TRUST_PROXY=true.
+7.4) Rebuild/restart services: cd backend && docker compose up -d --build backend nginx.
+7.5) Check status: docker compose ps.
+7.6) Check logs: docker compose logs --tail=200 nginx.
+
+8) Validate new path before closing ports
+8.1) Open https://api.yourdomain.com and confirm app/backend responses.
+8.2) Verify tunnel is Healthy in Cloudflare Zero Trust.
+8.3) Verify Cloudflare analytics show requests to hostname.
+8.4) Verify login/API rules trigger under burst testing.
+
+9) Close public origin exposure
+9.1) Router: remove/disable port forwarding for 80 and 443.
+9.2) Host firewall: deny inbound 80/443 from internet.
+9.3) Keep only tunnel-based ingress path.
+
+10) Host hardening
+10.1) Disable SSH password auth (key-only).
+10.2) Disable SSH root login.
+10.3) Install and configure fail2ban.
+10.4) Enable unattended security updates.
+10.5) Disable UPnP on router.
+
+11) Post-cutover verification
+11.1) Cloudflare hostname works from external network.
+11.2) Direct home IP on 80/443 is closed.
+11.3) Bot/WAF/rate-limit events appear in Cloudflare dashboard.
+11.4) No DNS record leaks direct home IP for app hostname.
+
+12) Rollback (if emergency)
+12.1) Re-enable 80/443 port forward on router.
+12.2) Temporarily point clients back to previous hostname.
+12.3) Keep investigating tunnel failure via cloudflared logs and Cloudflare tunnel status.

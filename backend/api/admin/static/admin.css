@@ -1,0 +1,634 @@
+/* DevBits Admin CSS - Floating Buttons v2 - No borders/shadows, typewriter text, smooth tint->green */
+
+:root {
+  color-scheme: dark;
+  --db-bg: #05070a;
+  --db-surface: #10141a;
+  --db-surface-alt: #0c1016;
+  --db-text: #f0f3f7;
+  --db-muted: #94a0af;
+  --db-tint: #00f329;
+  --db-border: #1f2732;
+  --db-danger: #ef4444;
+  --db-success: #00f329;
+  --db-on-tint: #0b0d10;
+  --db-radius-card: 14px;
+  --db-radius-button: 12px;
+  --db-radius-input: 12px;
+  --db-space-card-x: 12px;
+  --db-space-card-y: 11px;
+  --ease-enter: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-exit: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-micro: 100ms;
+  --dur-standard: 220ms;
+  --dur-emphasis: 380ms;
+  --dur-counter: 1200ms;
+  --typewriter-step: 0.08s;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Space Mono", ui-monospace, Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", monospace;
+  color: var(--db-text);
+  background: var(--db-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.admin-root, .admin-bottom-nav, .toast-stack, .record-overlay {
+  position: relative;
+  z-index: 3;
+}
+
+.sr-only {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+h1, h2, h3, p {
+  margin: 0;
+}
+
+button, input, textarea {
+  font: inherit;
+}
+
+/* DevBits Floating Buttons - Clean, borderless, typewriter text */
+.btn {
+  position: relative;
+  background: var(--db-surface);
+  color: var(--db-text);
+  border: none;
+  border-radius: var(--db-radius-button);
+  padding: 12px 24px;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all var(--dur-standard) var(--ease-spring);
+  overflow: hidden;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.btn:focus-visible {
+  outline: none;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--db-tint);
+  opacity: 0;
+  transition: opacity var(--dur-standard) var(--ease-spring);
+  z-index: -1;
+}
+
+.btn:hover::before,
+.btn:focus::before,
+.btn:active::before {
+  opacity: 0.15;
+}
+
+.btn:active {
+  transform: scale(0.97);
+  transition-duration: var(--dur-micro);
+}
+
+.btn span {
+  position: relative;
+  background: linear-gradient(90deg, transparent 0%, currentColor 0%, currentColor 100%, transparent 100%);
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  background-position: left center;
+  transition: background-size var(--typewriter-step) linear;
+}
+
+.btn:hover span,
+.btn:focus span {
+  background-size: 100% 100%;
+  background-position: right center;
+}
+
+/* Button variants by context/size */
+.btn--sidebar {
+  padding: 12px;
+  font-size: 14px;
+  min-height: 44px;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.btn--action {
+  padding: 10px 20px;
+  font-size: 14px;
+  flex: 1;
+  min-width: 100px;
+  min-height: 40px;
+}
+
+.btn--primary {
+  padding: 14px 28px;
+  font-size: 16px;
+  min-height: 52px;
+}
+
+.btn--small {
+  padding: 8px 16px;
+  font-size: 13px;
+  min-height: 36px;
+}
+
+.btn.danger {
+  color: var(--db-danger);
+}
+
+.btn.danger::before {
+  background: color-mix(in srgb, var(--db-danger) 50%, transparent);
+}
+
+.btn.is-loading::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: spin 1s linear infinite;
+  z-index: 1;
+}
+
+.btn.is-loading span {
+  opacity: 0;
+}
+
+/* Sidebar nav-items as buttons */
+.nav-item {
+position: relative;
+  background: var(--db-surface);
+  color: var(--db-text);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all var(--dur-standard) ease;
+  overflow: hidden;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-shadow: none;
+  white-space: nowrap;
+  width: 100%;
+  text-align: center;
+  text-align: center;
+  position: relative;
+  overflow: visible;
+  transition: all var(--dur-standard) ease;
+}
+
+.nav-item::before {
+  opacity: 0.08;
+}
+
+.nav-item.active {
+  background: color-mix(in srgb, var(--db-surface-alt), var(--db-tint) 20%);
+  color: var(--db-tint);
+}
+
+.nav-item:hover {
+  transform: none;
+}
+
+/* Inputs */
+.admin-input {
+  width: 100%;
+  background: var(--db-surface);
+  border: 1px solid var(--db-border);
+  border-radius: var(--db-radius-input);
+  color: var(--db-text);
+  padding: 12px 16px;
+  font-size: 16px;
+  transition: all var(--dur-standard);
+}
+
+.admin-input:focus-visible {
+  outline: none;
+  border-color: var(--db-tint);
+  background: color-mix(in srgb, var(--db-surface), var(--db-tint) 5%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, transparent, var(--db-tint) 15%);
+}
+
+/* Login */
+.admin-login-page {
+  overflow: hidden;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.login-card {
+  width: min(420px, 100%);
+  background: var(--db-surface);
+  border: 1px solid var(--db-border);
+  border-radius: 20px;
+  padding: 2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.login-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  border: 1px solid var(--db-border);
+  margin: 0 auto;
+}
+
+.login-title {
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 700;
+  text-align: center;
+}
+
+.login-caption {
+  font-size: 14px;
+  color: var(--db-muted);
+  text-align: center;
+}
+
+.login-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.password-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.login-status {
+  min-height: 1.25rem;
+  font-size: 14px;
+  color: var(--db-muted);
+  text-align: center;
+}
+
+.login-status.error {
+  color: var(--db-danger);
+}
+
+/* Layout */
+.admin-root {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 0;
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: var(--db-bg);
+  padding: 1rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-right: 1px solid var(--db-border);
+  overflow: hidden;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.sidebar-brand img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--db-border);
+}
+
+.nav-list {
+  flex: 1;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.admin-main {
+  padding: 1.5rem;
+  min-width: 0;
+}
+
+.admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--db-border);
+  background: var(--db-bg);
+  margin-bottom: 1rem;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.topbar-left img {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 120px;
+}
+
+.search-wrap {
+  flex: 1;
+  max-width: 32rem;
+  position: relative;
+}
+
+.search-input {
+  height: 2.5rem;
+  border-radius: 999px;
+  background: var(--db-surface);
+  border: 1px solid var(--db-border);
+  padding: 0 1rem;
+  width: 100%;
+  font-size: 16px;
+  color: var(--db-text);
+  transition: all var(--dur-standard);
+}
+
+.search-input:focus {
+  border-color: var(--db-tint);
+  background: color-mix(in srgb, var(--db-surface), var(--db-tint) 5%);
+}
+
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  right: 0;
+  background: var(--db-surface);
+  border: 1px solid var(--db-border);
+  border-radius: var(--db-radius-card);
+  max-height: 28rem;
+  overflow: auto;
+  z-index: 200;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+.mobile-search-toggle {
+  display: none;
+}
+
+/* Cards & Content */
+.page {
+  margin-top: 1rem;
+}
+
+.section-card {
+  background: var(--db-surface);
+  border: 1px solid var(--db-border);
+  border-radius: var(--db-radius-card);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.section-head h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.counter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+
+.entity-card {
+  background: var(--db-surface);
+  border: 1px solid var(--db-border);
+  border-radius: var(--db-radius-card);
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  transition: all var(--dur-standard);
+  cursor: pointer;
+}
+
+.entity-card:hover {
+  border-color: var(--db-tint);
+  transform: translateY(-1px);
+}
+
+.entity-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.list-search-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .nav-item span:last-child {
+    display: none;
+  }
+  
+  .sidebar-brand strong {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .admin-root {
+    grid-template-columns: 0 1fr;
+  }
+  
+  .admin-sidebar {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    transform: translateX(-100%);
+    transition: transform var(--dur-standard);
+  }
+  
+  .admin-sidebar:hover {
+    transform: translateX(0);
+  }
+  
+  .admin-main {
+    padding-left: 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-root {
+    grid-template-columns: 1fr;
+  }
+  
+  .admin-sidebar {
+    display: none;
+  }
+  
+  .admin-main {
+    padding: 1rem;
+  }
+  
+  .admin-topbar {
+    padding: 0 1rem;
+  }
+  
+  .mobile-search-toggle {
+    display: flex;
+  }
+  
+  .search-wrap {
+    display: none;
+  }
+  
+.admin-bottom-nav {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4rem;
+    background: var(--db-surface);
+    border-top: 1px solid var(--db-border);
+    z-index: 200;
+  }
+
+  .nav-bottom-list {
+    display: flex;
+    height: 100%;
+    align-items: center;
+    justify-content: space-around;
+  }
+  
+  .counter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes typewriter {
+  from { background-size: 0% 100%; }
+  to { background-size: 100% 100%; }
+}
+
+/* Toast & Modal */
+.toast-stack {
+  position: fixed;
+  top: 5rem;
+  right: 1rem;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.toast {
+  background: var(--db-surface);
+  border: 1px solid var(--db-border);
+  border-left: 4px solid var(--db-tint);
+  border-radius: var(--db-radius-card);
+  padding: 1rem;
+  animation: slideIn 0.3s ease;
+}
+
+.record-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.record-modal {
+  background: var(--db-surface);
+  border: 1px solid var(--db-border);
+  border-radius: var(--db-radius-card);
+  max-width: 36rem;
+  max-height: 80vh;
+  overflow: auto;
+  width: 100%;
+}

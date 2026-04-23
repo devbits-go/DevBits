@@ -4,105 +4,91 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DevBits Admin Sign In</title>
-    <style>
-      :root {
-        color-scheme: dark;
-        --db-bg: #05070a;
-        --db-surface: #10141a;
-        --db-border: #1f2732;
-        --db-text: #f0f3f7;
-        --db-muted: #94a0af;
-        --db-tint: #00f329;
-      }
-      body {
-        margin: 0;
-        min-height: 100vh;
-        background: var(--db-bg);
-        color: var(--db-text);
-        font-family:
-          Inter,
-          Segoe UI,
-          Roboto,
-          Arial,
-          sans-serif;
-        display: grid;
-        place-items: center;
-      }
-      .card {
-        width: min(420px, 92vw);
-        background: var(--db-surface);
-        border: 1px solid var(--db-border);
-        border-radius: 14px;
-        padding: 18px;
-      }
-      .title {
-        font-size: 28px;
-        font-weight: 700;
-        margin: 0 0 4px;
-      }
-      .muted {
-        margin: 0 0 16px;
-        color: var(--db-muted);
-        font-size: 14px;
-      }
-      .input {
-        width: 100%;
-        box-sizing: border-box;
-        background: #0c1016;
-        border: 1px solid var(--db-border);
-        border-radius: 12px;
-        color: var(--db-text);
-        padding: 12px;
-        font-size: 15px;
-        margin-bottom: 10px;
-      }
-      .input:focus {
-        outline: 2px solid color-mix(in srgb, var(--db-tint) 35%, transparent);
-        border-color: var(--db-tint);
-      }
-      .btn {
-        width: 100%;
-        border: 0;
-        border-radius: 12px;
-        background: var(--db-tint);
-        color: #0a0d12;
-        font-weight: 700;
-        font-size: 15px;
-        padding: 12px;
-        cursor: pointer;
-      }
-      .status {
-        margin-top: 10px;
-        min-height: 18px;
-        color: var(--db-muted);
-        font-size: 13px;
-      }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+
+<link rel="stylesheet" href="/admin/static/admin.css" />
+
   </head>
-  <body>
-    <div class="card">
-      <h1 class="title">DevBits</h1>
-      <p class="muted">
-        Sign in as Administrator (password = ultimate key) or with an admin user
-        account.
-      </p>
-      <input
-        id="username-input"
-        class="input"
-        type="text"
-        placeholder="Username"
-        autocomplete="username"
-      />
-      <input
-        id="password-input"
-        class="input"
-        type="password"
-        placeholder="Password"
-        autocomplete="current-password"
-      />
-      <button id="sign-in" class="btn">Sign in</button>
-      <div id="status" class="status"></div>
-    </div>
+  <body class="admin-login-page">
+    <svg
+      style="display: none; position: absolute"
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <filter
+          id="glass-distort"
+          x="-10%"
+          y="-10%"
+          width="120%"
+          height="120%"
+          color-interpolation-filters="sRGB"
+        >
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.65 0.65"
+            numOctaves="1"
+            seed="2"
+            result="noise"
+          />
+          <feGaussianBlur in="noise" stdDeviation="1.5" result="blurred" />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="blurred"
+            scale="8"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+      </defs>
+    </svg>
+
+    <div class="admin-atmosphere" aria-hidden="true"></div>
+
+    <main class="login-shell">
+      <section class="login-card">
+        <img class="login-logo reveal reveal-1" src="/Devbits_Icons.png" alt="DevBits logo" />
+        <h1 class="login-title reveal reveal-2">DevBits</h1>
+        <p class="login-caption reveal reveal-3">Sign in to ship bytes.</p>
+        <p class="login-subtitle reveal reveal-4">Admin Console</p>
+
+        <form id="signin-form" class="login-form" novalidate>
+          <label class="sr-only" for="username-input">Username</label>
+          <input
+            id="username-input"
+            class="admin-input reveal reveal-5"
+            placeholder="Username or Administrator"
+            autocomplete="username"
+          />
+
+          <label class="sr-only" for="password-input">Password</label>
+          <div class="password-row reveal reveal-6">
+            <input
+              id="password-input"
+              class="admin-input"
+              type="password"
+              placeholder="Password / Admin key"
+              autocomplete="current-password"
+            />
+            <button type="button" id="password-toggle" class="flat-btn" aria-label="Show password">
+              Show
+            </button>
+          </div>
+
+class="btn btn--primary reveal reveal-7">
+            <span>Sign in</span>
+          </button>
+        </form>
+
+        <div id="status" class="login-status" aria-live="polite"></div>
+      </section>
+    </main>
+
     <script src="/admin/static/login.js"></script>
   </body>
 </html>

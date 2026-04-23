@@ -269,7 +269,7 @@ func main() {
 	router.GET("/messages/:username/threads", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectMessageThreads)
 	router.GET("/messages/:username/with/:other", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.GetDirectMessages)
 	router.POST("/messages/:username/with/:other", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.CreateDirectMessage)
-	router.GET("/messages/:username/stream", handlers.StreamDirectMessages)
+	router.GET("/messages/:username/stream", handlers.RequireAuth(), handlers.RequireSameUser(), handlers.StreamDirectMessages)
 
 	router.GET("/projects/:project_id", handlers.GetProjectById)
 	router.POST("/projects", handlers.RequireAuth(), handlers.CreateProject)
