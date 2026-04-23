@@ -591,21 +591,32 @@ button, input { font: inherit; }
   inset: 0;
   z-index: 26;
   background: rgba(0, 0, 0, 0.64);
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
   padding: 14px;
+  overflow-x: auto;
 }
 
-.record-modal {
-  width: min(960px, 100%);
+.inspector-stack {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  min-height: min(82vh, 760px);
+}
+
+.inspector-panel {
+  width: min(520px, 92vw);
+  min-width: 360px;
   max-height: 82vh;
   overflow: auto;
   border: 1px solid var(--db-border);
   border-radius: var(--db-radius-lg);
   background: color-mix(in srgb, var(--db-surface), black 5%);
+  animation: panelSlideIn var(--db-duration-slow) cubic-bezier(.2,.8,.2,1) both;
 }
 
-.modal-header {
+.inspector-header {
   position: sticky;
   top: 0;
   border-bottom: 1px solid var(--db-border);
@@ -615,6 +626,40 @@ button, input { font: inherit; }
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.inspector-header h3 {
+  font-size: 18px;
+}
+
+.inspector-header p {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--db-muted);
+}
+
+.linked-users-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+
+.linked-user-chip {
+  border: 1px solid color-mix(in srgb, var(--db-tint), var(--db-border) 46%);
+  background: color-mix(in srgb, var(--db-surface-alt), var(--db-tint) 10%);
+  color: color-mix(in srgb, var(--db-tint), white 20%);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 0 0 rgba(0, 243, 41, 0.25);
+  transition: transform var(--db-duration) ease, box-shadow var(--db-duration) ease;
+}
+
+.linked-user-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 14px rgba(0, 243, 41, 0.3);
 }
 
 .modal-actions {
@@ -639,6 +684,17 @@ button, input { font: inherit; }
 
 .reveal {
   animation: revealIn var(--db-duration-slow) cubic-bezier(.22,.61,.36,1) both;
+}
+
+@keyframes panelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes revealIn {
