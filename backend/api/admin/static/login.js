@@ -84,6 +84,7 @@ function setStatus(message, isError) {
   if (!statusEl) return;
   statusEl.textContent = message || "";
   statusEl.classList.toggle("error", !!isError);
+  statusEl.classList.toggle("success", !!message && !isError);
 }
 
 function wait(ms) {

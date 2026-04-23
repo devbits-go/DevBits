@@ -7,80 +7,47 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
       rel="stylesheet"
     />
-
-<link rel="stylesheet" href="/admin/static/admin.css" />
-
+    <link rel="stylesheet" href="/admin/static/admin.css" />
   </head>
   <body class="admin-login-page">
-    <svg
-      style="display: none; position: absolute"
-      aria-hidden="true"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <defs>
-        <filter
-          id="glass-distort"
-          x="-10%"
-          y="-10%"
-          width="120%"
-          height="120%"
-          color-interpolation-filters="sRGB"
-        >
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.65 0.65"
-            numOctaves="1"
-            seed="2"
-            result="noise"
-          />
-          <feGaussianBlur in="noise" stdDeviation="1.5" result="blurred" />
-          <feDisplacementMap
-            in="SourceGraphic"
-            in2="blurred"
-            scale="8"
-            xChannelSelector="R"
-            yChannelSelector="G"
-          />
-        </filter>
-      </defs>
-    </svg>
-
     <div class="admin-atmosphere" aria-hidden="true"></div>
 
     <main class="login-shell">
-      <section class="login-card">
-        <img class="login-logo reveal reveal-1" src="/Devbits_Icons.png" alt="DevBits logo" />
-        <h1 class="login-title reveal reveal-2">DevBits</h1>
-        <p class="login-caption reveal reveal-3">Sign in to ship bytes.</p>
-        <p class="login-subtitle reveal reveal-4">Admin Console</p>
+      <section class="login-card reveal reveal-1">
+        <img class="login-logo" src="/Devbits_Icons.png" alt="DevBits logo" />
+        <h1 class="login-title">DevBits</h1>
+        <p class="login-caption">Admin Console</p>
+        <p class="login-subtitle">Sign in with your admin account or Administrator key.</p>
 
         <form id="signin-form" class="login-form" novalidate>
           <label class="sr-only" for="username-input">Username</label>
           <input
             id="username-input"
-            class="admin-input reveal reveal-5"
+            class="admin-input"
             placeholder="Username or Administrator"
             autocomplete="username"
+            required
           />
 
           <label class="sr-only" for="password-input">Password</label>
-          <div class="password-row reveal reveal-6">
+          <div class="password-row">
             <input
               id="password-input"
               class="admin-input"
               type="password"
-              placeholder="Password / Admin key"
+              placeholder="Password or admin key"
               autocomplete="current-password"
+              required
             />
             <button type="button" id="password-toggle" class="flat-btn" aria-label="Show password">
               Show
             </button>
           </div>
 
-class="btn btn--primary reveal reveal-7">
+          <button id="sign-in" type="submit" class="btn btn--primary">
             <span>Sign in</span>
           </button>
         </form>
