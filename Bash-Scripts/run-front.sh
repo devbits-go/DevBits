@@ -77,7 +77,7 @@ if [[ -z "$LAN_IP" ]]; then
 fi
 
 if [[ -z "$MODE" ]]; then
-  echo "Select backend: 1) Live (devbits.app) 2) Local (LAN IP:8080)"
+  echo "Select backend: 1) Live (devbits.ddns.net) 2) Local (LAN IP:8080)"
   read -r -p "Choose [1/2]: " selection
   case "$selection" in
     1) MODE="production" ;;
@@ -96,8 +96,8 @@ else
   unset REACT_NATIVE_PACKAGER_HOSTNAME || true
   unset EXPO_PACKAGER_HOSTNAME || true
 fi
-export EXPO_PUBLIC_API_URL="https://devbits.app"
-export EXPO_PUBLIC_API_FALLBACK_URL="https://devbits.app"
+export EXPO_PUBLIC_API_URL="https://devbits.ddns.net"
+export EXPO_PUBLIC_API_FALLBACK_URL="https://devbits.ddns.net"
 
 if [[ "$MODE" == "local" ]]; then
   LOCAL_API_PORT="${EXPO_PUBLIC_LOCAL_API_PORT:-8080}"
@@ -119,7 +119,7 @@ if [[ "$MODE" == "local" ]]; then
 else
   export EXPO_PUBLIC_USE_LOCAL_API=0
   unset EXPO_PUBLIC_LOCAL_API_URL || true
-  echo "Using live backend: https://devbits.app"
+  echo "Using live backend: https://devbits.ddns.net"
 fi
 
 cd "$FRONTEND_DIR"

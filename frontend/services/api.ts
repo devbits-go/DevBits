@@ -259,7 +259,7 @@ const getDefaultBaseUrl = () => {
     // If the developer explicitly disables using the local API in dev, use
     // the production endpoint even when __DEV__ is true.
     if (!useLocal) {
-      return "https://devbits.app";
+      return "https://devbits.ddns.net";
     }
   } catch {
     // ignore and fall back to defaults below
@@ -294,7 +294,7 @@ const getDefaultBaseUrl = () => {
   }
 
   // Production: use live server
-  return "https://devbits.app";
+  return "https://devbits.ddns.net";
 };
 
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, "");
@@ -327,21 +327,21 @@ function getValidatedBaseUrl(): string {
     const checkUrl = new URL(raw);
     if (!checkUrl.hostname) {
       // eslint-disable-next-line no-console
-      console.error("Invalid API_BASE_URL resolved; falling back to https://devbits.app", raw);
-      return normalizeBaseUrl("https://devbits.app");
+      console.error("Invalid API_BASE_URL resolved; falling back to https://devbits.ddns.net", raw);
+      return normalizeBaseUrl("https://devbits.ddns.net");
     }
     return raw;
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.error("Failed to parse API_BASE_URL; falling back to https://devbits.app", raw, String(e));
-    return normalizeBaseUrl("https://devbits.app");
+    console.error("Failed to parse API_BASE_URL; falling back to https://devbits.ddns.net", raw, String(e));
+    return normalizeBaseUrl("https://devbits.ddns.net");
   }
 }
 
 export const API_BASE_URL = getValidatedBaseUrl();
 
 const API_FALLBACK_URL = normalizeBaseUrl(
-  __DEV__ ? "" : "https://devbits.app",
+  __DEV__ ? "" : "https://devbits.ddns.net",
 );
 
 const API_REQUEST_BASE_URLS = buildBaseUrlList(API_BASE_URL, API_FALLBACK_URL);

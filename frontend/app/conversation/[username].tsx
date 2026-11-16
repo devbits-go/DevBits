@@ -125,7 +125,7 @@ export default function ConversationScreen() {
     const wsBase = getWebSocketBaseUrl(API_BASE_URL);
     const wsUrl = `${wsBase}/messages/${encodeURIComponent(
       user.username,
-    )}/stream?token=${encodeURIComponent(token)}`;
+    )}/stream`;
     const connect = () => {
       if (!isActive) {
         return;
@@ -141,7 +141,7 @@ export default function ConversationScreen() {
           wsRef.current.close();
         }
 
-        const ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(wsUrl, [`devbits.jwt.${token}`]);
         wsRef.current = ws;
 
         ws.onopen = () => {
