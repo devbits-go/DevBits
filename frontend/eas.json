@@ -25,7 +25,7 @@
     "production": {
       "android": {
         "serviceAccountKeyPath": "..\/devbits-play-service-account.json",
-        "track": "closed"
+        "track": "alpha"
       }
     }
   }
