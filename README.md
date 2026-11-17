@@ -10,10 +10,8 @@
 
 ## Join the Group
 
-Scan to join the [DevBits Google Group](https://groups.google.com/g/devbits) for access links and updates.
-
 <p align="center">
-	<a href="https://groups.google.com/g/devbits"><img src="frontend/public/devbits-group-qr.png" alt="QR code to join the DevBits Google Group" width="200" /></a>
+	<a href="https://groups.google.com/g/devbits"><img src="frontend/public/devbits-group-qr.png" alt="QR code to join the DevBits Google Group" width="300" /></a>
 </p>
 
 <p align="center">
