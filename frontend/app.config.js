@@ -26,7 +26,7 @@ module.exports = () => {
         supportsTablet: true,
         icon: "./assets/images/Devbits_Icons.png",
         bundleIdentifier: "com.devbits.frontend",
-        buildNumber: "18",
+        buildNumber: "19",
         infoPlist: {
           ITSAppUsesNonExemptEncryption: false,
           NSPhotoLibraryUsageDescription:
@@ -42,7 +42,7 @@ module.exports = () => {
       },
       android: {
         icon: "./assets/images/Devbits_Icons1.png",
-        versionCode: 18,
+        versionCode: 19,
         adaptiveIcon: {
           foregroundImage: "./assets/images/adaptive-icon.png",
           backgroundColor: "#000000",

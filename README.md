@@ -8,6 +8,14 @@
 	Social infrastructure for builders shipping in public.
 </p>
 
+## Join the Group
+
+Scan to join the [DevBits Google Group](https://groups.google.com/g/devbits) for access links and updates.
+
+<p align="center">
+	<a href="https://groups.google.com/g/devbits"><img src="frontend/public/devbits-group-qr.png" alt="QR code to join the DevBits Google Group" width="200" /></a>
+</p>
+
 <p align="center">
 	<img alt="Go" src="https://img.shields.io/badge/Go-1.24-00ADD8?style=for-the-badge&logo=go&logoColor=white" />
 	<img alt="Gin" src="https://img.shields.io/badge/Gin-API-009688?style=for-the-badge&logo=gin&logoColor=white" />
